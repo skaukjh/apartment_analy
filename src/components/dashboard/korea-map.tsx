@@ -575,7 +575,13 @@ export function KoreaMap({
           dragging ? 'cursor-grabbing' : 'cursor-pointer',
         )}
         onPointerDown={(e) => {
-          (e.target as Element).setPointerCapture?.(e.pointerId);
+          try {
+            // 포인터가 이미 사라진 뒤 이벤트가 도착하면 NotFoundError 가 난다.
+            // 캡처는 편의 기능이라 실패해도 드래그 자체는 계속 되게 둔다.
+            (e.target as Element).setPointerCapture?.(e.pointerId);
+          } catch {
+            /* 캡처 실패는 무시 */
+          }
           pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
           // 두 손가락이 닿으면 핀치 줌 시작
           if (pointersRef.current.size === 2) {
