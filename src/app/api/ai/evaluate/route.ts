@@ -62,7 +62,10 @@ export async function POST(request: Request) {
       temperature: 0.3,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `[컨텍스트]\n${context.markdown}\n\n---\n${EVALUATE_INSTRUCTION}` },
+        {
+          role: 'user',
+          content: `[컨텍스트]\n${context.markdown}\n\n---\n${EVALUATE_INSTRUCTION}`,
+        },
       ],
     });
 

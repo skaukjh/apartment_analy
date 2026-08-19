@@ -106,7 +106,10 @@ export function calcLoanLimit(input: LoanLimitInput): LoanLimitResult {
   let dsrLimit: number | null = null;
   if (input.annualIncome > 0) {
     const capacity = input.annualIncome * DSR_RATIO - input.otherDebtAnnualPayment;
-    dsrLimit = Math.max(0, Math.floor(principalFromAnnualPayment(capacity, input.rate + STRESS_RATE, termYears)));
+    dsrLimit = Math.max(
+      0,
+      Math.floor(principalFromAnnualPayment(capacity, input.rate + STRESS_RATE, termYears)),
+    );
     notes.push(
       `DSR 40% 기준: 연소득의 40%(기존 부채 상환액 차감) 이내에서 스트레스 금리 +${STRESS_RATE}%p, ${termYears}년 원리금균등으로 역산했습니다.`,
     );

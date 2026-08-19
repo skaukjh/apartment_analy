@@ -116,7 +116,12 @@ async function fetchCategory(
     `${SEARCH_CATEGORY}?category_group_code=${code}` +
     `&x=${coord.lon}&y=${coord.lat}&radius=${radius}&sort=distance&size=${size}`;
   const json = await kakaoGet<{
-    documents: Array<{ place_name: string; distance: string; place_url?: string; category_name?: string }>;
+    documents: Array<{
+      place_name: string;
+      distance: string;
+      place_url?: string;
+      category_name?: string;
+    }>;
   }>(url);
   return json.documents.map((d) => {
     const distance = Number(d.distance) || 0;

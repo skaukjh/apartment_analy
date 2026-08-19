@@ -327,8 +327,12 @@ export function SimulationClient({ config, quotes }: Props) {
               <table className="mt-3 w-full text-sm">
                 <tbody>
                   <tr className="border-b border-dashed">
-                    <td className="text-muted-foreground py-1">LTV {loanLimit.result.ltvRate}% 한도</td>
-                    <td className="tabular py-1 text-right">{formatKrw(loanLimit.result.ltvLimit)}</td>
+                    <td className="text-muted-foreground py-1">
+                      LTV {loanLimit.result.ltvRate}% 한도
+                    </td>
+                    <td className="tabular py-1 text-right">
+                      {formatKrw(loanLimit.result.ltvLimit)}
+                    </td>
                   </tr>
                   <tr className="border-b border-dashed">
                     <td className="text-muted-foreground py-1">DSR 40% 한도</td>
@@ -351,7 +355,11 @@ export function SimulationClient({ config, quotes }: Props) {
 
               {newLoan > loanLimit.result.limit ? (
                 <div className="mt-2 flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setNewLoan(loanLimit.result.limit)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setNewLoan(loanLimit.result.limit)}
+                  >
                     한도에 맞춰 조정
                   </Button>
                 </div>

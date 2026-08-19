@@ -24,12 +24,7 @@ export const ADJUSTED_AREAS = new Set<string>([
 ]);
 
 /** 투기과열지구 (시군구 단위) */
-export const SPECULATION_AREAS = new Set<string>([
-  '11650',
-  '11680',
-  '11710',
-  '11170',
-]);
+export const SPECULATION_AREAS = new Set<string>(['11650', '11680', '11710', '11170']);
 
 /**
  * 토지거래허가구역 (시군구 단위로 단순화).
@@ -74,11 +69,15 @@ export function regulationOf(lawdCd: string): RegulationStatus {
 
   if (speculation) {
     badges.push('투기과열지구');
-    effects.push('재건축 조합원 지위 양도가 제한되고, 정비사업 물건 매수 시 조합원 자격 확인이 필요합니다.');
+    effects.push(
+      '재건축 조합원 지위 양도가 제한되고, 정비사업 물건 매수 시 조합원 자격 확인이 필요합니다.',
+    );
   }
   if (adjusted) {
     badges.push('조정대상지역');
-    effects.push('LTV 50%(생애최초 80%)로 축소되고, 다주택 취득세 중과(2주택 8%·3주택 12%)가 적용됩니다.');
+    effects.push(
+      'LTV 50%(생애최초 80%)로 축소되고, 다주택 취득세 중과(2주택 8%·3주택 12%)가 적용됩니다.',
+    );
   }
   if (landPermit) {
     badges.push('토지거래허가구역');

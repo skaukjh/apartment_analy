@@ -52,7 +52,8 @@ export async function buildPropertyContext(
     hasBankRates() ? fetchBankMortgageRates(6).catch(() => []) : Promise.resolve([]),
   ]);
 
-  if (!nearby) gaps.push('주변 입지(역·학교·마트) 정보 없음 — KAKAO_REST_API_KEY 미설정 또는 단지 검색 실패');
+  if (!nearby)
+    gaps.push('주변 입지(역·학교·마트) 정보 없음 — KAKAO_REST_API_KEY 미설정 또는 단지 검색 실패');
   if (bankRates.length === 0) gaps.push('은행별 공시 금리 없음 — FSS_API_KEY 미설정');
   if (price <= 0) gaps.push('시세 없음 — 실거래 수집 전이거나 호가 미입력');
 
@@ -111,7 +112,10 @@ export async function buildPropertyContext(
 
     sections.push(
       `\n# 자금 계산 (금리 ${rate}% 가정${bankRates[0] ? `, ${bankRates[0].bank} 최저 공시금리` : ''})\n` +
-        line('대출 가능액', `${formatKrw(loan.limit)} (${loan.bindingFactor} 기준, LTV ${loan.ltvRate}%)`) +
+        line(
+          '대출 가능액',
+          `${formatKrw(loan.limit)} (${loan.bindingFactor} 기준, LTV ${loan.ltvRate}%)`,
+        ) +
         '\n' +
         line('월 원리금', `${formatKrw(loan.monthlyPayment)} (40년 원리금균등)`) +
         '\n' +
@@ -139,7 +143,10 @@ export async function buildPropertyContext(
         '\n' +
         line('최근 3개월', formatPct(region.recent3mChange, 2)) +
         '\n' +
-        line('반등 단계', `${STAGE_META[region.stage].label} — ${STAGE_META[region.stage].description}`) +
+        line(
+          '반등 단계',
+          `${STAGE_META[region.stage].label} — ${STAGE_META[region.stage].description}`,
+        ) +
         '\n' +
         line('분석 표본', `${region.sampleSize.toLocaleString('ko-KR')}건`),
     );
@@ -166,7 +173,9 @@ export async function buildPropertyContext(
     );
   }
 
-  const catalysts = data.catalysts.filter((c) => c.regionId === apartment.lawdCd || true).slice(0, 5);
+  const catalysts = data.catalysts
+    .filter((c) => c.regionId === apartment.lawdCd || true)
+    .slice(0, 5);
   if (catalysts.length > 0) {
     sections.push(
       `\n# 관련 호재 (뉴스에서 단계 추론)\n` +
@@ -204,13 +213,18 @@ export async function buildPropertyContext(
     sections.push(
       `\n# 시중은행 주담대 공시금리 (금감원, ${bankRates[0].disclosureMonth} 기준)\n` +
         bankRates
-          .map((b) => `- ${b.bank} ${b.product}: ${b.minRate}~${b.maxRate}% (${b.rateType}, ${b.repayType})`)
+          .map(
+            (b) =>
+              `- ${b.bank} ${b.product}: ${b.minRate}~${b.maxRate}% (${b.rateType}, ${b.repayType})`,
+          )
           .join('\n'),
     );
   }
 
   if (gaps.length > 0) {
-    sections.push(`\n# 확보하지 못한 정보 (추측하지 말 것)\n` + gaps.map((g) => `- ${g}`).join('\n'));
+    sections.push(
+      `\n# 확보하지 못한 정보 (추측하지 말 것)\n` + gaps.map((g) => `- ${g}`).join('\n'),
+    );
   }
 
   return { markdown: sections.join('\n'), nearby, bankRates, gaps };

@@ -182,7 +182,7 @@ export function ComplexMap({
         <div className="relative">
           <div
             ref={containerRef}
-            className="h-80 w-full overflow-hidden rounded-lg border bg-muted/30"
+            className="bg-muted/30 h-80 w-full overflow-hidden rounded-lg border"
           />
           {!sdkReady || loading ? (
             <div className="bg-background/70 absolute inset-0 flex items-center justify-center rounded-lg backdrop-blur-sm">
@@ -203,7 +203,7 @@ export function ComplexMap({
           ) : null}
         </div>
       ) : (
-        <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+        <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-center text-xs">
           <MapPin className="mx-auto mb-1 size-4" />
           {sdkFailed
             ? '카카오맵 SDK 를 불러오지 못했습니다. 개발자센터에서 JavaScript 키의 사이트 도메인이 등록됐는지 확인하세요.'
@@ -305,8 +305,8 @@ export function ComplexMap({
             ))}
           </ul>
           <p className="text-muted-foreground mt-1.5 text-[10px]">
-            시세는 국토교통부 실거래가(실제 체결가)입니다. 호가는 어느 플랫폼도 API 로 제공하지
-            않아 설정에서 직접 입력한 값을 씁니다.
+            시세는 국토교통부 실거래가(실제 체결가)입니다. 호가는 어느 플랫폼도 API 로 제공하지 않아
+            설정에서 직접 입력한 값을 씁니다.
           </p>
         </div>
       ) : null}

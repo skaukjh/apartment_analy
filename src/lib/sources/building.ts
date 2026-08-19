@@ -12,8 +12,7 @@
 import { env } from '@/lib/env';
 import { SOURCE_TTL } from '@/lib/refresh-policy';
 
-const ENDPOINT =
-  'https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo';
+const ENDPOINT = 'https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo';
 
 export interface BuildingInfo {
   /** 건물명 */

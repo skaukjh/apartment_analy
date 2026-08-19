@@ -22,7 +22,10 @@ export const dynamic = 'force-dynamic';
 /** 전처리된 경계 파일에서 해당 시군구의 행정동 이름 목록을 읽는다 (없으면 빈 배열) */
 function readDongNames(lawdCd: string): string[] {
   try {
-    const raw = readFileSync(path.join(process.cwd(), 'public', 'geo', 'dong', `${lawdCd}.json`), 'utf8');
+    const raw = readFileSync(
+      path.join(process.cwd(), 'public', 'geo', 'dong', `${lawdCd}.json`),
+      'utf8',
+    );
     const fc = JSON.parse(raw) as { features: Array<{ properties: { name: string } }> };
     return [...new Set(fc.features.map((f) => f.properties.name))];
   } catch {

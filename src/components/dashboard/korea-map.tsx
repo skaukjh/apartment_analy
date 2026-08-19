@@ -730,8 +730,8 @@ export function KoreaMap({
                     >
                       <title>
                         {sg.name}
-                        {change !== null ? ` · ${formatPct(change, 1)}` : ' · 표본부족'} — 클릭해
-                        동 단위 보기
+                        {change !== null ? ` · ${formatPct(change, 1)}` : ' · 표본부족'} — 클릭해 동
+                        단위 보기
                       </title>
                     </path>
                   );
@@ -1063,7 +1063,10 @@ export function ChangeLegend({ span = 20 }: { span?: number }) {
       <div className="flex items-end gap-1">
         {stops.map((v) => (
           <div key={v} className="flex flex-col items-center gap-0.5">
-            <div className="size-6 rounded-sm border" style={{ background: changeColor(v, span) }} />
+            <div
+              className="size-6 rounded-sm border"
+              style={{ background: changeColor(v, span) }}
+            />
             <span className="tabular">
               {v > 0 ? '+' : ''}
               {v}%

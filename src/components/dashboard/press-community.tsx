@@ -40,7 +40,12 @@ export function PressSection({ press }: { press: NewsItem[] }) {
         <ul className="divide-y">
           {press.slice(0, 10).map((n) => (
             <li key={n.url} className="py-2">
-              <a href={n.url} target="_blank" rel="noreferrer" className="group flex items-start gap-2">
+              <a
+                href={n.url}
+                target="_blank"
+                rel="noreferrer"
+                className="group flex items-start gap-2"
+              >
                 <Badge variant="outline" className="mt-0.5 shrink-0 text-[10px]">
                   {n.agency ?? '정부'}
                 </Badge>

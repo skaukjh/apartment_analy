@@ -162,9 +162,7 @@ export function SettingsClient({ initialConfig, kakao, flags }: Props) {
 
       if (json.ok && !json.skippedReason) {
         const names = reports.map((r) => r.recipient).join(', ');
-        toast.success(
-          `${reports.length || 1}명(${names})에게 각 ${json.messageCount}건 전송 완료`,
-        );
+        toast.success(`${reports.length || 1}명(${names})에게 각 ${json.messageCount}건 전송 완료`);
       } else if (reports.some((r) => r.ok)) {
         toast.warning(
           `일부만 전송됨 — ${reports.map((r) => `${r.recipient}: ${r.ok ? '성공' : '실패'}`).join(', ')}`,
@@ -887,10 +885,10 @@ export function SettingsClient({ initialConfig, kakao, flags }: Props) {
             <Alert>
               <AlertTitle>여러 명에게 보내려면</AlertTitle>
               <AlertDescription className="text-[11px] leading-relaxed">
-                카카오는 <strong>카카오톡 ID로 남에게 보내는 API를 제공하지 않습니다</strong>{' '}
-                (스팸 방지). 대신 받을 사람이 각자 이 화면에서 자기 카카오 계정으로 한 번만
-                연결하면, 앱이 각자의 계정으로 각자에게 &ldquo;나에게 보내기&rdquo;를 실행합니다.
-                사업자등록·검수가 필요 없는 유일한 방법입니다.
+                카카오는 <strong>카카오톡 ID로 남에게 보내는 API를 제공하지 않습니다</strong> (스팸
+                방지). 대신 받을 사람이 각자 이 화면에서 자기 카카오 계정으로 한 번만 연결하면, 앱이
+                각자의 계정으로 각자에게 &ldquo;나에게 보내기&rdquo;를 실행합니다. 사업자등록·검수가
+                필요 없는 유일한 방법입니다.
               </AlertDescription>
             </Alert>
 

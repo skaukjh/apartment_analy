@@ -21,12 +21,36 @@ import { SOURCE_TTL } from '@/lib/refresh-policy';
 /* ------------------------------------------------------------------ */
 
 export const OFFICIAL_LINKS: Array<{ name: string; url: string; note: string }> = [
-  { name: '국토교통부 보도자료', url: 'https://www.molit.go.kr/USR/NEWS/m_71/lst.jsp', note: '부동산 대책·공급 계획 원문' },
-  { name: '금융위원회 보도자료', url: 'https://www.fsc.go.kr/no010101', note: 'LTV·DSR 등 대출 규제' },
-  { name: '기획재정부 보도자료', url: 'https://www.moef.go.kr/nw/nes/nesdta.do', note: '부동산 세제 개편' },
-  { name: '한국은행 보도자료', url: 'https://www.bok.or.kr/portal/bbs/P0000559/list.do?menuNo=200690', note: '기준금리·금융안정보고서' },
-  { name: '통계청 보도자료', url: 'https://kostat.go.kr/board.es?mid=a10301010000&bid=203', note: 'CPI·인구이동·가계동향' },
-  { name: '한국부동산원 R-ONE', url: 'https://www.reb.or.kr/r-one/', note: '주간·월간 가격동향 원자료' },
+  {
+    name: '국토교통부 보도자료',
+    url: 'https://www.molit.go.kr/USR/NEWS/m_71/lst.jsp',
+    note: '부동산 대책·공급 계획 원문',
+  },
+  {
+    name: '금융위원회 보도자료',
+    url: 'https://www.fsc.go.kr/no010101',
+    note: 'LTV·DSR 등 대출 규제',
+  },
+  {
+    name: '기획재정부 보도자료',
+    url: 'https://www.moef.go.kr/nw/nes/nesdta.do',
+    note: '부동산 세제 개편',
+  },
+  {
+    name: '한국은행 보도자료',
+    url: 'https://www.bok.or.kr/portal/bbs/P0000559/list.do?menuNo=200690',
+    note: '기준금리·금융안정보고서',
+  },
+  {
+    name: '통계청 보도자료',
+    url: 'https://kostat.go.kr/board.es?mid=a10301010000&bid=203',
+    note: 'CPI·인구이동·가계동향',
+  },
+  {
+    name: '한국부동산원 R-ONE',
+    url: 'https://www.reb.or.kr/r-one/',
+    note: '주간·월간 가격동향 원자료',
+  },
   { name: '국토부 실거래가 공개시스템', url: 'https://rt.molit.go.kr', note: '실거래가 원본 조회' },
   { name: '청약홈', url: 'https://www.applyhome.co.kr', note: '청약 일정·경쟁률' },
 ];

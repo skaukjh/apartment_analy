@@ -32,7 +32,8 @@ export async function naverSearchRaw<T>(
 ): Promise<T[]> {
   const id = env.naverClientId;
   const secret = env.naverClientSecret;
-  if (!id || !secret) throw new Error('NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 이 설정되지 않았습니다.');
+  if (!id || !secret)
+    throw new Error('NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 이 설정되지 않았습니다.');
 
   const url =
     `https://openapi.naver.com/v1/search/${endpoint}.json` +

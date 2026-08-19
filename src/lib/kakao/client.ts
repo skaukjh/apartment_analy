@@ -75,7 +75,9 @@ export async function listRecipients(): Promise<KakaoRecipient[]> {
 
   const { data, error } = await client
     .from('kakao_token')
-    .select('id, access_token, refresh_token, expires_at, scope, label, kakao_nick, kakao_id, enabled')
+    .select(
+      'id, access_token, refresh_token, expires_at, scope, label, kakao_nick, kakao_id, enabled',
+    )
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -156,7 +158,9 @@ interface KakaoTokenResponse {
   error_description?: string;
 }
 
-async function requestToken(body: Record<string, string>): Promise<Omit<KakaoRecipient, 'id' | 'enabled'>> {
+async function requestToken(
+  body: Record<string, string>,
+): Promise<Omit<KakaoRecipient, 'id' | 'enabled'>> {
   const res = await fetch(`${AUTH_HOST}/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },

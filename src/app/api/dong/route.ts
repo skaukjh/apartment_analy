@@ -16,9 +16,12 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     const lawd = params.get('lawd') ?? '';
     if (!/^\d{5}$/.test(lawd)) {
-      return NextResponse.json({ ok: false, error: 'lawd 파라미터(5자리)가 필요합니다.' }, {
-        status: 400,
-      });
+      return NextResponse.json(
+        { ok: false, error: 'lawd 파라미터(5자리)가 필요합니다.' },
+        {
+          status: 400,
+        },
+      );
     }
 
     const from = params.get('from') ?? undefined;

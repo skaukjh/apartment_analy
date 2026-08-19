@@ -284,21 +284,30 @@ vercel link           # 기존 프로젝트 연결 또는 새로 생성
 
 ### 12-2. 환경변수 등록
 
+**방법 A — 스크립트로 한 번에 (권장)**
+
+`.env.local` 에 키를 채운 뒤:
+
 ```bash
-# 하나씩 등록 (값 입력 프롬프트가 뜹니다)
-vercel env add DATA_GO_KR_SERVICE_KEY production
-vercel env add NEXT_PUBLIC_SUPABASE_URL production
-vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY production
-vercel env add SUPABASE_SERVICE_ROLE_KEY production
-vercel env add CRON_SECRET production
-vercel env add ECOS_API_KEY production
-vercel env add NAVER_CLIENT_ID production
-vercel env add NAVER_CLIENT_SECRET production
-vercel env add KAKAO_REST_API_KEY production
-vercel env add OPENAI_API_KEY production
+node scripts/push-env.mjs            # 무엇이 올라갈지 미리보기 (값은 가려서 표시)
+node scripts/push-env.mjs --apply    # 실제 등록 (production/preview/development 전부)
 ```
 
-또는 Vercel 대시보드 → 프로젝트 → **Settings → Environment Variables** 에서 한 번에 붙여넣기.
+이미 등록된 값을 바꾸려면 `--force`, 특정 키만 올리려면 `--only=A,B` 를 붙입니다.
+
+**방법 B — 하나씩**
+
+```bash
+vercel env add DATA_GO_KR_SERVICE_KEY production
+vercel env add NEXT_PUBLIC_SUPABASE_URL production
+# ... 나머지도 동일
+```
+
+**방법 C — 대시보드**
+
+Vercel 대시보드 → 프로젝트 → **Settings → Environment Variables**
+
+> `CRON_SECRET` 은 값을 직접 만들어야 하는 유일한 항목입니다 (3번 항목 참고).
 
 ### 12-3. 배포
 

@@ -99,7 +99,17 @@ export function FirstPurchasePanel({ config, quotes }: Props) {
     const totalNeeded = price + acq.total + cost.total;
     const neededCash = totalNeeded - loan.limit;
     return { regulated, metro, loan, acq, cost, totalNeeded, neededCash, gap: cash - neededCash };
-  }, [target, price, config.household.targetIsRegulated, firstTime, income, otherDebt, rate, movingEtc, cash]);
+  }, [
+    target,
+    price,
+    config.household.targetIsRegulated,
+    firstTime,
+    income,
+    otherDebt,
+    rate,
+    movingEtc,
+    cash,
+  ]);
 
   /** 등록된 모든 목표를 같은 조건으로 비교 */
   const comparison = useMemo(() => {
@@ -137,7 +147,17 @@ export function FirstPurchasePanel({ config, quotes }: Props) {
       })
       .filter((r): r is NonNullable<typeof r> => r !== null)
       .sort((a, b) => a.neededCash - b.neededCash);
-  }, [targets, quotes, config.household.targetIsRegulated, firstTime, income, otherDebt, rate, movingEtc, cash]);
+  }, [
+    targets,
+    quotes,
+    config.household.targetIsRegulated,
+    firstTime,
+    income,
+    otherDebt,
+    rate,
+    movingEtc,
+    cash,
+  ]);
 
   if (!target) {
     return (
@@ -160,8 +180,8 @@ export function FirstPurchasePanel({ config, quotes }: Props) {
         </h1>
         <p className="text-muted-foreground text-sm">
           보유 아파트가 없어 무주택 매수 기준으로 계산합니다. 보유 현금과 연소득을 넣으면
-          규제/비규제에 따른 대출 가능액과 취득세·중개보수·법무비·이사비를 포함해 목표 집까지
-          필요한 현금이 나옵니다.
+          규제/비규제에 따른 대출 가능액과 취득세·중개보수·법무비·이사비를 포함해 목표 집까지 필요한
+          현금이 나옵니다.
         </p>
       </div>
 
@@ -254,7 +274,10 @@ export function FirstPurchasePanel({ config, quotes }: Props) {
 
           {/* 상세 */}
           <div className="grid gap-6 lg:grid-cols-2">
-            <SectionCard title="비용 상세" description={`${target.complexName} ${target.areaM2}㎡ 기준`}>
+            <SectionCard
+              title="비용 상세"
+              description={`${target.complexName} ${target.areaM2}㎡ 기준`}
+            >
               <table className="w-full text-sm">
                 <tbody>
                   {(
@@ -306,13 +329,17 @@ export function FirstPurchasePanel({ config, quotes }: Props) {
                   <tr className="border-b border-dashed">
                     <td className="text-muted-foreground py-1">DSR 40% 한도</td>
                     <td className="tabular py-1 text-right">
-                      {result.loan.dsrLimit !== null ? formatKrw(result.loan.dsrLimit) : '소득 미입력'}
+                      {result.loan.dsrLimit !== null
+                        ? formatKrw(result.loan.dsrLimit)
+                        : '소득 미입력'}
                     </td>
                   </tr>
                   <tr className="border-b border-dashed">
                     <td className="text-muted-foreground py-1">정책 총액 한도</td>
                     <td className="tabular py-1 text-right">
-                      {result.loan.policyCap !== null ? formatKrw(result.loan.policyCap) : '해당 없음'}
+                      {result.loan.policyCap !== null
+                        ? formatKrw(result.loan.policyCap)
+                        : '해당 없음'}
                     </td>
                   </tr>
                   <tr className="border-t-2">
@@ -328,13 +355,18 @@ export function FirstPurchasePanel({ config, quotes }: Props) {
                   </tr>
                   <tr>
                     <td className="text-muted-foreground py-1">월 원리금 (40년 원리금균등)</td>
-                    <td className="tabular py-1 text-right">{formatKrw(result.loan.monthlyPayment)}</td>
+                    <td className="tabular py-1 text-right">
+                      {formatKrw(result.loan.monthlyPayment)}
+                    </td>
                   </tr>
                 </tbody>
               </table>
               <ul className="mt-2 space-y-1">
                 {result.loan.notes.map((n, i) => (
-                  <li key={i} className="text-muted-foreground flex gap-1.5 text-[11px] leading-relaxed">
+                  <li
+                    key={i}
+                    className="text-muted-foreground flex gap-1.5 text-[11px] leading-relaxed"
+                  >
                     <Info className="mt-0.5 size-3 shrink-0" />
                     {n}
                   </li>
@@ -371,7 +403,10 @@ export function FirstPurchasePanel({ config, quotes }: Props) {
                           {formatKrw(r.price, { compact: true })}
                         </TableCell>
                         <TableCell className="text-center">
-                          <Badge variant={r.regulated ? 'destructive' : 'secondary'} className="text-[10px]">
+                          <Badge
+                            variant={r.regulated ? 'destructive' : 'secondary'}
+                            className="text-[10px]"
+                          >
                             {r.regulated ? '규제' : '비규제'}
                           </Badge>
                         </TableCell>

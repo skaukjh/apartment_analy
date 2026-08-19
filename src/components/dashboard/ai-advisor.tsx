@@ -53,7 +53,7 @@ function renderMarkdown(text: string) {
     }
     if (line.startsWith('- ') || line.startsWith('* ')) {
       return (
-        <p key={i} className="pl-3 text-sm leading-relaxed -indent-3">
+        <p key={i} className="pl-3 -indent-3 text-sm leading-relaxed">
           • {inline(line.slice(2))}
         </p>
       );
@@ -68,13 +68,15 @@ function renderMarkdown(text: string) {
 }
 
 function inline(text: string) {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith('**') && part.endsWith('**') ? (
-      <strong key={i}>{part.slice(2, -2)}</strong>
-    ) : (
-      <span key={i}>{part}</span>
-    ),
-  );
+  return text
+    .split(/(\*\*[^*]+\*\*)/g)
+    .map((part, i) =>
+      part.startsWith('**') && part.endsWith('**') ? (
+        <strong key={i}>{part.slice(2, -2)}</strong>
+      ) : (
+        <span key={i}>{part}</span>
+      ),
+    );
 }
 
 export function AiAdvisor({ config, enabled }: { config: UserConfig; enabled: boolean }) {
@@ -229,7 +231,11 @@ export function AiAdvisor({ config, enabled }: { config: UserConfig; enabled: bo
         {/* 종합 평가 */}
         <TabsContent value="evaluate" className="mt-3 space-y-3">
           <Button size="sm" onClick={evaluate} disabled={evaluating}>
-            {evaluating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+            {evaluating ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Sparkles className="size-4" />
+            )}
             {selected.complexName} 평가 받기
           </Button>
 
@@ -239,7 +245,7 @@ export function AiAdvisor({ config, enabled }: { config: UserConfig; enabled: bo
 
           {evaluation?.ok && evaluation.evaluation ? (
             <>
-              <div className="rounded-lg border bg-muted/30 p-4">
+              <div className="bg-muted/30 rounded-lg border p-4">
                 {renderMarkdown(evaluation.evaluation)}
               </div>
 
@@ -391,7 +397,11 @@ export function AiAdvisor({ config, enabled }: { config: UserConfig; enabled: bo
               disabled={streaming}
             />
             <Button type="submit" size="icon" disabled={streaming || !input.trim()}>
-              {streaming ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              {streaming ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-4" />
+              )}
             </Button>
           </form>
         </TabsContent>

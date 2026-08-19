@@ -101,7 +101,11 @@ export async function GET(request: Request) {
         .sort((a, b) => a.month.localeCompare(b.month));
 
       // 단지 단위는 표본이 가장 적어 최소 거래건수를 1로 낮춘다
-      const analysis = analyzeRebound(lawd, series, { minTrades: 1, baseMonth: from, endMonth: to });
+      const analysis = analyzeRebound(lawd, series, {
+        minTrades: 1,
+        baseMonth: from,
+        endMonth: to,
+      });
       const sorted = [...entry.all].sort((a, b) => b.dealDate.localeCompare(a.dealDate));
       const recent = sorted.slice(0, 5);
 
