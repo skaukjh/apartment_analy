@@ -50,12 +50,13 @@ export const ECOS_SPECS: EcosSpec[] = [
     description: '물가가 잡혀야 금리 인하 명분이 생긴다',
   },
   {
+    // 101Y003/101Y004 는 2004년에 종료된 폐지 통계표다. 현행은 161Y005 (2003.10~).
     key: 'm2',
     label: '광의통화 M2 (평잔, 계절조정)',
     unit: '십억원',
-    statCode: process.env.ECOS_STAT_M2 ?? '101Y004',
+    statCode: process.env.ECOS_STAT_M2 ?? '161Y005',
     cycle: 'M',
-    itemCode: process.env.ECOS_ITEM_M2 ?? 'BBHA00',
+    itemCode: process.env.ECOS_ITEM_M2 ?? 'BBHS00',
     description: '시중 유동성. 부동산 가격과 장기 상관이 가장 높은 지표',
   },
   {

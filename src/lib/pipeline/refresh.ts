@@ -11,6 +11,7 @@
 import {
   aggregateMonthly,
   aggregateMonthlyByDong,
+  FATAL_CODES,
   fetchTradesForMonths,
   MolitError,
 } from '@/lib/sources/molit';
@@ -98,8 +99,10 @@ async function runRegionMonths(
       tradesCollected += Object.values(byMonth).reduce((s, t: TradeRecord[]) => s + t.length, 0);
       regionsProcessed += 1;
     } catch (e) {
-      if (e instanceof MolitError && e.code === 'NO_KEY') {
+      // 키·승인·트래픽 문제는 남은 지역을 돌아도 똑같이 실패하므로 즉시 중단한다
+      if (e instanceof MolitError && FATAL_CODES.has(e.code ?? '')) {
         errors.push(e.message);
+        remaining += months.length;
         break;
       }
       errors.push(`${lawdCd}: ${(e as Error).message}`);
