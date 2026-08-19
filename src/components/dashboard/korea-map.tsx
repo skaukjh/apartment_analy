@@ -166,6 +166,10 @@ export interface KoreaMapProps {
   /** 동 단위 통계에도 같은 기간을 적용하기 위한 값 */
   fromMonth?: string;
   toMonth?: string;
+  /** 동을 선택하면 부모(실제 지도 패널)에 알린다 */
+  onDongChange?: (info: { lawdCd: string; region: string; dong: string } | null) => void;
+  /** 단지 목록을 부모와 공유해 실제 지도에도 같은 데이터를 쓴다 */
+  onComplexesChange?: (complexes: ComplexStat[] | null, loading: boolean) => void;
 }
 
 export function KoreaMap({
@@ -175,6 +179,8 @@ export function KoreaMap({
   span = 20,
   fromMonth,
   toMonth,
+  onDongChange,
+  onComplexesChange,
 }: KoreaMapProps) {
   const [boundaries, setBoundaries] = useState<Boundaries | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
@@ -391,10 +397,11 @@ export function KoreaMap({
     setDongGeo(null);
     setDongStats(null);
     setComplexes(null);
+    onDongChange?.(null);
     onSelect(null);
     setAnimate(true);
     setView({ scale: 1, x: 0, y: 0 });
-  }, [onSelect]);
+  }, [onSelect, onDongChange]);
 
   const goSido = useCallback(
     (sido: string) => {
@@ -402,10 +409,11 @@ export function KoreaMap({
       setDongGeo(null);
       setDongStats(null);
       setComplexes(null);
+      onDongChange?.(null);
       const b = sidoBBoxes.get(sido);
       if (b) zoomToBBox(b);
     },
-    [sidoBBoxes, zoomToBBox],
+    [sidoBBoxes, zoomToBBox, onDongChange],
   );
 
   /** 동 클릭 → 그 안의 아파트 단지 마커 */
@@ -416,18 +424,23 @@ export function KoreaMap({
       setLevel({ kind: 'dong', sido, code: lawdCd, name: sigunguName, dong: dongName });
       zoomToBBox(bbox, 0.2);
 
+      onDongChange?.({ lawdCd, region: sigunguName, dong: dongName });
+
       const token = ++complexRequestRef.current;
       setComplexes(null);
       setComplexLoading(true);
+      onComplexesChange?.(null, true);
       void loadComplexes(lawdCd, dongName, fromMonth, toMonth)
         .then((list) => {
-          if (complexRequestRef.current === token) setComplexes(list);
+          if (complexRequestRef.current !== token) return;
+          setComplexes(list);
+          onComplexesChange?.(list, false);
         })
         .finally(() => {
           if (complexRequestRef.current === token) setComplexLoading(false);
         });
     },
-    [zoomToBBox, fromMonth, toMonth],
+    [zoomToBBox, fromMonth, toMonth, onDongChange, onComplexesChange],
   );
 
   /** 폴리곤의 codes 중 표본이 가장 많은 코드를 대표로 */

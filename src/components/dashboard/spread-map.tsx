@@ -12,10 +12,14 @@ import { EmptyHint, SectionCard } from '@/components/ui-bits';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChangeLegend, KoreaMap } from './korea-map';
+import { ComplexMap } from './complex-map';
+import type { ComplexStat } from '@/app/api/complex/route';
 import { cn } from '@/lib/utils';
 
 interface Props {
   rebound: ReboundAnalysis[];
+  /** 카카오맵 JavaScript 키 — 있으면 동 단계에서 실제 지도를 띄운다 */
+  kakaoJsKey?: string;
 }
 
 const SPAN = 20;
@@ -88,9 +92,23 @@ function TileGrid({ tiles, byCode, onSelect, selected }: TileProps) {
 /** YYYY-MM 형식 검사 */
 const MONTH_RE = /^\d{4}-\d{2}$/;
 
-export function SpreadMap({ rebound: initialRebound }: Props) {
+export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
   const [selected, setSelected] = useState<ReboundAnalysis | null>(null);
   const [sidoFilter, setSidoFilter] = useState<string>('전국');
+
+  // 동 드릴다운 상태 — 실제 지도(카카오맵) 패널과 공유한다
+  const [activeDong, setActiveDong] = useState<{
+    lawdCd: string;
+    region: string;
+    dong: string;
+  } | null>(null);
+  const [complexes, setComplexes] = useState<ComplexStat[] | null>(null);
+  const [complexLoading, setComplexLoading] = useState(false);
+
+  const handleComplexes = useCallback((list: ComplexStat[] | null, loading: boolean) => {
+    setComplexes(list);
+    setComplexLoading(loading);
+  }, []);
 
   // 기간 선택 — 서버에서 다시 계산해 받아온다
   const defaultTo = initialRebound.find((r) => r.latestMonth)?.latestMonth ?? '';
@@ -235,6 +253,8 @@ export function SpreadMap({ rebound: initialRebound }: Props) {
                 span={SPAN}
                 fromMonth={isDefaultRange ? undefined : fromMonth}
                 toMonth={isDefaultRange ? undefined : toMonth || undefined}
+                onDongChange={setActiveDong}
+                onComplexesChange={handleComplexes}
               />
               <p className="text-muted-foreground mt-1 text-right text-[11px]">
                 시·도 → 구·군 → 동 순서로 클릭해 내려갑니다 · 경계: 통계청 행정구역(간략판)
@@ -280,6 +300,27 @@ export function SpreadMap({ rebound: initialRebound }: Props) {
 
         {/* 지도가 세로로 길어 스크롤해도 목록이 따라오도록 고정한다 */}
         <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+          {/* 동을 고르면 실제 지도(카카오맵) 위에 단지를 찍는다 */}
+          {activeDong ? (
+            <div className="rounded-lg border p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold">
+                  {activeDong.region} {activeDong.dong}
+                </span>
+                <Badge variant="secondary" className="text-[10px]">
+                  단지 {complexes?.length ?? 0}개
+                </Badge>
+              </div>
+              <ComplexMap
+                complexes={complexes ?? []}
+                jsKey={kakaoJsKey}
+                regionLabel={`${activeDong.region} ${activeDong.dong}`}
+                span={SPAN}
+                loading={complexLoading}
+              />
+            </div>
+          ) : null}
+
           {selected ? (
             <div className="rounded-lg border p-3">
               <div className="flex items-center justify-between">

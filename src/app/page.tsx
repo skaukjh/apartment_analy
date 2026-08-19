@@ -136,7 +136,7 @@ export default async function DashboardPage() {
       <GapSection config={data.config} quotes={data.quotes} />
 
       {/* ③ 확산 지도 */}
-      <SpreadMap rebound={data.rebound} />
+      <SpreadMap rebound={data.rebound} kakaoJsKey={process.env.NEXT_PUBLIC_KAKAO_JS_KEY} />
 
       <div className="grid gap-6 xl:grid-cols-2">
         {/* ⑥ 과열 */}
