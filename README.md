@@ -1,36 +1,307 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 부동산 갈아타기 대시보드
 
-## Getting Started
+보유 아파트와 목표 아파트의 시세 갭, 세금·거래비용, 상승장 확산, 호재 진행, 과열 지표를 한 화면에서 보고
+매일 카카오톡으로 요약 브리핑을 받는 개인용 웹 애플리케이션입니다.
 
-First, run the development server:
+Next.js(App Router) + Supabase + Vercel Cron 으로 동작하며, 배포하면 어디서든 접속할 수 있습니다.
+
+---
+
+## 무엇을 보여주나
+
+| #   | 기능                                                 | 화면              | 데이터 출처                            |
+| --- | ---------------------------------------------------- | ----------------- | -------------------------------------- |
+| ①   | 보유 ↔ 목표 아파트 시세 갭                           | 대시보드          | 국토교통부 실거래가 + 직접 입력 호가   |
+| ②   | 취득세·양도세·중개보수 등 현실 비용                  | 갭 카드 펼치기    | 지방세법·소득세법 기반 자체 계산       |
+| ③   | 전국 상승 확산 지도 + 미반등 지역                    | 대시보드          | 국토교통부 실거래가 (2023-01=100 지수) |
+| ④   | 관심 지역 호재 현황·진행 단계                        | 대시보드          | 네이버 뉴스 검색 + 사업 시드           |
+| ⑤   | 하락장 갈아타기 시뮬레이션                           | `/simulation`     | 자체 시나리오 엔진                     |
+| ⑥   | 과열 지표·매수심리 (수치별 해설 툴팁)                | 대시보드          | 한국부동산원 + 실거래 파생 지표        |
+| ⑦   | 신고가·신저가                                        | 대시보드          | 국토교통부 실거래가                    |
+| ⑧   | 기준금리·CPI·M2·주담대금리 + 분석 브리핑 + 주요 일정 | 대시보드          | 한국은행 ECOS                          |
+| ⑨   | 일정별 결과 시나리오 → 시장 방향 예측                | `/outlook/[일정]` | 규칙 기반 시나리오 엔진                |
+
+### 전국 확산 지도
+
+- **전국 178개 시군구**를 대상으로 합니다. 서울 25개구, 6개 광역시 전 자치구, 세종,
+  경기·인천 전역에 더해 천안·아산·공주·청주·전주·창원·포항 같은 지방 중소도시까지 포함합니다.
+- 색은 **2023년 1월 대비 변동률**입니다. 국내 관행대로 **상승은 붉은색, 하락은 파란색**이며
+  **농도가 변동 폭**을 나타냅니다 (±20%에서 최대 농도).
+- **확대·축소**: `Ctrl(⌘)+휠`로 줌, 확대 상태에서 드래그로 이동. 권역 버튼(수도권·충청·영남·호남·강원·제주)으로
+  한 번에 이동할 수 있고, 2.6배 이상 확대하면 시군구 이름이 함께 표시됩니다.
+- 서울·수도권은 겹침이 심해 별도 탭에서 격자 카토그램으로도 볼 수 있습니다.
+
+### 일정별 시장 방향 예측
+
+대시보드의 "주요 일정"에서 항목을 누르면 그 일정의 결과별 시나리오를 보여줍니다.
+
+- 금통위·FOMC·소비자물가·부동산원 가격동향·과세기준일·공시가격·보유세 납부까지 이벤트별 전용 분석
+- 각 시나리오마다 **파급 경로(1→2→3단계)**, **반영 시차**, **가장 크게 영향받는 대상**,
+  **내 갈아타기 관점의 행동 지침**
+- 확률은 현재 CPI·기준금리·과열 점수·확산률을 규칙에 넣어 계산한 **가늠치**입니다.
+  맞히는 도구가 아니라 경우의 수를 정리하는 도구로 봐주세요.
+
+### 자동 채우기
+
+설정에서 **단지명·시군구·전용면적·취득일·취득가액**만 넣고 "자동 계산"을 누르면 나머지를 **오늘 기준**으로 채웁니다.
+
+| 채워지는 값    | 계산 방식                                                              |
+| -------------- | ---------------------------------------------------------------------- |
+| 취득 부대비용  | 현행 세율의 취득세·지방교육세·농특세 + 중개보수·법무비·인지세·채권할인 |
+| 실거주 개월 수 | 취득일 ~ 오늘                                                          |
+| 대출 금리      | 한국은행 ECOS 예금은행 주택담보대출 신규취급 평균금리                  |
+| 현재 호가      | 해당 단지·면적의 최근 6개월 실거래 중앙값                              |
+| 세대 프로필    | 등록된 보유 아파트 수, 조정대상지역 해당 여부, 일시적 2주택 특례       |
+
+채운 값은 **전부 직접 수정할 수 있고**, 각 값마다 어떤 근거로 계산했는지 함께 보여줍니다.
+"이미 입력된 값도 덮어쓰기"를 켜면 직접 넣은 값도 최신 계산으로 다시 채웁니다.
+
+### 갱신 주기
+
+주요 출처를 **1시간 간격**으로 확인해 현재 시점 기준 정보를 보여줍니다.
+
+| 계층          | 방식                                                             |
+| ------------- | ---------------------------------------------------------------- |
+| 외부 API 캐시 | 실거래·ECOS·부동산원 1시간, 뉴스 30분 TTL                        |
+| 지연 갱신     | 페이지 요청 시 실거래 집계가 1시간 넘게 낡았으면 최근월 재수집   |
+| 클라이언트    | 탭이 열려 있으면 1시간마다 자동 새로고침 (헤더 칩을 눌러 즉시도) |
+| Cron          | 매일 07:00 KST 전국 최근 3개월 증분 갱신                         |
+
+크롤링 대신 공식 API만 씁니다 — 같은 정보를 국토교통부·한국부동산원·한국은행·네이버 검색 API로
+모두 얻을 수 있고, 스크래핑은 대상 사이트의 이용약관 위반이기 때문입니다.
+
+### 설계상의 선택 몇 가지
+
+- **네이버 부동산은 쓰지 않습니다.** 공식 오픈 API 가 없고 스크래핑은 이용약관 위반입니다.
+  시세는 국토교통부 실거래가(공공데이터포털)를, 동향·호재는 네이버 **검색 API**(공식)를 씁니다.
+- **지도는 GeoJSON 없이 자체 렌더링**합니다. 수 MB짜리 행정경계 데이터나 지도 타일 서비스에
+  의존하지 않도록, 저해상도 해안선을 내장하고 시군구는 대표 좌표의 원으로 그립니다.
+  서울·수도권처럼 겹침이 심한 곳은 격자 카토그램 탭을 따로 뒀습니다.
+- **호재의 진행 단계는 코드에 박아두지 않습니다.** 사업명·성격·공식 출처처럼 변하지 않는 것만 두고,
+  단계는 최신 뉴스 헤드라인에서 매번 다시 추론합니다. 관련 보도가 없으면 '미확인'으로 표시합니다.
+- **카카오는 알림톡이 아니라 "나에게 보내기"(메모 API)** 를 씁니다. 알림톡은 사업자등록과 발신프로필
+  심사가 필요하지만, 본인에게 보내는 용도라면 `talk_message` 스코프로 즉시 쓸 수 있습니다.
+
+> ⚠️ 세금·비용 계산은 참고용 추정치입니다. 조정대상지역 지정, 다주택 중과 한시 배제, 감면 특례는
+> 수시로 바뀝니다. 실제 신고 전 [홈택스](https://hometax.go.kr) · [위택스](https://www.wetax.go.kr)
+> 또는 세무 전문가로 반드시 확인하세요.
+
+---
+
+## 빠른 시작 (로컬)
 
 ```bash
+npm install
+cp .env.example .env.local   # 값은 아래 "API 키 발급" 참고
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+키가 하나도 없어도 앱은 뜹니다. 각 섹션이 "키 없음"으로 표시될 뿐입니다.
+UI 를 먼저 둘러보고 싶다면 개발 서버를 켠 뒤 샘플(합성) 데이터를 넣어보세요.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+curl -X POST http://localhost:3000/api/dev/seed
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+> 이 데이터는 전부 합성이며 실제 시세가 아닙니다. 운영 환경에서는 동작하지 않습니다.
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## API 키 발급
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 1. 국토교통부 실거래가 (필수)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+시세·갭·확산지도·신고가 분석의 근간입니다.
 
-## Deploy on Vercel
+1. [공공데이터포털 - 아파트 매매 실거래가 상세 자료](https://www.data.go.kr/data/15126469/openapi.do) 활용신청
+2. 승인 후 마이페이지에서 **일반 인증키(Decoding)** 복사
+3. `DATA_GO_KR_SERVICE_KEY` 에 입력
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 2. 한국은행 ECOS (권장)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+기준금리 / 소비자물가 / M2 / 주택담보대출금리.
+
+1. [ECOS 인증키 신청](https://ecos.bok.or.kr/api/#/AuthKeyApply)
+2. `ECOS_API_KEY` 에 입력
+
+통계표·항목 코드가 ECOS 개편으로 바뀌면 `.env.example` 의 `ECOS_STAT_*` / `ECOS_ITEM_*` 로 덮어쓸 수 있습니다.
+
+### 3. 한국부동산원 R-ONE (선택)
+
+주간 매매가격지수·매매수급동향. **없어도 됩니다** — 실거래 거래량과 신고가 비중으로
+대리지표를 자동 계산합니다(대시보드에 추정치임이 표시됩니다).
+
+1. [R-ONE OpenAPI 신청](https://www.reb.or.kr/r-one/portal/openapi/openApiIntro.do)
+2. `REB_API_KEY` 에 입력
+
+### 4. 네이버 검색 API (권장)
+
+관심 지역 호재·이슈 뉴스 수집.
+
+1. [네이버 개발자센터 애플리케이션 등록](https://developers.naver.com/apps/#/register) → **검색** API 추가
+2. `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` 입력
+
+### 5. Supabase (필수)
+
+설정 저장 / 실거래 캐시 / 카카오 토큰 보관. 없으면 서버 메모리만 써서 재시작 시 초기화되고
+자동 브리핑을 쓸 수 없습니다.
+
+1. [Supabase](https://supabase.com/dashboard) 프로젝트 생성
+2. SQL Editor 에 `supabase/migrations/0001_init.sql` 전체를 붙여넣고 실행
+3. Project Settings → API 에서 값 복사
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` (⚠️ 절대 클라이언트에 노출 금지)
+
+### 6. 카카오 (브리핑 발송용)
+
+1. [카카오 개발자센터](https://developers.kakao.com) → 애플리케이션 추가
+2. **앱 키** → REST API 키를 `KAKAO_REST_API_KEY` 에 입력
+3. **카카오 로그인** 활성화 ON
+4. **Redirect URI** 등록: `https://<배포주소>/api/kakao/callback` (로컬은 `http://localhost:3000/api/kakao/callback`)
+5. **동의항목** → "카카오톡 메시지 전송(`talk_message`)" 활성화
+6. 앱 실행 후 `/settings` → **카카오 계정 연결** 버튼 클릭 (1회)
+
+### 7. CRON_SECRET (필수)
+
+Cron 라우트를 아무나 호출하지 못하게 막는 값입니다. 긴 랜덤 문자열이면 됩니다.
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+---
+
+## Vercel 배포
+
+```bash
+npm i -g vercel
+vercel link
+vercel env add DATA_GO_KR_SERVICE_KEY   # ... 나머지 키도 동일하게
+vercel deploy --prod
+```
+
+`vercel.json` 에 Cron 두 개가 정의돼 있습니다 (Vercel 시간은 **UTC** 기준).
+
+| 경로                         | 스케줄(UTC)  | KST   | 하는 일                     |
+| ---------------------------- | ------------ | ----- | --------------------------- |
+| `/api/cron/refresh?months=3` | `0 22 * * *` | 07:00 | 최근 3개월 실거래 증분 갱신 |
+| `/api/cron/briefing`         | `0 23 * * *` | 08:00 | 카카오톡 브리핑 발송        |
+
+발송 시각을 바꾸려면 `vercel.json` 의 `schedule` 을 수정하세요 (설정 화면의 "발송 희망 시각"은
+표시용이며 실제 트리거는 Cron 이 결정합니다).
+
+> Vercel Hobby 플랜은 Cron 작업 2개, 하루 1회 실행까지 지원합니다. 위 구성이 딱 그 한도입니다.
+
+### 배포 후 최초 1회: 과거 실거래 백필
+
+실거래 API 는 (시군구 × 월) 단위로만 조회돼서 178개 지역 × 약 55개월 ≈ 9,800회 호출이 필요합니다.
+공공데이터포털 기본 일일 트래픽(10,000회)에 가까우므로 하루 이틀에 걸쳐 나눠 받으세요.
+한 번의 요청으로는 끝나지 않으므로, 응답의 `remaining` 이 `0`이 될 때까지 반복 호출하면 됩니다.
+
+```bash
+curl "https://<배포주소>/api/cron/backfill?secret=<CRON_SECRET>&regions=6"
+# {"ok":true,"remaining":2400,"hint":"남은 작업이 있습니다. 같은 URL 을 다시 호출하세요."}
+```
+
+이미 저장된 (지역, 월)은 자동으로 건너뛰므로 중복 호출해도 안전합니다.
+백필이 끝나면 이후에는 매일 Cron 이 최근 3개월만 증분 갱신합니다.
+
+---
+
+## 사용 흐름
+
+1. `/settings` 에서 **보유 아파트**를 등록합니다.
+   최소 입력은 단지명 · 시군구 · 전용면적 · 취득일 · 취득가액 다섯 가지입니다.
+2. **목표 아파트**를 등록합니다. 여러 개 넣으면 실소요 자금이 적은 순으로 정렬됩니다.
+3. **관심 지역**을 등록합니다. 여기 등록한 지역만 호재·뉴스 추적과 신고가 분석 대상이 됩니다.
+4. 맨 위 **"전체 자동 계산"** 을 누릅니다. 취득 부대비용·실거주 개월·대출 금리·현재 호가와
+   세대 프로필이 오늘 기준으로 채워지고, 각 값의 계산 근거가 함께 표시됩니다.
+5. 채워진 값 중 실제와 다른 것(실제 납부한 취득세, 알고 있는 호가 등)을 직접 수정합니다.
+6. 저장 후 대시보드로 이동하면 전 섹션이 채워집니다.
+7. `/simulation` 에서 하락장 시나리오별 갭·실소요 자금 변화를 확인합니다.
+8. 대시보드의 **주요 일정**에서 항목을 눌러 그 결과가 시장을 어느 방향으로 밀지 확인합니다.
+
+### 시세는 어떻게 정해지나
+
+- 설정에서 **현재 호가**를 직접 입력했다면 그 값을 씁니다 (실거래는 후행 지표라 호가가 더 현실적입니다).
+- 비워두면 해당 단지·면적대의 **최근 6개월 실거래 중앙값**을 씁니다.
+- 둘 다 없으면 "시세 미확인"으로 표시되고 갭 계산에서 제외됩니다.
+
+---
+
+## 주요 명령
+
+```bash
+npm run dev          # 개발 서버 (Turbopack)
+npm run build        # 프로덕션 빌드
+npm run typecheck    # TypeScript 검사
+npm run lint         # ESLint
+npm run format       # Prettier 적용
+npm run check-all    # 타입 + 린트 + 포맷 검사
+```
+
+---
+
+## 구조
+
+```
+src/
+  app/
+    page.tsx                    대시보드
+    settings/                   설정 (보유/목표/관심지역/세대/카카오/자동채우기)
+    simulation/                 하락장 갈아타기 시뮬레이션
+    outlook/[eventId]/          일정별 시장 방향 예측
+    api/
+      config/                   설정 조회·저장
+      autofill/                 설정 자동 계산 (저장하지 않고 값만 반환)
+      dashboard/                대시보드 데이터 JSON
+      kakao/                    OAuth 연결 · 상태 · 발송
+      cron/refresh              최근 3개월 증분 갱신
+      cron/backfill             과거 데이터 백필 (반복 호출)
+      cron/briefing             일일 브리핑 발송
+      dev/seed                  샘플(합성) 데이터 — 개발 전용
+  lib/
+    sources/                    외부 API 어댑터 (molit / ecos / reb / news)
+    tax/                        취득세 · 양도세 · 거래비용 계산
+    analysis/                   반등 확산 · 과열지표 · 지표해설 · 호재 · 일정 · 예측 · 자동채움
+    pipeline/                   수집(refresh) · 지연갱신 · 조립(dashboard) · 브리핑
+    store/                      Supabase 저장소 + 메모리 폴백
+    regions.ts                  전국 법정동코드 + 대표 좌표 + 타일 카토그램
+    geo.ts                      지도 투영 · 해안선 · 색상 스케일
+    refresh-policy.ts           갱신 주기 정책
+supabase/migrations/            DB 스키마
+```
+
+### 데이터 흐름
+
+```
+공공데이터포털 실거래가 ─┐
+                        ├─→ [cron/refresh] ─→ Supabase(region_monthly, trade_cache)
+                        │                          │
+한국은행 ECOS ───────────┤                          ↓
+한국부동산원 R-ONE ──────┼─────────────────→ [buildDashboard] ─→ 대시보드 화면
+네이버 뉴스 검색 ────────┘                          │
+                                                   ↓
+                                            [buildBriefing] ─→ 카카오톡 (200자 × N건)
+```
+
+---
+
+## 알려진 한계
+
+- **실거래는 후행 지표입니다.** 계약일로부터 최대 30일의 신고 기한이 있어 최근 1~2개월 데이터는
+  계속 채워집니다. 그래서 최근 2개월은 캐시를 짧게 잡고 매일 다시 긁습니다.
+- **월 거래량이 적은 지역은 지수가 튑니다.** 월 5건 미만인 달은 지수 산출에서 제외하고,
+  3개월 거래건수 가중 이동평균으로 평활했습니다. 그래도 지방 소도시는 표본 부족으로 나올 수 있습니다.
+- **금통위·FOMC 일정은 추정치**입니다(개최 월의 n번째 목/수요일). 화면에 "일자 추정"으로 표시되며
+  정확한 날짜는 공식 공지를 확인하세요.
+- **조정대상지역 목록은 자동 갱신되지 않습니다.** 자동 채우기는 서울 강남·서초·송파·용산 4개구를
+  기본 가정으로 쓰며, 정부 공고로 바뀌므로 설정 화면에서 직접 토글해야 합니다.
+- **지도는 실제 행정경계가 아닙니다.** 내장된 저해상도 해안선 위에 시군구 대표 좌표를 원으로
+  찍은 것이라, 원의 위치는 시청·구청 부근이고 크기는 도시 규모입니다.
+- **일정 예측의 확률은 규칙 기반 가늠치**입니다. 시장 컨센서스나 선물시장 반영률이 아니며,
+  투자 자문이 아닙니다.
+- **자동 계산한 취득 부대비용은 현행 세율 기준**입니다. 과거에 취득한 주택이라면 그때의 세율·감면이
+  달랐을 수 있으니, 실제 납부액을 알고 있다면 그 값으로 바꾸는 편이 정확합니다.
+- Supabase 없이 쓰면 설정이 서버 메모리에만 남아 배포·재시작 시 사라집니다.
