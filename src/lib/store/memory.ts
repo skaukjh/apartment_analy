@@ -18,12 +18,23 @@ export interface MemoryState {
   dongMonthly: Map<string, RegionPricePoint>;
   tradeCache: Map<string, TradeRecord[]>;
   snapshots: Array<{ capturedAt: string; payload: unknown }>;
-  kakaoToken: {
-    accessToken: string;
-    refreshToken?: string;
-    expiresAt: string;
-    scope?: string;
-  } | null;
+  /** 카카오 브리핑 수신자들 (id → 토큰). 각자 자기 계정으로 "나에게 보내기" 한다 */
+  kakaoTokens: Map<string, KakaoTokenRecord>;
+}
+
+export interface KakaoTokenRecord {
+  id: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: string;
+  scope?: string;
+  /** 화면에 표시할 이름 */
+  label?: string;
+  /** 카카오 프로필 닉네임 */
+  nickname?: string;
+  /** 카카오 회원번호 — 같은 계정 중복 연결을 막는다 */
+  kakaoId?: string;
+  enabled: boolean;
 }
 
 const KEY = Symbol.for('apartment-analy.memory-store');
@@ -39,7 +50,7 @@ export function memoryState(): MemoryState {
       dongMonthly: new Map(),
       tradeCache: new Map(),
       snapshots: [],
-      kakaoToken: null,
+      kakaoTokens: new Map(),
     };
   }
   // dev 핫리로드 시 구버전 싱글턴이 살아남을 수 있으므로 누락 필드를 보정한다
@@ -48,5 +59,6 @@ export function memoryState(): MemoryState {
   s.dongMonthly ??= new Map();
   s.tradeCache ??= new Map();
   s.snapshots ??= [];
+  s.kakaoTokens ??= new Map();
   return s;
 }

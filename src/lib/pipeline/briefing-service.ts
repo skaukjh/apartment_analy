@@ -10,7 +10,7 @@ import {
   briefingToText,
   previewChunks,
 } from '@/lib/kakao/briefing';
-import { sendMemos } from '@/lib/kakao/client';
+import { broadcast, type SendReport } from '@/lib/kakao/client';
 import { saveSnapshot } from '@/lib/store/market-data';
 import { getAdminClient } from '@/lib/store/supabase';
 import { env } from '@/lib/env';
@@ -25,6 +25,8 @@ export interface BriefingRunResult {
   messageCount: number;
   error?: string;
   skippedReason?: string;
+  /** 수신자별 전송 결과 */
+  reports?: SendReport[];
 }
 
 async function logBriefing(
@@ -42,7 +44,7 @@ async function logBriefing(
 }
 
 export async function runBriefing(
-  options: { dryRun?: boolean; force?: boolean } = {},
+  options: { dryRun?: boolean; force?: boolean; recipientIds?: string[] } = {},
 ): Promise<BriefingRunResult> {
   const dryRun = options.dryRun ?? false;
 
@@ -70,8 +72,19 @@ export async function runBriefing(
 
   try {
     const templates = briefingToKakaoTemplates(briefing, env.appUrl);
-    await sendMemos(templates);
-    await logBriefing('sent', text);
+    const reports = await broadcast(templates, { recipientIds: options.recipientIds });
+
+    const failed = reports.filter((r) => !r.ok);
+    const summary = reports
+      .map((r) => `${r.recipient}: ${r.ok ? '성공' : `실패(${r.error})`}`)
+      .join(', ');
+
+    await logBriefing(
+      failed.length === 0 ? 'sent' : 'failed',
+      `${text}\n\n[수신자] ${summary}`,
+      failed.length > 0 ? summary : undefined,
+    );
+
     // 갭 변화 추적용 스냅샷
     await saveSnapshot({
       generatedAt: data.generatedAt,
@@ -79,7 +92,16 @@ export async function runBriefing(
       sentiment: data.sentiment,
       quotes: data.quotes,
     });
-    return { ok: true, ...base };
+
+    return {
+      ok: failed.length === 0,
+      ...base,
+      reports,
+      error:
+        failed.length > 0
+          ? `${failed.length}명 전송 실패: ${failed.map((f) => `${f.recipient}(${f.error})`).join(', ')}`
+          : undefined,
+    };
   } catch (e) {
     const message = (e as Error).message;
     await logBriefing('failed', text, message);

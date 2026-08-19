@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     const result = await runBriefing({
       dryRun: Boolean(body?.dryRun),
       force: Boolean(body?.force),
+      recipientIds: Array.isArray(body?.recipientIds) ? body.recipientIds : undefined,
     });
     return NextResponse.json(result, { status: result.ok ? 200 : 502 });
   } catch (e) {

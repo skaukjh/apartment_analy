@@ -143,7 +143,8 @@ function buildGaps(config: UserConfig, quotes: Record<string, PriceQuote>): GapS
     }
   }
 
-  return gaps;
+  // 실소요 자금이 적은 순 = 실행 가능성이 높은 순. 화면(gap-section)·README 와 같은 기준을 쓴다.
+  return gaps.sort((a, b) => a.realCashNeeded - b.realCashNeeded);
 }
 
 /* ------------------------------------------------------------------ */

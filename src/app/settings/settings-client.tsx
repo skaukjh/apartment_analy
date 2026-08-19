@@ -28,9 +28,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 
+export interface KakaoRecipientView {
+  id: string;
+  label: string;
+  nickname?: string;
+  enabled: boolean;
+  expiresAt: string;
+  expired: boolean;
+}
+
 interface Props {
   initialConfig: UserConfig;
-  kakao: { connected: boolean; expiresAt?: string; reason?: string };
+  kakao: { connected: boolean; reason?: string; recipients: KakaoRecipientView[] };
   flags: Record<'supabase' | 'molit' | 'ecos' | 'reb' | 'naver' | 'kakao', boolean>;
 }
 
@@ -50,12 +59,21 @@ export function SettingsClient({ initialConfig, kakao, flags }: Props) {
   const [filling, setFilling] = useState<string | null>(null);
   const [overwrite, setOverwrite] = useState(false);
   const [fillReport, setFillReport] = useState<FillReport | null>(null);
+  const [recipients, setRecipients] = useState<KakaoRecipientView[]>(kakao.recipients);
+  const [newRecipientLabel, setNewRecipientLabel] = useState('');
   const params = useSearchParams();
 
   // 카카오 콜백 결과 토스트
   useEffect(() => {
     const status = params.get('kakao');
-    if (status === 'connected') toast.success('카카오 계정이 연결되었습니다.');
+    if (status === 'connected') {
+      toast.success(`${params.get('name') ?? '카카오 계정'} 연결 완료`);
+      // 콜백으로 돌아온 직후에는 서버 프롭이 낡았을 수 있어 최신 목록을 다시 받는다
+      void fetch('/api/kakao/status')
+        .then((r) => r.json())
+        .then((j) => j.ok && setRecipients(j.recipients ?? []))
+        .catch(() => {});
+    }
     if (status === 'error') toast.error(params.get('message') ?? '카카오 연결에 실패했습니다.');
   }, [params]);
 
@@ -140,8 +158,21 @@ export function SettingsClient({ initialConfig, kakao, flags }: Props) {
         body: JSON.stringify({ force: true }),
       });
       const json = await res.json();
-      if (json.ok && !json.skippedReason) toast.success(`${json.messageCount}건 전송 완료`);
-      else toast.error(json.error ?? json.skippedReason ?? '전송 실패');
+      const reports: Array<{ recipient: string; ok: boolean; error?: string }> = json.reports ?? [];
+
+      if (json.ok && !json.skippedReason) {
+        const names = reports.map((r) => r.recipient).join(', ');
+        toast.success(
+          `${reports.length || 1}명(${names})에게 각 ${json.messageCount}건 전송 완료`,
+        );
+      } else if (reports.some((r) => r.ok)) {
+        toast.warning(
+          `일부만 전송됨 — ${reports.map((r) => `${r.recipient}: ${r.ok ? '성공' : '실패'}`).join(', ')}`,
+          { duration: 9000 },
+        );
+      } else {
+        toast.error(json.error ?? json.skippedReason ?? '전송 실패', { duration: 9000 });
+      }
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -149,10 +180,28 @@ export function SettingsClient({ initialConfig, kakao, flags }: Props) {
     }
   }
 
-  async function disconnect() {
-    await fetch('/api/kakao/status', { method: 'DELETE' });
-    toast.success('카카오 연결을 해제했습니다.');
-    location.reload();
+  async function disconnect(id?: string) {
+    const res = await fetch(`/api/kakao/status${id ? `?id=${encodeURIComponent(id)}` : ''}`, {
+      method: 'DELETE',
+    });
+    const json = await res.json();
+    if (json.ok) {
+      setRecipients(json.recipients ?? []);
+      toast.success('카카오 연결을 해제했습니다.');
+    } else {
+      toast.error(json.error ?? '해제에 실패했습니다.');
+    }
+  }
+
+  async function toggleRecipient(id: string, enabled: boolean) {
+    const res = await fetch('/api/kakao/status', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, enabled }),
+    });
+    const json = await res.json();
+    if (json.ok) setRecipients(json.recipients ?? []);
+    else toast.error(json.error ?? '변경에 실패했습니다.');
   }
 
   /* ---------------- 보유 아파트 ---------------- */
@@ -808,8 +857,10 @@ export function SettingsClient({ initialConfig, kakao, flags }: Props) {
         }
         description="카카오 '나에게 보내기' 메모 API 를 사용합니다. 사업자 등록이나 알림톡 심사가 필요 없습니다."
         badge={
-          kakao.connected ? (
-            <Badge variant="secondary">연결됨</Badge>
+          recipients.length > 0 ? (
+            <Badge variant="secondary">
+              수신자 {recipients.filter((r) => r.enabled).length}/{recipients.length}명
+            </Badge>
           ) : (
             <Badge variant="outline">미연결</Badge>
           )
@@ -833,34 +884,96 @@ export function SettingsClient({ initialConfig, kakao, flags }: Props) {
           </Alert>
         ) : (
           <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              {kakao.connected ? (
-                <>
-                  <Button size="sm" onClick={sendTest} disabled={sending}>
-                    {sending ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Send className="size-4" />
-                    )}
-                    지금 브리핑 보내기
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={disconnect}>
-                    <Unplug className="size-4" /> 연결 해제
-                  </Button>
-                </>
-              ) : (
-                <Button size="sm" render={<a href="/api/kakao/connect" />} nativeButton={false}>
-                  카카오 계정 연결
+            <Alert>
+              <AlertTitle>여러 명에게 보내려면</AlertTitle>
+              <AlertDescription className="text-[11px] leading-relaxed">
+                카카오는 <strong>카카오톡 ID로 남에게 보내는 API를 제공하지 않습니다</strong>{' '}
+                (스팸 방지). 대신 받을 사람이 각자 이 화면에서 자기 카카오 계정으로 한 번만
+                연결하면, 앱이 각자의 계정으로 각자에게 &ldquo;나에게 보내기&rdquo;를 실행합니다.
+                사업자등록·검수가 필요 없는 유일한 방법입니다.
+              </AlertDescription>
+            </Alert>
+
+            {/* 수신자 목록 */}
+            {recipients.length > 0 ? (
+              <div className="space-y-2">
+                {recipients.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{r.label}</span>
+                        {r.expired ? (
+                          <Badge variant="outline" className="text-[10px]">
+                            토큰 만료 (전송 시 자동 갱신)
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <p className="text-muted-foreground text-[11px]">
+                        {r.nickname ? `카카오 ${r.nickname} · ` : ''}
+                        만료 {new Date(r.expiresAt).toLocaleString('ko-KR')}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={r.enabled}
+                        onCheckedChange={(v) => toggleRecipient(r.id, v)}
+                        aria-label={`${r.label} 수신 여부`}
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => disconnect(r.id)}
+                        aria-label={`${r.label} 연결 해제`}
+                      >
+                        <Unplug className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm">아직 연결된 카카오 계정이 없습니다.</p>
+            )}
+
+            {/* 수신자 추가 */}
+            <div className="flex flex-wrap items-end gap-2">
+              <Field label="수신자 별명" hint="예: 나, 아내, 부모님" className="w-40">
+                <Input
+                  value={newRecipientLabel}
+                  placeholder="나"
+                  onChange={(e) => setNewRecipientLabel(e.target.value)}
+                />
+              </Field>
+              <Button
+                size="sm"
+                render={
+                  <a
+                    href={`/api/kakao/connect${newRecipientLabel.trim() ? `?label=${encodeURIComponent(newRecipientLabel.trim())}` : ''}`}
+                  />
+                }
+                nativeButton={false}
+              >
+                <Plus className="size-4" /> 카카오 계정 연결
+              </Button>
+              {recipients.length > 0 ? (
+                <Button size="sm" variant="outline" onClick={sendTest} disabled={sending}>
+                  {sending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Send className="size-4" />
+                  )}
+                  지금 전원에게 보내기
                 </Button>
-              )}
+              ) : null}
             </div>
 
-            {kakao.expiresAt ? (
-              <p className="text-muted-foreground text-xs">
-                액세스 토큰 만료: {new Date(kakao.expiresAt).toLocaleString('ko-KR')} (만료 시 자동
-                갱신)
-              </p>
-            ) : null}
+            <p className="text-muted-foreground text-[11px]">
+              다른 사람을 추가할 때는 카카오 로그인 화면에서 <strong>그 사람의 카카오 계정</strong>
+              으로 로그인해야 합니다. 이미 로그인돼 있으면 로그아웃 후 진행하세요.
+            </p>
 
             <ToggleRow
               label="일일 브리핑 자동 발송"

@@ -604,9 +604,13 @@ export function KoreaMap({
             return;
           }
 
-          if (!dragOrigin.current) return;
-          const dx = e.clientX - dragOrigin.current.x;
-          const dy = e.clientY - dragOrigin.current.y;
+          // 여기서 값을 지역 변수로 복사해 둔다.
+          // setView 의 업데이터는 나중에 실행되는데, 그 사이 pointerup 이 나면
+          // dragOrigin.current 가 null 이 되어 참조 시 터진다.
+          const origin = dragOrigin.current;
+          if (!origin) return;
+          const dx = e.clientX - origin.x;
+          const dy = e.clientY - origin.y;
           if (Math.abs(dx) + Math.abs(dy) > 4) {
             movedRef.current = true;
             setDragging(true);
@@ -617,8 +621,8 @@ export function KoreaMap({
           setView((prev) =>
             clampView({
               scale: prev.scale,
-              x: dragOrigin.current!.vx + dx * ratio,
-              y: dragOrigin.current!.vy + dy * ratio,
+              x: origin.vx + dx * ratio,
+              y: origin.vy + dy * ratio,
             }),
           );
         }}
