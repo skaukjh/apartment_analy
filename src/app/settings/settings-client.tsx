@@ -19,6 +19,7 @@ import type { Holding, TargetApartment, UserConfig, WatchRegion } from '@/lib/ty
 import type { SigunguInfo } from '@/lib/regions';
 import { SectionCard, EmptyHint } from '@/components/ui-bits';
 import { Field, ItemHeader, MoneyInput, RegionPicker } from '@/components/form-bits';
+import { ComplexSearch, type ComplexPick } from '@/components/settings/complex-search';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -235,6 +236,36 @@ export function SettingsClient({ initialConfig, kakao, flags }: Props) {
   const removeHolding = (id: string) =>
     patch({ holdings: config.holdings.filter((h) => h.id !== id) });
 
+  /**
+   * 단지 검색 결과로 입력값을 채운다.
+   * 채우는 시세는 실거래 중앙값이다 (호가 아님). 사용자가 이어서 손볼 수 있게 둔다.
+   */
+  const applyHoldingPick = (id: string, pick: ComplexPick) => {
+    updateHolding(id, {
+      complexName: pick.complexName,
+      dong: pick.dong,
+      areaM2: pick.areaM2,
+      builtYear: pick.builtYear,
+      manualPrice: pick.price,
+    });
+    toast.success(
+      `${pick.complexName} ${pick.areaM2}㎡ — 실거래 중앙값 ${formatKrw(pick.price)}으로 채웠습니다 (표본 ${pick.tradeCount}건, 최근 ${pick.latestDealDate})`,
+    );
+  };
+
+  const applyTargetPick = (id: string, pick: ComplexPick) => {
+    updateTarget(id, {
+      complexName: pick.complexName,
+      dong: pick.dong,
+      areaM2: pick.areaM2,
+      builtYear: pick.builtYear,
+      manualPrice: pick.price,
+    });
+    toast.success(
+      `${pick.complexName} ${pick.areaM2}㎡ — 실거래 중앙값 ${formatKrw(pick.price)}으로 채웠습니다 (표본 ${pick.tradeCount}건, 최근 ${pick.latestDealDate})`,
+    );
+  };
+
   /* ---------------- 목표 아파트 ---------------- */
 
   const addTarget = () =>
@@ -446,6 +477,12 @@ export function SettingsClient({ initialConfig, kakao, flags }: Props) {
                   subtitle={h.lawdCd ? `${h.sigungu} · ${h.lawdCd}` : '지역 미선택'}
                   onRemove={() => removeHolding(h.id)}
                 />
+                <div className="mb-3">
+                  <ComplexSearch
+                    lawdCd={h.lawdCd}
+                    onPick={(pick) => applyHoldingPick(h.id, pick)}
+                  />
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <Field label="단지명">
                     <Input
@@ -587,6 +624,9 @@ export function SettingsClient({ initialConfig, kakao, flags }: Props) {
                   subtitle={t.lawdCd ? `${t.sigungu} · ${t.lawdCd}` : '지역 미선택'}
                   onRemove={() => removeTarget(t.id)}
                 />
+                <div className="mb-3">
+                  <ComplexSearch lawdCd={t.lawdCd} onPick={(pick) => applyTargetPick(t.id, pick)} />
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <Field label="단지명">
                     <Input

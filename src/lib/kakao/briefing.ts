@@ -213,6 +213,130 @@ function chunkSections(briefing: Briefing): string[] {
 }
 
 /**
+ * 한 통짜리 요약을 만든다.
+ *
+ * 카카오 text 템플릿은 200자 제한이라 전문(약 1,300자)이 안 들어간다.
+ * 그래서 알림을 여러 번 울리지 않도록 핵심만 200자 안에 담고,
+ * 나머지는 "대시보드 열기" 버튼으로 웹에서 보게 한다.
+ */
+/**
+ * 200자 안에 서로 겹치지 않는 정보만 담는다.
+ *
+ * 예전 방식은 헤드라인에 이미 있는 갭·과열·확산을 본문에서 또 반복해
+ * 200자를 중복으로 낭비했다. 그래서 헤드라인은 쓰지 않고,
+ * 우선순위가 높은 항목부터 한 줄씩 채운다.
+ */
+/**
+ * 발송 시간대. 같은 데이터라도 시간대마다 먼저 알고 싶은 게 다르다.
+ *  - morning(05시): 오늘 일정과 내 갭 — 하루를 계획할 때
+ *  - noon(11시)   : 과열도·수급 — 장중 분위기
+ *  - evening(18시): 신고가/신저가·확산 — 오늘 시장이 어땠나
+ *  - night(22시)  : 갭 변화·거래량 — 하루 마감 정리
+ */
+export type BriefingSlot = 'morning' | 'noon' | 'evening' | 'night';
+
+const SLOT_LABEL: Record<BriefingSlot, string> = {
+  morning: '아침',
+  noon: '오전',
+  evening: '저녁',
+  night: '마감',
+};
+
+/** KST 시각 → 발송 슬롯. 지정 시각이 아니면 null. */
+export function slotForHour(hourKst: number): BriefingSlot | null {
+  if (hourKst === 5) return 'morning';
+  if (hourKst === 11) return 'noon';
+  if (hourKst === 18) return 'evening';
+  if (hourKst === 22) return 'night';
+  return null;
+}
+
+function briefingToSummaryText(
+  data: DashboardData,
+  title: string,
+  appUrl?: string,
+  slot: BriefingSlot = 'morning',
+): string {
+  const { spread, primaryGap, newHighs, newLows } = summarizeDashboard(data);
+  const heat = HEAT_META[data.sentiment.heatLevel];
+
+  const head = `[${title} · ${SLOT_LABEL[slot]}]`;
+
+  // 링크는 버튼과 별개로 본문에도 넣는다. 버튼이 안 보이는 환경이 있어서다.
+  const tail = appUrl ? `\n▶ ${appUrl}` : '';
+  const budget = KAKAO_TEXT_LIMIT - tail.length;
+
+  /* 조각들 — 시간대별로 순서만 바꿔 쓴다 */
+
+  const myGap = primaryGap
+    ? `🏠 ${primaryGap.holdingName}→${primaryGap.targetName} 갭 ${formatEok(primaryGap.gap)}(실소요 ${formatEok(primaryGap.realCashNeeded)})`
+    : '🏠 보유·목표 아파트 미등록';
+
+  const gapDelta =
+    primaryGap?.gapDelta !== undefined
+      ? `📉 3개월 갭 ${primaryGap.gapDelta < 0 ? '축소' : '확대'} ${formatEok(Math.abs(primaryGap.gapDelta))}`
+      : null;
+
+  const heatLine = `🌡️ ${heat?.label ?? ''} ${data.sentiment.heatScore}/100 · 수급 ${data.sentiment.supplyDemandIndex.toFixed(0)}`;
+  const extremeLine = `📈 신고가 ${newHighs.length} · 신저가 ${newLows.length}건`;
+  const spreadLine = `🗺️ 상승확산 ${spread.spreadRate.toFixed(0)}% (${spread.leading.length + spread.spreading.length}/${spread.total}곳) · 미반등 ${spread.neverRebounded.length}곳`;
+  const volumeLine = `🔁 거래량 전년비 ${data.sentiment.volumeYoy.toFixed(0)}%`;
+
+  const rate = data.macro?.find((m) => m.key === 'mortgage-rate');
+  const rateLine = rate ? `💰 주담대 ${rate.latest}% (${rate.latestPeriod})` : null;
+
+  const nextEvent = data.schedule?.[0];
+  const scheduleLine = nextEvent ? `📅 ${nextEvent.date} ${nextEvent.title}` : null;
+
+  const topNews = data.news?.find((n) => n.tone !== 'neutral');
+  const newsLine = topNews
+    ? `📰 ${topNews.tone === 'positive' ? '🟢' : '🔴'} ${topNews.title.slice(0, 40)}`
+    : null;
+
+  // 시간대별 우선순위 — 앞에 오는 것부터 200자를 채운다
+  const ORDER: Record<BriefingSlot, Array<string | null>> = {
+    // 아침: 오늘 무엇을 볼지
+    morning: [myGap, scheduleLine, heatLine, rateLine, spreadLine],
+    // 오전: 지금 시장 온도
+    noon: [heatLine, extremeLine, volumeLine, myGap, spreadLine],
+    // 저녁: 오늘 시장이 어땠나
+    evening: [extremeLine, spreadLine, newsLine, heatLine, myGap],
+    // 마감: 하루 정리와 내 위치
+    night: [myGap, gapDelta, spreadLine, volumeLine, heatLine],
+  };
+
+  const candidates = ORDER[slot].filter((v): v is string => Boolean(v));
+
+  const picks: string[] = [];
+  for (const line of candidates) {
+    if ([head, ...picks, line].join('\n').length > budget) continue;
+    picks.push(line);
+  }
+
+  return `${[head, ...picks].join('\n')}${tail}`;
+}
+
+/** 요약 1건짜리 템플릿 (알림 1번) */
+export function briefingToSingleTemplate(
+  briefing: Briefing,
+  appUrl: string,
+  data: DashboardData,
+  slot: BriefingSlot = 'morning',
+): KakaoTemplate[] {
+  // 브리핑 전문과 AI 요약이 함께 있는 "오늘의 요약" 으로 보낸다
+  const target = `${appUrl.replace(/\/$/, '')}/today`;
+  const link = { web_url: target, mobile_web_url: target };
+  return [
+    {
+      object_type: 'text',
+      text: briefingToSummaryText(data, briefing.title, target, slot),
+      link,
+      button_title: '오늘의 요약 열기',
+    },
+  ];
+}
+
+/**
  * 카카오 메시지 템플릿 생성.
  * 첫 메시지는 대시보드 링크 버튼이 달린 feed, 나머지는 text.
  */

@@ -5,7 +5,11 @@ import { analyzeRebound, BASE_MONTH } from '@/lib/analysis/rebound';
 import { findSigungu } from '@/lib/regions';
 import { geocodeComplex, hasPlaceApi } from '@/lib/sources/place';
 import type { RegionPricePoint, TradeRecord } from '@/lib/types';
-import { median } from '@/lib/format';
+import { median, recentYearMonths } from '@/lib/format';
+import { fetchTradesForMonths } from '@/lib/sources/molit';
+
+/** 캐시가 없을 때 국토부에서 바로 받아올 개월 수 */
+const LIVE_MONTHS = 24;
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -53,7 +57,17 @@ export async function GET(request: Request) {
 
     // trade_cache 는 YYYYMM 키를 쓴다
     const fromYm = from.replace('-', '');
-    const trades = await loadTradeCache([lawd], fromYm);
+    let trades = await loadTradeCache([lawd], fromYm);
+    let liveFetched = false;
+
+    // 원본 거래는 보유·목표·관심 지역만 쌓아둔다.
+    // 그 외 지역을 눌렀을 때 빈 화면을 주지 않도록 국토부에서 바로 받아온다.
+    if (trades.length === 0) {
+      const months = recentYearMonths(LIVE_MONTHS);
+      const byMonth = await fetchTradesForMonths(lawd, months);
+      trades = Object.values(byMonth).flat();
+      liveFetched = true;
+    }
 
     if (trades.length === 0) {
       return NextResponse.json({
@@ -61,7 +75,7 @@ export async function GET(request: Request) {
         lawd,
         dong: dongFilter ?? null,
         complexes: [],
-        note: '이 시군구의 원본 실거래가 수집되지 않았습니다. 설정에서 관심 지역으로 등록하면 단지 단위까지 수집합니다.',
+        note: '최근 실거래가 없는 지역입니다.',
       });
     }
 
@@ -147,6 +161,8 @@ export async function GET(request: Request) {
       dong: dongFilter ?? null,
       complexes: complexes.slice(0, 120),
       geocoded: wantGeocode,
+      // 캐시가 없어 국토부에서 즉석 조회한 경우 (기간이 최근 24개월로 제한된다)
+      liveFetched,
     });
   } catch (e) {
     return errorResponse(e);

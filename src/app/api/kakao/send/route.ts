@@ -26,6 +26,8 @@ export async function POST(request: Request) {
       dryRun: Boolean(body?.dryRun),
       force: Boolean(body?.force),
       recipientIds: Array.isArray(body?.recipientIds) ? body.recipientIds : undefined,
+      // 시간대별 문구를 미리 확인할 때 쓴다 (morning | noon | evening | night)
+      slot: body?.slot,
     });
     return NextResponse.json(result, { status: result.ok ? 200 : 502 });
   } catch (e) {

@@ -16,7 +16,8 @@ import {
   MolitError,
 } from '@/lib/sources/molit';
 import {
-  loadRegionMonthly,
+  emptyMonthPoint,
+  loadRegionMonthlyKeys,
   saveDongMonthly,
   saveRegionMonthly,
   saveTradeCache,
@@ -84,7 +85,18 @@ async function runRegionMonths(
       const byMonth = await fetchTradesForMonths(lawdCd, months);
       const points = aggregateMonthly(byMonth);
 
-      if (points.length > 0) await saveRegionMonthly(lawdCd, points);
+      // 거래가 0건이던 월도 "조회 완료"로 남긴다.
+      // 안 그러면 백필이 그 월을 영원히 미완료로 보고 같은 지역만 무한 반복한다.
+      const covered = new Set(points.map((p) => p.month));
+      const withEmpties = [
+        ...points,
+        ...months
+          .map((ym) => dashYearMonth(ym))
+          .filter((m) => !covered.has(m))
+          .map(emptyMonthPoint),
+      ];
+
+      if (withEmpties.length > 0) await saveRegionMonthly(lawdCd, withEmpties);
 
       // 지도 드릴다운(동 단위)용 법정동별 집계도 함께 저장한다
       await saveDongMonthly(lawdCd, aggregateMonthlyByDong(byMonth));
@@ -144,11 +156,8 @@ export async function backfill(
   const fromYm = options.fromYm ?? BACKFILL_FROM;
   const allMonths = monthsBetweenYm(fromYm, currentYm());
 
-  const existing = await loadRegionMonthly(lawdCodes, dashYearMonth(fromYm));
-  const existingKeys = new Set<string>();
-  for (const [code, points] of Object.entries(existing)) {
-    points.forEach((p) => existingKeys.add(`${code}|${p.month}`));
-  }
+  // 거래 0건으로 기록된 월도 "이미 조회함"에 포함해야 같은 구간을 반복하지 않는다
+  const existingKeys = await loadRegionMonthlyKeys(lawdCodes, dashYearMonth(fromYm));
 
   let skipped = 0;
   const plan: Array<{ lawdCd: string; months: string[] }> = [];

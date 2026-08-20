@@ -76,6 +76,7 @@ export const userConfigSchema = z.object({
   household: householdSchema.default(householdSchema.parse({})),
   kakaoBriefingEnabled: z.boolean().default(true),
   briefingHour: z.number().int().min(0).max(23).default(8),
+  briefingFormat: z.enum(['summary', 'full']).default('summary'),
   updatedAt: z.string().default(() => new Date().toISOString()),
 });
 
@@ -101,6 +102,7 @@ export const DEFAULT_CONFIG: UserConfig = {
   },
   kakaoBriefingEnabled: true,
   briefingHour: 8,
+  briefingFormat: 'summary',
   updatedAt: new Date(0).toISOString(),
 };
 

@@ -7,6 +7,8 @@ import { buildDashboard } from '@/lib/pipeline/dashboard';
 import {
   buildBriefing,
   briefingToKakaoTemplates,
+  briefingToSingleTemplate,
+  type BriefingSlot,
   briefingToText,
   previewChunks,
 } from '@/lib/kakao/briefing';
@@ -44,14 +46,24 @@ async function logBriefing(
 }
 
 export async function runBriefing(
-  options: { dryRun?: boolean; force?: boolean; recipientIds?: string[] } = {},
+  options: {
+    dryRun?: boolean;
+    force?: boolean;
+    recipientIds?: string[];
+    /** 발송 시간대. 같은 데이터라도 시간대별로 먼저 보여줄 항목이 다르다. */
+    slot?: BriefingSlot;
+  } = {},
 ): Promise<BriefingRunResult> {
   const dryRun = options.dryRun ?? false;
 
   const data = await buildDashboard();
   const briefing = buildBriefing(data);
   const text = briefingToText(briefing);
-  const chunks = previewChunks(briefing);
+  // 요약 1건 모드에서는 알림이 한 번만 울린다
+  const singleMessage = data.config.briefingFormat !== 'full';
+  const chunks = singleMessage
+    ? briefingToSingleTemplate(briefing, env.appUrl, data, options.slot).map((t) => t.text ?? '')
+    : previewChunks(briefing);
 
   const base: Omit<BriefingRunResult, 'ok'> = {
     dryRun,
@@ -71,7 +83,9 @@ export async function runBriefing(
   }
 
   try {
-    const templates = briefingToKakaoTemplates(briefing, env.appUrl);
+    const templates = singleMessage
+      ? briefingToSingleTemplate(briefing, env.appUrl, data, options.slot)
+      : briefingToKakaoTemplates(briefing, env.appUrl);
     const reports = await broadcast(templates, { recipientIds: options.recipientIds });
 
     const failed = reports.filter((r) => !r.ok);

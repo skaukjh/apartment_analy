@@ -105,6 +105,8 @@ export interface UserConfig {
   kakaoBriefingEnabled: boolean;
   /** 브리핑 발송 시각 (KST, 0~23) */
   briefingHour: number;
+  /** 카카오톡 발송 형식. summary = 요약 1건(알림 1번), full = 전문 분할 */
+  briefingFormat: 'summary' | 'full';
   updatedAt: string;
 }
 

@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, LineChart, Moon, Settings, Sun } from 'lucide-react';
+import { Building2, LineChart, Moon, Settings, Sun, Sparkles } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const NAV = [
   { href: '/', label: '대시보드', icon: Building2 },
+  { href: '/today', label: '오늘의 요약', icon: Sparkles },
   { href: '/simulation', label: '갈아타기 시뮬레이션', icon: LineChart },
   { href: '/settings', label: '설정', icon: Settings },
 ];

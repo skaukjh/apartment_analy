@@ -11,6 +11,17 @@ import { memoryState } from './memory';
 /* 월별 집계                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * 조회는 끝났지만 거래가 0건이던 월을 표시하는 값.
+ *
+ * 이걸 남기지 않으면 백필이 "아직 안 받은 월"로 보고 매번 다시 조회한다.
+ * 실제로 그런 무한 반복이 있었다 — 거래 없는 시골 지역/월이 흔하기 때문이다.
+ * 분석 쪽에서는 `count === 0` 인 점을 빼고 쓴다.
+ */
+export function emptyMonthPoint(month: string): RegionPricePoint {
+  return { month, pricePerM2: 0, count: 0 };
+}
+
 export async function saveRegionMonthly(lawdCd: string, points: RegionPricePoint[]): Promise<void> {
   if (points.length === 0) return;
 
@@ -36,6 +47,50 @@ export async function saveRegionMonthly(lawdCd: string, points: RegionPricePoint
   points.forEach((p) => memoryState().regionMonthly.set(`${lawdCd}|${p.month}`, p));
 }
 
+/**
+ * 저장된 (지역, 월) 키 전체. 거래 0건으로 기록된 월도 포함한다.
+ * 백필이 "이미 조회한 월"을 건너뛰는 판단에 쓴다.
+ */
+export async function loadRegionMonthlyKeys(
+  lawdCodes: string[],
+  fromMonth = '2022-01',
+): Promise<Set<string>> {
+  const keys = new Set<string>();
+  const client = getAdminClient();
+
+  if (!client) {
+    for (const key of memoryState().regionMonthly.keys()) {
+      const [code, month] = key.split('|');
+      if (!lawdCodes.includes(code) || month < fromMonth) continue;
+      keys.add(key);
+    }
+    return keys;
+  }
+
+  // PostgREST 는 한 번에 최대 1,000행만 준다. 전부 받으려면 페이지를 넘겨야 한다.
+  // 이걸 놓치면 "이미 받은 월"을 1,000개까지만 인식해 백필이 같은 구간을 무한 반복한다.
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    let query = client
+      .from('region_monthly')
+      .select('lawd_cd, month')
+      .gte('month', fromMonth)
+      .order('lawd_cd', { ascending: true })
+      .order('month', { ascending: true })
+      .range(offset, offset + PAGE - 1);
+
+    if (lawdCodes.length > 0) query = query.in('lawd_cd', lawdCodes);
+
+    const { data, error } = await query;
+    if (error) throw new Error(`region_monthly 키 조회 실패: ${error.message}`);
+
+    for (const row of data ?? []) keys.add(`${row.lawd_cd}|${row.month}`);
+    if (!data || data.length < PAGE) break;
+  }
+
+  return keys;
+}
+
 export async function loadRegionMonthly(
   lawdCodes?: string[],
   fromMonth = '2022-01',
@@ -54,19 +109,30 @@ export async function loadRegionMonthly(
     return result;
   }
 
-  let query = client
-    .from('region_monthly')
-    .select('lawd_cd, month, price_per_m2, trade_count')
-    .gte('month', fromMonth)
-    .order('month', { ascending: true });
+  // PostgREST 기본 상한(1,000행) 때문에 페이지를 넘겨가며 전부 받는다
+  const PAGE = 1000;
+  const rows: Array<Record<string, unknown>> = [];
+  for (let offset = 0; ; offset += PAGE) {
+    let query = client
+      .from('region_monthly')
+      .select('lawd_cd, month, price_per_m2, trade_count')
+      .gte('month', fromMonth)
+      .order('month', { ascending: true })
+      .range(offset, offset + PAGE - 1);
 
-  if (lawdCodes && lawdCodes.length > 0) query = query.in('lawd_cd', lawdCodes);
+    if (lawdCodes && lawdCodes.length > 0) query = query.in('lawd_cd', lawdCodes);
 
-  const { data, error } = await query.limit(100_000);
-  if (error) throw new Error(`region_monthly 조회 실패: ${error.message}`);
+    const { data, error } = await query;
+    if (error) throw new Error(`region_monthly 조회 실패: ${error.message}`);
+
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE) break;
+  }
 
   const result: Record<string, RegionPricePoint[]> = {};
-  for (const row of data ?? []) {
+  for (const row of rows) {
+    // 거래 0건 표시용 행은 분석에서 제외한다 (0원이 섞이면 중앙값이 무너진다)
+    if (Number(row.trade_count) === 0) continue;
     (result[row.lawd_cd as string] ??= []).push({
       month: row.month as string,
       pricePerM2: Number(row.price_per_m2),

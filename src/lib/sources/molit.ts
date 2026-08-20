@@ -45,6 +45,7 @@ const ERROR_GUIDE: Record<string, string> = {
   '12': '해당 오픈API 서비스가 없거나 폐기됐습니다. 엔드포인트를 확인하세요.',
   '20': '활용승인이 되지 않았습니다. 공공데이터포털에서 신청 승인 상태를 확인하세요 (보통 2~3일).',
   '22': '일일 트래픽을 초과했습니다. 개발계정은 하루 10,000건이며 운영계정 전환으로 늘릴 수 있습니다.',
+  '23': '초당 요청제한을 초과했습니다. 호출 간격을 늘려 다시 시도합니다.',
   '30': '등록되지 않은 서비스키입니다. 마이페이지의 "일반 인증키(Decoding)" 값을 넣었는지 확인하세요.',
   '31': '서비스키 사용기간이 만료됐습니다. 공공데이터포털에서 연장하세요.',
   '32': '등록되지 않은 IP 입니다.',
@@ -54,6 +55,9 @@ const ERROR_GUIDE: Record<string, string> = {
 
 /** 데이터가 없다는 뜻이라 재시도해도 소용없는 코드 */
 const NO_DATA_CODES = new Set(['03']);
+
+/** 잠깐 기다렸다 재시도하면 풀리는 코드 (초당 요청제한 등) */
+const THROTTLED_CODES = new Set(['23']);
 
 /** 다른 엔드포인트로 바꿔 시도해 볼 만한 코드 */
 const RETRY_OTHER_ENDPOINT = new Set(['12', '30', '20']);
@@ -98,6 +102,63 @@ function decodeEntities(s: string): string {
 function pickTag(xml: string, tag: string): string | undefined {
   const m = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
   return m ? decodeEntities(m[1]).trim() : undefined;
+}
+
+/** 초당 제한에 걸렸을 때 쉬는 시간과 재시도 횟수 */
+const THROTTLE_RETRIES = 8;
+const THROTTLE_BACKOFF_MS = 1500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * 전역 호출 간격 조절.
+ *
+ * 국토부는 초당 요청 수를 제한한다(에러코드 23). 백필처럼 수천 번 도는 작업에서는
+ * 동시성만 낮춰서는 부족하고, 프로세스 전체에서 호출 간 최소 간격을 지켜야 한다.
+ * 23 을 만나면 간격을 늘리고, 연속 성공하면 조금씩 되돌린다.
+ */
+const MIN_GAP_MS = 120;
+const MAX_GAP_MS = 2000;
+let currentGapMs = MIN_GAP_MS;
+let nextSlot = 0;
+
+async function acquireSlot(): Promise<void> {
+  const now = Date.now();
+  const at = Math.max(now, nextSlot);
+  nextSlot = at + currentGapMs;
+  if (at > now) await sleep(at - now);
+}
+
+/** 초당 제한을 만났다 — 간격을 벌린다 */
+function widenGap(): void {
+  currentGapMs = Math.min(MAX_GAP_MS, Math.round(currentGapMs * 1.8) + 100);
+}
+
+/** 성공했다 — 간격을 조금씩 좁힌다 */
+function narrowGap(): void {
+  if (currentGapMs > MIN_GAP_MS) {
+    currentGapMs = Math.max(MIN_GAP_MS, Math.round(currentGapMs * 0.9));
+  }
+}
+
+/**
+ * 오류 코드를 뽑아낸다. 정상이면 undefined.
+ *
+ * 공공데이터포털은 오류를 두 가지 XML 로 준다:
+ *  - <resultCode>03</resultCode>            (서비스 자체 응답)
+ *  - <returnReasonCode>23</returnReasonCode> (게이트웨이 공통 응답, resultCode 가 아예 없다)
+ * 후자를 놓치면 "데이터 0건"으로 오인해 조용히 헛돈다.
+ */
+function errorCodeOf(xml: string): string | undefined {
+  // 인증 실패는 코드 없이 문자열로만 오기도 한다
+  if (/SERVICE_KEY_IS_NOT_REGISTERED_ERROR|등록되지\s*않은\s*서비스키/.test(xml)) return '30';
+
+  const raw = pickTag(xml, 'resultCode') ?? pickTag(xml, 'returnReasonCode');
+  if (!raw) return undefined;
+  if (raw === '00' || raw === '000') return undefined;
+  return raw.replace(/^0+(?=\d)/, '').padStart(2, '0');
 }
 
 function extractItems(xml: string): string[] {
@@ -169,30 +230,37 @@ async function fetchFromEndpoint(
       `${endpoint}?serviceKey=${encodeURIComponent(key)}` +
       `&LAWD_CD=${lawdCd}&DEAL_YMD=${dealYmd}&pageNo=${pageNo}&numOfRows=${numOfRows}`;
 
-    const res = await fetch(url, {
-      next: { revalidate },
-      headers: { Accept: 'application/xml' },
-    });
+    let xml = '';
 
-    if (!res.ok) {
-      throw new MolitError(`실거래가 API HTTP ${res.status}`, String(res.status));
-    }
+    // 초당 요청제한(23)은 잠깐 쉬었다 다시 하면 풀리므로 그 자리에서 재시도한다
+    for (let attempt = 0; ; attempt += 1) {
+      await acquireSlot();
 
-    const xml = await res.text();
+      const res = await fetch(url, {
+        next: { revalidate },
+        headers: { Accept: 'application/xml' },
+      });
 
-    // 인증 실패는 별도 XML 로 오기도 한다 (resultCode 없이)
-    if (/SERVICE_KEY_IS_NOT_REGISTERED_ERROR|등록되지\s*않은\s*서비스키/.test(xml)) {
-      throw new MolitError(describeError('30'), '30');
-    }
-
-    const resultCode = pickTag(xml, 'resultCode');
-    if (resultCode) {
-      const normalized = resultCode.replace(/^0+(?=\d)/, '').padStart(2, '0');
-      const isOk = resultCode === '00' || resultCode === '000';
-      if (!isOk) {
-        if (NO_DATA_CODES.has(normalized)) return all; // 데이터 없음은 정상 종료
-        throw new MolitError(describeError(normalized, pickTag(xml, 'resultMsg')), normalized);
+      if (!res.ok) {
+        throw new MolitError(`실거래가 API HTTP ${res.status}`, String(res.status));
       }
+
+      xml = await res.text();
+      const code = errorCodeOf(xml);
+
+      if (code && THROTTLED_CODES.has(code)) {
+        widenGap();
+        if (attempt < THROTTLE_RETRIES) {
+          await sleep(THROTTLE_BACKOFF_MS * (attempt + 1));
+          continue;
+        }
+      }
+      if (code) {
+        if (NO_DATA_CODES.has(code)) return all; // 데이터 없음은 정상 종료
+        throw new MolitError(describeError(code, pickTag(xml, 'resultMsg')), code);
+      }
+      narrowGap();
+      break;
     }
 
     const items = extractItems(xml);
@@ -246,7 +314,7 @@ export function activeEndpoint(): string {
 export async function fetchTradesForMonths(
   lawdCd: string,
   months: string[],
-  concurrency = 3,
+  concurrency = 1,
 ): Promise<Record<string, TradeRecord[]>> {
   const result: Record<string, TradeRecord[]> = {};
   const queue = [...months];
@@ -266,6 +334,9 @@ export async function fetchTradesForMonths(
       } catch (e) {
         // 키·승인·트래픽 문제는 다음 월을 시도해도 똑같이 실패한다. 즉시 멈춰 호출을 아낀다.
         if (e instanceof MolitError && FATAL_CODES.has(e.code ?? '')) throw e;
+        // 재시도를 다 쓰고도 초당 제한이면 삼키지 않는다.
+        // 빈 배열로 넘기면 저장할 게 없어 remaining 이 줄지 않고 같은 구간을 무한 반복한다.
+        if (e instanceof MolitError && THROTTLED_CODES.has(e.code ?? '')) throw e;
         result[m] = [];
       }
     }
