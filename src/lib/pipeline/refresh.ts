@@ -23,6 +23,7 @@ import {
   saveTradeCache,
 } from '@/lib/store/market-data';
 import { dashYearMonth, nowKst, recentYearMonths, shiftYearMonth } from '@/lib/format';
+import { sortByBackfillPriority } from '@/lib/regions';
 import type { TradeRecord } from '@/lib/types';
 
 export interface RefreshResult {
@@ -162,7 +163,9 @@ export async function backfill(
   let skipped = 0;
   const plan: Array<{ lawdCd: string; months: string[] }> = [];
 
-  for (const lawdCd of lawdCodes) {
+  // 서울 → 경기 → 인천 → 충청 → 나머지 순으로 채운다.
+  // 며칠에 걸쳐 받는 동안 자주 보는 지역이 먼저 준비되도록.
+  for (const lawdCd of sortByBackfillPriority(lawdCodes)) {
     const missing = allMonths.filter((ym) => {
       const has = existingKeys.has(`${lawdCd}|${dashYearMonth(ym)}`);
       if (has) skipped += 1;

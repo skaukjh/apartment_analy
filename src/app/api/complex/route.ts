@@ -6,7 +6,8 @@ import { findSigungu } from '@/lib/regions';
 import { geocodeComplex, hasPlaceApi } from '@/lib/sources/place';
 import type { RegionPricePoint, TradeRecord } from '@/lib/types';
 import { median, recentYearMonths } from '@/lib/format';
-import { dongMatches } from '@/lib/dong-name';
+import { baseDongName, dongMatches } from '@/lib/dong-name';
+import { adminDongOf, canResolveAdminDong, resolveAdminDongs } from '@/lib/sources/admin-dong';
 import { fetchTradesForMonths } from '@/lib/sources/molit';
 
 /** 캐시가 없을 때 국토부에서 바로 받아올 개월 수 */
@@ -83,7 +84,13 @@ export async function GET(request: Request) {
     /* 단지별로 월 시계열을 만든다 */
     const byComplex = new Map<
       string,
-      { dong: string; builtYear?: number; months: Map<string, number[]>; all: TradeRecord[] }
+      {
+        dong: string;
+        jibun?: string;
+        builtYear?: number;
+        months: Map<string, number[]>;
+        all: TradeRecord[];
+      }
     >();
 
     for (const t of trades) {
@@ -97,13 +104,44 @@ export async function GET(request: Request) {
       if (!key) continue;
       let entry = byComplex.get(key);
       if (!entry) {
-        entry = { dong: t.dong, builtYear: t.builtYear, months: new Map(), all: [] };
+        entry = {
+          dong: t.dong,
+          jibun: t.jibun,
+          builtYear: t.builtYear,
+          months: new Map(),
+          all: [],
+        };
         byComplex.set(key, entry);
       }
+      entry.jibun ??= t.jibun;
       const bucket = entry.months.get(month) ?? [];
       bucket.push(t.price / t.areaM2);
       entry.months.set(month, bucket);
       entry.all.push(t);
+    }
+
+    /* 행정동으로 한 번 더 거른다.
+       "자양2동" 처럼 번호가 붙은 이름을 눌렀다면 사용자는 그 행정동만 보고 싶은 것이다.
+       법정동(자양동)만으로는 구분이 안 되므로 지번을 행정동으로 바꿔 비교한다. */
+    const wantsAdminDong =
+      Boolean(dongFilter) && baseDongName(dongFilter!) !== dongFilter && canResolveAdminDong();
+    let adminDongResolved = false;
+
+    if (wantsAdminDong) {
+      const pairs = [...byComplex.values()]
+        .filter((e) => e.jibun)
+        .map((e) => ({ umdNm: e.dong, jibun: e.jibun! }));
+
+      const map = await resolveAdminDongs(lawd, findSigungu(lawd)?.name ?? '', pairs);
+
+      if (Object.keys(map).length > 0) {
+        adminDongResolved = true;
+        for (const [name, entry] of [...byComplex.entries()]) {
+          if (!entry.jibun) continue; // 지번을 모르면 지우지 않는다 (빈 화면보다 낫다)
+          const admin = adminDongOf(map, entry.dong, entry.jibun);
+          if (admin && admin !== dongFilter) byComplex.delete(name);
+        }
+      }
     }
 
     const complexes: ComplexStat[] = [];
@@ -165,6 +203,8 @@ export async function GET(request: Request) {
       geocoded: wantGeocode,
       // 캐시가 없어 국토부에서 즉석 조회한 경우 (기간이 최근 24개월로 제한된다)
       liveFetched,
+      // 행정동(자양2동)까지 좁혀서 걸렀는지. false 면 법정동(자양동) 전체다.
+      adminDongResolved,
     });
   } catch (e) {
     return errorResponse(e);

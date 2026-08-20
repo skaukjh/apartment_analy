@@ -69,6 +69,37 @@ function normalize(s: string): string {
 }
 
 /**
+ * 비교용 이름 키.
+ *
+ * 국토부에 등록된 이름과 사람들이 부르는 이름이 다르다.
+ *  등록: "우성2"      부르는 이름: "자양우성2차"
+ *  등록: "자양우성7"  부르는 이름: "자양우성7차"
+ * 그래서 '차·아파트·단지' 같은 흔한 꼬리말을 떼고 비교한다.
+ */
+function nameKey(s: string): string {
+  return normalize(s).replace(/차$|아파트|apt|단지/g, '');
+}
+
+/**
+ * 단지명이 검색어에 걸리는지.
+ *
+ * 양방향 부분일치를 쓴다. 검색어가 등록명보다 길 수도(자양우성2차 ⊃ 우성2),
+ * 짧을 수도(우성 ⊂ 자양우성7) 있기 때문이다.
+ * 동 이름으로 검색하면 그 동의 단지를 전부 보여준다 ("자양" → 자양동 전체).
+ */
+function complexMatches(complexName: string, dong: string, query: string): boolean {
+  const q = nameKey(query);
+  if (!q) return true;
+
+  const name = nameKey(complexName);
+  if (name.includes(q) || q.includes(name)) return true;
+
+  // "자양" 처럼 동 이름으로 찾는 경우
+  const d = nameKey(dong).replace(/동$/, '');
+  return Boolean(d) && (d.includes(q) || q.includes(d));
+}
+
+/**
  * 시군구 안에서 단지명으로 검색한다.
  *
  * @param lawdCd 법정동코드 앞 5자리
@@ -88,7 +119,6 @@ export async function searchComplexes(
   const trades = Object.values(byMonth).flat();
 
   const region = findSigungu(lawdCd);
-  const needle = normalize(query);
 
   // 단지 + 면적 단위로 모은다. 같은 단지라도 면적이 다르면 시세가 완전히 다르다.
   const groups = new Map<
@@ -97,7 +127,7 @@ export async function searchComplexes(
   >();
 
   for (const t of trades) {
-    if (needle && !normalize(t.complexName).includes(needle)) continue;
+    if (!complexMatches(t.complexName, t.dong, query)) continue;
     const key = `${t.complexName}|${t.dong}`;
     let g = groups.get(key);
     if (!g) {

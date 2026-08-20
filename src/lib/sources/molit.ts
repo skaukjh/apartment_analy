@@ -195,6 +195,7 @@ function parseItem(itemXml: string, fallbackSigungu: string): TradeRecord | null
     sigungu: pickTag(itemXml, 'estateAgentSggNm') ?? fallbackSigungu,
     dong: pickTag(itemXml, 'umdNm') ?? '',
     complexName: pickTag(itemXml, 'aptNm') ?? pickTag(itemXml, 'aptDong') ?? '',
+    jibun: pickTag(itemXml, 'jibun')?.trim() || undefined,
     areaM2,
     floor: Number(pickTag(itemXml, 'floor') ?? '0') || 0,
     price,

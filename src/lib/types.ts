@@ -121,6 +121,8 @@ export interface TradeRecord {
   sigungu: string;
   dong: string;
   complexName: string;
+  /** 지번 (예: "579"). 행정동 판별에 쓴다 — 법정동만으로는 자양1~4동을 구분할 수 없다. */
+  jibun?: string;
   /** 전용면적 (㎡) */
   areaM2: number;
   floor: number;

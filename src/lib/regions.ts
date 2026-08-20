@@ -531,3 +531,29 @@ export const METRO_TILES: Record<string, TileCoord> = {
   '41115': [4, 9], // 수원 팔달
   '41463': [5, 9], // 용인 기흥
 };
+
+/**
+ * 백필 우선순위.
+ *
+ * 전국 2006년치를 다 받으려면 며칠이 걸린다. 그동안 화면이 비어 있으면 곤란하므로
+ * 실제로 자주 보는 지역부터 채운다. 숫자가 작을수록 먼저.
+ *
+ * 서울 → 경기 → 인천 → 충청(대전·세종 포함) → 나머지
+ */
+export function backfillPriority(lawdCd: string): number {
+  const prefix = lawdCd.slice(0, 2);
+  if (prefix === '11') return 0; // 서울
+  if (prefix === '41') return 1; // 경기
+  if (prefix === '28') return 2; // 인천
+  // 충청권: 대전(30)·세종(36)·충북(43)·충남(44)
+  if (prefix === '30' || prefix === '36' || prefix === '43' || prefix === '44') return 3;
+  return 4;
+}
+
+/** 우선순위 → 같은 순위 안에서는 코드 순으로 안정 정렬 */
+export function sortByBackfillPriority(codes: string[]): string[] {
+  return [...codes].sort((a, b) => {
+    const d = backfillPriority(a) - backfillPriority(b);
+    return d !== 0 ? d : a.localeCompare(b);
+  });
+}
