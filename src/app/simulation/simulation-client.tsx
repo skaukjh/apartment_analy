@@ -1,5 +1,6 @@
 'use client';
 
+import { tradePriceOf } from '@/lib/analysis/price-basis';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -79,8 +80,9 @@ export function SimulationClient({ config, quotes }: Props) {
   const holding = config.holdings.find((h) => h.id === holdingId) ?? config.holdings[0];
   const target = config.targets.find((t) => t.id === targetId) ?? config.targets[0];
 
-  const defaultSell = holding ? (quotes[holding.id]?.price ?? holding.manualPrice ?? 0) : 0;
-  const defaultBuy = target ? (quotes[target.id]?.price ?? target.manualPrice ?? 0) : 0;
+  // 시뮬레이션 기본값도 실거래가 기준. 호가는 사용자가 직접 고칠 수 있다.
+  const defaultSell = holding ? tradePriceOf(quotes[holding.id]) : 0;
+  const defaultBuy = target ? tradePriceOf(quotes[target.id]) : 0;
 
   const [sellPrice, setSellPrice] = useState(defaultSell);
   const [buyPrice, setBuyPrice] = useState(defaultBuy);
@@ -178,7 +180,7 @@ export function SimulationClient({ config, quotes }: Props) {
                 const v = String(raw ?? '');
                 setHoldingId(v);
                 const h = config.holdings.find((x) => x.id === v);
-                setSellPrice(h ? (quotes[h.id]?.price ?? h.manualPrice ?? 0) : 0);
+                setSellPrice(h ? tradePriceOf(quotes[h.id]) : 0);
                 setNewLoan(h?.loanBalance ?? 0);
                 setNewLoanRate(h?.loanRate ?? 4);
               }}
@@ -209,7 +211,7 @@ export function SimulationClient({ config, quotes }: Props) {
                 const v = String(raw ?? '');
                 setTargetId(v);
                 const t = config.targets.find((x) => x.id === v);
-                setBuyPrice(t ? (quotes[t.id]?.price ?? t.manualPrice ?? 0) : 0);
+                setBuyPrice(t ? tradePriceOf(quotes[t.id]) : 0);
               }}
             >
               <SelectTrigger>

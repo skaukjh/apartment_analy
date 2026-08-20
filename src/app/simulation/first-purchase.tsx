@@ -1,5 +1,6 @@
 'use client';
 
+import { tradePriceOf } from '@/lib/analysis/price-basis';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Info, Wallet } from 'lucide-react';
@@ -54,7 +55,7 @@ export function FirstPurchasePanel({ config, quotes }: Props) {
   const [targetId, setTargetId] = useState(targets[0]?.id ?? '');
   const target = targets.find((t) => t.id === targetId) ?? targets[0];
 
-  const quotePrice = target ? (quotes[target.id]?.price ?? target.manualPrice ?? 0) : 0;
+  const quotePrice = target ? tradePriceOf(quotes[target.id]) : 0;
 
   const [buyPrice, setBuyPrice] = useState(0);
   const [cash, setCash] = useState(config.household.cashAssets);
@@ -115,7 +116,7 @@ export function FirstPurchasePanel({ config, quotes }: Props) {
   const comparison = useMemo(() => {
     return targets
       .map((t) => {
-        const p = quotes[t.id]?.price ?? t.manualPrice ?? 0;
+        const p = tradePriceOf(quotes[t.id]);
         if (p <= 0) return null;
         const regulated = config.household.targetIsRegulated || isRegulated(t.lawdCd);
         const loan = calcLoanLimit({

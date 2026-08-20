@@ -36,6 +36,7 @@ import { DEFAULT_ANALYSIS_REGIONS } from '@/lib/regions';
 import { featureFlags } from '@/lib/env';
 import { maybeRefreshTrades } from './lazy-refresh';
 import { formatArea, median, todayKst } from '@/lib/format';
+import { tradePriceOf } from '@/lib/analysis/price-basis';
 import { calcAcquisitionTaxFor } from '@/lib/tax/acquisition';
 import { calcTransactionCost } from '@/lib/tax/transaction-costs';
 import { calcCapitalGainsTax } from '@/lib/tax/capital-gains';
@@ -110,10 +111,11 @@ function buildGaps(config: UserConfig, quotes: Record<string, PriceQuote>): GapS
   const gaps: GapSummary[] = [];
 
   for (const holding of config.holdings) {
-    const holdingPrice = quotes[holding.id]?.price ?? holding.manualPrice ?? 0;
+    // 갭·세금 계산은 실거래가만 쓴다. 호가로 계산하면 근거 없는 숫자가 나온다.
+    const holdingPrice = tradePriceOf(quotes[holding.id]);
 
     for (const target of [...config.targets].sort((a, b) => a.priority - b.priority)) {
-      const targetPrice = quotes[target.id]?.price ?? target.manualPrice ?? 0;
+      const targetPrice = tradePriceOf(quotes[target.id]);
       if (holdingPrice <= 0 || targetPrice <= 0) continue;
 
       // 세후 실제 필요 자금 = (매수가 + 취득세 + 매수부대) - (매도가 - 양도세 - 매도부대 - 대출/보증금)

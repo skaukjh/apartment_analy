@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { ArrowRight, ChevronDown, Info } from 'lucide-react';
 import type { PriceQuote, UserConfig } from '@/lib/types';
 import { formatArea, formatKrw, formatPct, todayKst } from '@/lib/format';
+import { askingPremiumPct, tradePriceOf } from '@/lib/analysis/price-basis';
 import { calcAcquisitionTaxFor } from '@/lib/tax/acquisition';
 import { calcCapitalGainsTax } from '@/lib/tax/capital-gains';
 import { calcTransactionCost } from '@/lib/tax/transaction-costs';
@@ -22,10 +23,25 @@ interface Props {
 function basisLabel(basis: PriceQuote['basis']): string {
   return {
     manual: '직접 입력 호가',
-    'recent-trade': '최근 실거래 중앙값',
+    'recent-trade': '직전 실거래가',
     'region-index': '지역 지수 추정',
-    unknown: '시세 미확인',
+    unknown: '실거래 없음',
   }[basis];
+}
+
+/**
+ * 호가는 참고용으로만 보여준다.
+ * 갭·세금 계산에는 쓰지 않는다 — 검증할 수 없는 값이라 계산에 넣으면
+ * 근거 없는 숫자가 근거 있는 것처럼 보인다.
+ */
+function AskingHint({ quote }: { quote?: PriceQuote }) {
+  const premium = askingPremiumPct(quote);
+  if (premium === undefined) return null;
+  return (
+    <div className="text-muted-foreground text-[11px]">
+      호가 {formatKrw(quote?.askingPrice ?? 0)} · 실거래 대비 {formatPct(premium, 1)}
+    </div>
+  );
 }
 
 export function GapSection({ config, quotes }: Props) {
@@ -50,11 +66,11 @@ export function GapSection({ config, quotes }: Props) {
     }> = [];
 
     for (const holding of config.holdings) {
-      const holdingPrice = quotes[holding.id]?.price ?? holding.manualPrice ?? 0;
+      const holdingPrice = tradePriceOf(quotes[holding.id]);
       if (holdingPrice <= 0) continue;
 
       for (const target of [...config.targets].sort((a, b) => a.priority - b.priority)) {
-        const targetPrice = quotes[target.id]?.price ?? target.manualPrice ?? 0;
+        const targetPrice = tradePriceOf(quotes[target.id]);
         if (targetPrice <= 0) continue;
 
         const cgt = calcCapitalGainsTax({
@@ -174,6 +190,7 @@ export function GapSection({ config, quotes }: Props) {
                         </>
                       ) : null}
                     </div>
+                    <AskingHint quote={hq} />
                   </div>
                   <div>
                     <div className="text-muted-foreground text-xs">목표 시세</div>
@@ -187,6 +204,7 @@ export function GapSection({ config, quotes }: Props) {
                         </>
                       ) : null}
                     </div>
+                    <AskingHint quote={tq} />
                   </div>
                   <div>
                     <div className="text-muted-foreground text-xs">시세 갭</div>

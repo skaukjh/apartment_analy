@@ -23,6 +23,8 @@ export interface OutlookSource {
   summary: string;
   url: string;
   publishedAt?: string;
+  /** 카페 글일 때 카페 이름 */
+  cafeName?: string;
 }
 
 /** 이번 호출이 쓴 토큰 — 비용 추적용 */
@@ -54,34 +56,133 @@ interface NaverDocItem {
   cafename?: string;
 }
 
-/** 블로그·카페 글 수집. 실패해도 전체를 막지 않는다. */
+/**
+ * 광고·홍보 글을 걸러내는 신호.
+ * 카페·블로그는 분양 홍보와 중개 광고가 많아 그대로 넣으면 요약이 오염된다.
+ */
+const SPAM_PATTERNS = [
+  /☎|℡|\b01[016-9][-.\s]?\d{3,4}[-.\s]?\d{4}\b/, // 연락처 노출
+  /문의\s*(주세요|바랍니다|환영)/,
+  /분양\s*(문의|상담|홍보)/,
+  /무료\s*(상담|컨설팅)/,
+  /카톡\s*(문의|상담)/,
+  /초대장|등업|출석체크|가입인사/,
+];
+
+/** 부동산 논의가 활발해 신호 대 잡음이 나은 카페 */
+const TRUSTED_CAFE_HINTS = [
+  '부동산스터디',
+  '부동산',
+  '재건축',
+  '재개발',
+  '아파트',
+  '분양권',
+  '집값',
+];
+
+/**
+ * 글의 참고 가치를 점수로 매긴다.
+ *
+ * ── 한계 ─────────────────────────────────────────────────────────
+ * 네이버 검색 API 는 title·description·cafename·cafeurl 만 준다.
+ * **회원 등급·조회수·추천수·인기글 여부는 제공하지 않는다.**
+ * 그래서 "등급 높은 사람 글"을 직접 고를 방법이 없고,
+ * 정확도순 정렬 + 아래 신호로 대신한다.
+ */
+function opinionScore(title: string, summary: string, cafeName: string | undefined): number {
+  const text = `${title} ${summary}`;
+
+  // 광고성은 아예 제외
+  if (SPAM_PATTERNS.some((re) => re.test(text))) return -1;
+
+  let score = 0;
+
+  // 부동산 전문 카페면 가산
+  if (cafeName && TRUSTED_CAFE_HINTS.some((h) => cafeName.includes(h))) score += 3;
+
+  // 구체적인 근거가 있는 글 — 금액·평형·연도 같은 숫자
+  if (/\d+\s*(억|만원|㎡|평)/.test(text)) score += 2;
+  if (/\d{4}\s*년|\d{1,2}\s*월/.test(text)) score += 1;
+
+  // 시장 판단이 담긴 글
+  if (/(전망|분석|정리|후기|실거래|계약|매도|매수)/.test(text)) score += 2;
+
+  // 너무 짧으면 근거가 없다
+  if (summary.length >= 80) score += 1;
+  if (summary.length < 30) score -= 2;
+
+  return score;
+}
+
+/**
+ * 블로그·카페 글 수집. 실패해도 전체를 막지 않는다.
+ *
+ * 정확도순(sim)으로 받아 관련성이 높은 글을 먼저 보고, 광고를 걸러낸 뒤
+ * 점수가 높은 순으로 정렬해 돌려준다.
+ */
 async function fetchOpinions(queries: string[], perQuery = 5): Promise<OutlookSource[]> {
-  const out: OutlookSource[] = [];
+  const scored: Array<{ source: OutlookSource; score: number }> = [];
+
+  /* 네이버는 초당 요청 수를 제한한다(HTTP 429).
+     검색어를 늘리고 한꺼번에 병렬로 던졌더니 전부 거부돼 카페 글이 0건이 됐다.
+     그래서 순차로 보내고 사이에 간격을 둔다. */
+  const GAP_MS = 120;
 
   for (const endpoint of ['blog', 'cafearticle'] as const) {
-    const settled = await Promise.allSettled(
-      queries.map((q) => naverSearchRaw<NaverDocItem>(endpoint, q, perQuery, 'date')),
-    );
+    const settled: Array<PromiseSettledResult<NaverDocItem[]>> = [];
+    for (const q of queries) {
+      try {
+        // 'date' 는 최신순이라 잡담까지 딸려온다. 'sim'(정확도)이 참고할 글을 더 잘 준다.
+        settled.push({
+          status: 'fulfilled',
+          value: await naverSearchRaw<NaverDocItem>(endpoint, q, perQuery, 'sim'),
+        });
+      } catch (e) {
+        settled.push({ status: 'rejected', reason: e });
+      }
+      await new Promise((r) => setTimeout(r, GAP_MS));
+    }
+
     for (const r of settled) {
-      if (r.status !== 'fulfilled') continue;
+      if (r.status !== 'fulfilled') {
+        // 조용히 버리면 "카페 0건"의 원인을 영영 알 수 없다
+        console.error(
+          `[outlook] ${endpoint} 검색 실패:`,
+          String((r.reason as Error)?.message ?? r.reason),
+        );
+        continue;
+      }
       for (const it of r.value) {
-        out.push({
-          kind: endpoint === 'blog' ? 'blog' : 'cafe',
-          title: stripTags(it.title),
-          summary: stripTags(it.description),
-          url: it.link,
+        const title = stripTags(it.title);
+        const summary = stripTags(it.description);
+        const cafeName = it.cafename ? stripTags(it.cafename) : undefined;
+        const score = opinionScore(title, summary, cafeName);
+        if (score < 0) continue; // 광고성 제외
+
+        scored.push({
+          source: {
+            kind: endpoint === 'blog' ? 'blog' : 'cafe',
+            title,
+            summary,
+            url: it.link,
+            cafeName,
+          },
+          score,
         });
       }
     }
   }
 
-  // 중복 제거
+  // 중복 제거 후 점수 높은 순
   const seen = new Set<string>();
-  return out.filter((s) => {
-    if (seen.has(s.url)) return false;
-    seen.add(s.url);
-    return true;
-  });
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .filter(({ source }) => {
+      if (seen.has(source.url)) return false;
+      seen.add(source.url);
+      return true;
+    })
+    .map(({ source }) => source);
 }
 
 function newsToSource(n: NewsItem): OutlookSource {
@@ -179,24 +280,42 @@ export async function buildMarketOutlook(data: DashboardData): Promise<MarketOut
 
   const gaps: string[] = [];
 
-  // 사용자 관심 지역·단지를 검색어에 반영한다
+  /* 검색어 구성 — 내 단지가 실제로 언급되는 글을 찾는 게 목적이다.
+     시군구만 넣으면 "노원구 아파트" 같은 일반론만 걸리므로
+     단지명과 그 동(자양동·잠실동) 단위까지 함께 넣는다. */
+  const myComplexes = [...data.config.holdings, ...data.config.targets];
+
+  const complexQueries = myComplexes.flatMap((a) => {
+    const qs = [`${a.complexName} 실거래`];
+    if (a.dong) qs.push(`${a.dong} ${a.complexName}`);
+    return qs;
+  });
+
+  const dongQueries = [...new Set(myComplexes.map((a) => a.dong).filter(Boolean))].map(
+    (d) => `${d} 재건축 재개발`,
+  );
+
   const places = [
     ...data.config.holdings.map((h) => h.sigungu),
     ...data.config.targets.map((t) => t.sigungu),
     ...data.config.watchRegions.map((w) => w.name),
   ].filter(Boolean);
-  const uniquePlaces = [...new Set(places)].slice(0, 4);
+  const uniquePlaces = [...new Set(places)].slice(0, 3);
 
   const opinionQueries = [
+    ...complexQueries.slice(0, 6),
+    ...dongQueries.slice(0, 4),
     ...uniquePlaces.map((p) => `${p} 아파트 시세`),
     '부동산 대책 전망',
-    '아파트 갈아타기',
   ];
 
   const [officialRes, policyNews, opinions] = await Promise.all([
     fetchOfficialPress().catch(() => ({ items: [] as NewsItem[], errors: ['공식발표 수집 실패'] })),
     searchNews('부동산 대책 정책 발표', 10).catch(() => [] as NewsItem[]),
-    fetchOpinions(opinionQueries).catch(() => [] as OutlookSource[]),
+    fetchOpinions(opinionQueries).catch((e) => {
+      console.error('[outlook] 블로그·카페 수집 실패:', (e as Error).message);
+      return [] as OutlookSource[];
+    }),
   ]);
 
   if (officialRes.items.length === 0) gaps.push('정부 부처 공식 발표를 가져오지 못했습니다.');
@@ -222,6 +341,14 @@ export async function buildMarketOutlook(data: DashboardData): Promise<MarketOut
   ];
 
   const prompt = `아래 [자료]와 [수치]만 근거로 삼아, 사용자의 보유·목표 아파트 관점에서 시장을 정리하세요.
+
+[근거 우선순위] — 반드시 지키세요
+1순위 [수치]: 국토교통부 실거래가와 한국은행 통계. 사실로 취급합니다.
+2순위 [공식발표]: 정부·공공기관 발표. 사실로 취급하되 시행 시기가 확정인지 구분하세요.
+3순위 [기사]: 보도 내용. 인용임을 밝히세요.
+4순위 [블로그·카페]: **개인 의견입니다. 사실로 옮기지 마세요.**
+   호가·시세 주장은 근거로 쓰지 말고, "이런 분위기가 있다" 수준으로만 언급하세요.
+   앞 순위와 충돌하면 앞 순위를 따르고, 충돌한다는 사실을 적으세요.
 
 [수치]
 ${renderNumbers(data)}
