@@ -9,7 +9,15 @@ import type { DashboardData } from '@/lib/types';
 import { summarizeDashboard } from '@/lib/pipeline/dashboard';
 import { HEAT_META } from '@/lib/analysis/market-signals';
 import { keyEvents } from '@/lib/analysis/schedule';
-import { formatEok, formatKrw, formatPct, formatShortDate, nowKst, todayKst } from '@/lib/format';
+import {
+  formatArea,
+  formatEok,
+  formatKrw,
+  formatPct,
+  formatShortDate,
+  nowKst,
+  todayKst,
+} from '@/lib/format';
 import type { KakaoTemplate } from './client';
 
 export interface BriefingSection {
@@ -98,12 +106,12 @@ export function buildBriefing(data: DashboardData): Briefing {
     ];
     newHighs.slice(0, 3).forEach((e) => {
       lines.push(
-        `▲ ${e.complexName} ${Math.round(e.areaM2)}㎡ ${formatKrw(e.price, { compact: true })} (${formatPct(e.gapRate, 1)}, ${formatShortDate(e.dealDate)})`,
+        `▲ ${e.complexName} ${formatArea(e.areaM2)} ${formatKrw(e.price, { compact: true })} (${formatPct(e.gapRate, 1)}, ${formatShortDate(e.dealDate)})`,
       );
     });
     newLows.slice(0, 2).forEach((e) => {
       lines.push(
-        `▼ ${e.complexName} ${Math.round(e.areaM2)}㎡ ${formatKrw(e.price, { compact: true })} (${formatPct(e.gapRate, 1)}, ${formatShortDate(e.dealDate)})`,
+        `▼ ${e.complexName} ${formatArea(e.areaM2)} ${formatKrw(e.price, { compact: true })} (${formatPct(e.gapRate, 1)}, ${formatShortDate(e.dealDate)})`,
       );
     });
     sections.push({ heading: '📈 신고가 · 신저가', lines });

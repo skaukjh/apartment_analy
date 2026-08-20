@@ -36,9 +36,17 @@ export function formatPct(value: number, digits = 2): string {
   return `${sign}${value.toFixed(digits)}%`;
 }
 
-/** 전용면적 ㎡ → "84㎡(34평)" */
+/**
+ * 전용면적 표기 → "24평(79.07㎡)"
+ *
+ * 평을 앞에 둔다. 한국에서 집 크기를 먼저 가늠하는 단위가 평이고,
+ * 화면·카카오톡·AI 프롬프트에서 표기가 제각각이면 같은 집인지 알아보기 어렵다.
+ * 정확한 값은 괄호 안 ㎡ 이므로 둘 다 남긴다.
+ */
 export function formatArea(m2: number): string {
-  return `${m2.toFixed(m2 % 1 === 0 ? 0 : 2)}㎡ (${(m2 / 3.305785).toFixed(0)}평)`;
+  if (!Number.isFinite(m2) || m2 <= 0) return '-';
+  const pyeong = Math.round(m2 / 3.305785);
+  return `${pyeong}평(${m2.toFixed(m2 % 1 === 0 ? 0 : 2)}㎡)`;
 }
 
 /** ㎡ → 평 */

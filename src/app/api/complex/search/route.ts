@@ -4,7 +4,7 @@ import { errorResponse } from '@/lib/api-auth';
 import { findSigungu } from '@/lib/regions';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
  * 단지 검색.
@@ -35,7 +35,9 @@ export async function GET(request: Request) {
       );
     }
 
-    const complexes = await searchComplexes(lawdCd, q);
+    // months 로 조회 기간을 넓힐 수 있다 (거래가 뜸한 평형까지 보고 싶을 때)
+    const months = Number(url.searchParams.get('months') ?? '24');
+    const complexes = await searchComplexes(lawdCd, q, 60, months);
 
     return NextResponse.json({
       ok: true,
@@ -43,6 +45,7 @@ export async function GET(request: Request) {
       lawdCd,
       query: q,
       count: complexes.length,
+      lookbackMonths: Number(url.searchParams.get('months') ?? '24'),
       complexes,
       // 호가는 공식 API 가 없어 실거래가만 제공한다
       priceBasis: 'recent-trade',

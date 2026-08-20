@@ -45,8 +45,16 @@ export interface ComplexOption {
   tradeCount: number;
 }
 
-/** 검색에 쓸 최근 개월 수. 너무 짧으면 거래 없는 평형이 안 잡힌다. */
-const LOOKBACK_MONTHS = 12;
+/**
+ * 검색에 쓸 최근 개월 수.
+ *
+ * 12개월로 뒀더니 "평형이 2개만 나온다", "단지가 다 안 보인다"는 문제가 있었다.
+ * 거래가 뜸한 평형은 1년 안에 한 건도 없을 수 있기 때문이다.
+ * 국토부는 (시군구 × 월) 단위로만 조회되므로 기간을 늘린 만큼 호출도 늘어난다.
+ * 24개월이 응답 시간과 누락 사이의 타협점이다.
+ */
+const DEFAULT_LOOKBACK_MONTHS = 24;
+const MAX_LOOKBACK_MONTHS = 60;
 
 function median(values: number[]): number {
   if (values.length === 0) return 0;
@@ -70,9 +78,12 @@ function normalize(s: string): string {
 export async function searchComplexes(
   lawdCd: string,
   query: string,
-  limit = 20,
+  limit = 60,
+  lookbackMonths = DEFAULT_LOOKBACK_MONTHS,
 ): Promise<ComplexOption[]> {
-  const months = recentYearMonths(LOOKBACK_MONTHS);
+  const months = recentYearMonths(
+    Math.min(MAX_LOOKBACK_MONTHS, Math.max(1, Math.round(lookbackMonths))),
+  );
   const byMonth = await fetchTradesForMonths(lawdCd, months);
   const trades = Object.values(byMonth).flat();
 

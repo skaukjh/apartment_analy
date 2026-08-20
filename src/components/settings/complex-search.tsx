@@ -3,7 +3,7 @@
 /**
  * 단지 검색 → 평형 선택 → 값 자동 채우기
  *
- * 시군구를 먼저 고르고 단지명을 검색하면, 최근 12개월 실거래에서
+ * 시군구를 먼저 고르고 단지명을 검색하면, 최근 24개월 실거래에서
  * 그 단지의 평형 목록과 평형별 시세를 뽑아 보여준다.
  * 평형을 고르면 단지명·법정동·전용면적·시세를 한 번에 채운다.
  *
@@ -111,14 +111,16 @@ export function ComplexSearch({
       </div>
 
       <p className="text-muted-foreground mt-2 text-xs">
-        최근 12개월 국토교통부 실거래가 기준입니다. 호가가 아니므로 필요하면 직접 조정하세요.
+        최근 24개월 국토교통부 실거래가 기준입니다. 그 기간에{' '}
+        <strong>거래가 있었던 단지·평형만</strong> 나옵니다. 호가가 아니므로 필요하면 직접
+        조정하세요.
       </p>
 
       {error && <p className="text-destructive mt-2 text-xs">{error}</p>}
 
       {results && results.length === 0 && (
         <p className="text-muted-foreground mt-2 text-xs">
-          최근 12개월 거래가 없습니다. 단지명을 줄여서 다시 검색해 보세요.
+          최근 24개월 거래가 없습니다. 단지명을 줄여서 다시 검색해 보세요.
         </p>
       )}
 

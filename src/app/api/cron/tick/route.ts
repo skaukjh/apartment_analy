@@ -5,6 +5,10 @@ import { refreshRecent } from '@/lib/pipeline/refresh';
 import { analysisTargets, loadConfig } from '@/lib/store/config';
 import { slotForHour, type BriefingSlot } from '@/lib/kakao/briefing';
 import { nowKst } from '@/lib/format';
+import { hasOpenAI } from '@/lib/ai/client';
+import { buildDashboard } from '@/lib/pipeline/dashboard';
+import { buildMarketOutlook } from '@/lib/ai/market-outlook';
+import { saveOutlookCache } from '@/lib/ai/outlook-cache';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -44,6 +48,21 @@ export async function GET(request: Request) {
     const codes = analysisTargets(config);
     const refresh = await refreshRecent(codes, 2, { budgetMs: 120_000 });
 
+    /* 1-2) AI 요약을 미리 만들어 캐시에 넣는다.
+       사용자가 페이지를 열 때 20~40초를 기다리지 않아도 되고,
+       호출 횟수가 시간당 1회로 고정돼 비용이 예측 가능해진다. */
+    let outlookCached = false;
+    if (hasOpenAI()) {
+      try {
+        const data = await buildDashboard();
+        const outlook = await buildMarketOutlook(data);
+        await saveOutlookCache(outlook);
+        outlookCached = true;
+      } catch (e) {
+        console.error('[tick] AI 요약 생성 실패:', (e as Error).message);
+      }
+    }
+
     /* 2) 발송 시각이면 브리핑 */
     if (refreshOnly || !slot) {
       return NextResponse.json({
@@ -52,6 +71,7 @@ export async function GET(request: Request) {
         slot,
         sent: false,
         reason: refreshOnly ? '갱신만 요청됨' : '발송 시각이 아님 (05·11·18·22시)',
+        outlookCached,
         refresh: {
           regions: refresh.regionsProcessed,
           trades: refresh.tradesCollected,
@@ -72,6 +92,7 @@ export async function GET(request: Request) {
         skippedReason: result.skippedReason,
         error: result.error,
         preview: result.chunks[0]?.slice(0, 300),
+        outlookCached,
         refresh: {
           regions: refresh.regionsProcessed,
           trades: refresh.tradesCollected,

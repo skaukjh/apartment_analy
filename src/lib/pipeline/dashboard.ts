@@ -35,7 +35,7 @@ import { filterComplex } from '@/lib/sources/molit';
 import { DEFAULT_ANALYSIS_REGIONS } from '@/lib/regions';
 import { featureFlags } from '@/lib/env';
 import { maybeRefreshTrades } from './lazy-refresh';
-import { median, todayKst } from '@/lib/format';
+import { formatArea, median, todayKst } from '@/lib/format';
 import { calcAcquisitionTaxFor } from '@/lib/tax/acquisition';
 import { calcTransactionCost } from '@/lib/tax/transaction-costs';
 import { calcCapitalGainsTax } from '@/lib/tax/capital-gains';
@@ -81,12 +81,21 @@ function quoteFromTrades(
         100
       : undefined;
 
+  // 직전 실거래가 — 가장 최근 체결가. 대표 시세의 기준으로 삼는다.
+  const sortedByDate = [...matched].sort((a, b) => b.dealDate.localeCompare(a.dealDate));
+  const latestPrice = sortedByDate[0]?.price ?? tradePrice;
+
   return {
-    // 사용자가 호가를 직접 넣었다면 그것을 대표값으로 (실거래는 후행 지표)
-    price: manualPrice ?? tradePrice,
-    basis: manualPrice ? 'manual' : 'recent-trade',
+    // 실제로 체결된 가장 최근 가격을 쓴다.
+    // 호가(manualPrice)는 검증할 방법이 없어 실거래가 있으면 실거래를 우선한다.
+    price: latestPrice,
+    basis: 'recent-trade',
     sampleSize: pool.length,
-    lastDealDate: matched[0]?.dealDate,
+    lastDealDate: sortedByDate[0]?.dealDate,
+    /** 최근 6개월 중앙값 — 단발 고가/저가 거래에 흔들리지 않는 참고값 */
+    medianPrice: tradePrice,
+    /** 사용자가 설정에 입력한 호가 (있으면 화면에서 비교용으로 보여준다) */
+    askingPrice: manualPrice,
     high: Math.max(...matched.map((t) => t.price)),
     low: Math.min(...matched.map((t) => t.price)),
     changeRate: changeRate !== undefined ? Math.round(changeRate * 10) / 10 : undefined,
@@ -131,9 +140,9 @@ function buildGaps(config: UserConfig, quotes: Record<string, PriceQuote>): GapS
 
       gaps.push({
         holdingId: holding.id,
-        holdingName: `${holding.complexName} ${holding.areaM2}㎡`,
+        holdingName: `${holding.complexName} ${formatArea(holding.areaM2)}`,
         targetId: target.id,
-        targetName: `${target.complexName} ${target.areaM2}㎡`,
+        targetName: `${target.complexName} ${formatArea(target.areaM2)}`,
         holdingPrice,
         targetPrice,
         gap: targetPrice - holdingPrice,

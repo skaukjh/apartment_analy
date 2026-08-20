@@ -15,6 +15,7 @@ import { getOpenAI, hasOpenAI, OPENAI_MODEL, SYSTEM_PROMPT } from '@/lib/ai/clie
 import { naverSearchRaw, stripTags, searchNews } from '@/lib/sources/news';
 import { fetchOfficialPress } from '@/lib/sources/gov';
 import type { DashboardData, NewsItem } from '@/lib/types';
+import { formatArea } from '@/lib/format';
 
 export interface OutlookSource {
   kind: 'official' | 'news' | 'blog' | 'cafe';
@@ -24,9 +25,18 @@ export interface OutlookSource {
   publishedAt?: string;
 }
 
+/** 이번 호출이 쓴 토큰 — 비용 추적용 */
+export interface TokenUsage {
+  input: number;
+  output: number;
+  total: number;
+}
+
 export interface MarketOutlook {
   /** 마크다운 본문 */
   markdown: string;
+  /** 토큰 사용량 (모델이 알려준 실측값) */
+  usage?: TokenUsage;
   /** 읽은 자료 */
   sources: OutlookSource[];
   /** 모델이 읽지 못한 것 */
@@ -129,7 +139,7 @@ function renderNumbers(data: DashboardData): string {
   for (const h of data.config.holdings) {
     const q = data.quotes[h.id];
     lines.push(
-      `- ${h.complexName} ${h.areaM2}㎡ (${h.sigungu} ${h.dong}): 시세 ${
+      `- ${h.complexName} ${formatArea(h.areaM2)} (${h.sigungu} ${h.dong}): 시세 ${
         q?.price ? `${(q.price / 1e8).toFixed(2)}억` : '미확보'
       }, 대출잔액 ${(h.loanBalance / 1e8).toFixed(2)}억`,
     );
@@ -139,7 +149,7 @@ function renderNumbers(data: DashboardData): string {
   for (const t of data.config.targets) {
     const q = data.quotes[t.id];
     lines.push(
-      `- ${t.complexName} ${t.areaM2}㎡ (${t.sigungu} ${t.dong}): 시세 ${
+      `- ${t.complexName} ${formatArea(t.areaM2)} (${t.sigungu} ${t.dong}): 시세 ${
         q?.price ? `${(q.price / 1e8).toFixed(2)}억` : '미확보'
       }`,
     );
@@ -261,6 +271,13 @@ ${gaps.length > 0 ? `[확보하지 못한 정보]\n${gaps.map((g) => `- ${g}`).j
 
   return {
     markdown,
+    usage: res.usage
+      ? {
+          input: res.usage.prompt_tokens,
+          output: res.usage.completion_tokens,
+          total: res.usage.total_tokens,
+        }
+      : undefined,
     sources: selected,
     gaps,
     model: OPENAI_MODEL,

@@ -133,8 +133,12 @@ export interface TradeRecord {
 
 /** 단지·면적 기준 시세 요약 */
 export interface PriceQuote {
-  /** 대표 시세 (원) — 최근 실거래 중앙값 또는 수동 입력값 */
+  /** 대표 시세 (원) — 직전 실거래가(가장 최근 체결가). 거래가 없으면 입력한 호가 */
   price: number;
+  /** 최근 6개월 실거래 중앙값 (원) — 단발 거래에 흔들리지 않는 참고값 */
+  medianPrice?: number;
+  /** 사용자가 설정에 입력한 호가 (원) */
+  askingPrice?: number;
   /** 시세 산출 근거 */
   basis: 'manual' | 'recent-trade' | 'region-index' | 'unknown';
   /** 참고한 실거래 건수 */

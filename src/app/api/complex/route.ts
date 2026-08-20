@@ -6,6 +6,7 @@ import { findSigungu } from '@/lib/regions';
 import { geocodeComplex, hasPlaceApi } from '@/lib/sources/place';
 import type { RegionPricePoint, TradeRecord } from '@/lib/types';
 import { median, recentYearMonths } from '@/lib/format';
+import { dongMatches } from '@/lib/dong-name';
 import { fetchTradesForMonths } from '@/lib/sources/molit';
 
 /** 캐시가 없을 때 국토부에서 바로 받아올 개월 수 */
@@ -87,7 +88,8 @@ export async function GET(request: Request) {
 
     for (const t of trades) {
       if (t.canceled || t.price <= 0 || t.areaM2 <= 0) continue;
-      if (dongFilter && t.dong !== dongFilter) continue;
+      // 지도는 행정동(자양2동), 실거래는 법정동(자양동)이라 이름이 다르다
+      if (dongFilter && !dongMatches(t.dong, dongFilter)) continue;
       const month = t.dealDate.slice(0, 7);
       if (month < from || (to && month > to)) continue;
 
