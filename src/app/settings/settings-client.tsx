@@ -41,6 +41,8 @@ export interface KakaoRecipientView {
 interface Props {
   initialConfig: UserConfig;
   kakao: { connected: boolean; reason?: string; recipients: KakaoRecipientView[] };
+  /** 로그인 계정 정보 (설정은 로그인해야 진입 가능) */
+  account: { email: string; canImportLegacy: boolean };
   flags: Record<'supabase' | 'molit' | 'ecos' | 'reb' | 'naver' | 'kakao', boolean>;
 }
 
@@ -53,7 +55,7 @@ interface FillReport {
   asOf: string;
 }
 
-export function SettingsClient({ initialConfig, kakao, flags }: Props) {
+export function SettingsClient({ initialConfig, kakao, account, flags }: Props) {
   const [config, setConfig] = useState<UserConfig>(initialConfig);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
@@ -310,14 +312,54 @@ export function SettingsClient({ initialConfig, kakao, flags }: Props) {
     patch({ watchRegions: [...config.watchRegions, region] });
   };
 
+  /** 레거시(로그인 도입 전) 공용 설정을 내 계정으로 복사 */
+  async function importLegacy() {
+    try {
+      const res = await fetch('/api/config?action=import-legacy', { method: 'POST' });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error ?? '가져오기 실패');
+      setConfig(json.config);
+      toast.success('기존 설정을 내 계정으로 가져왔습니다.');
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
+  async function logout() {
+    const { getBrowserSupabase } = await import('@/lib/auth/client');
+    await getBrowserSupabase().auth.signOut();
+    // 서버 컴포넌트가 세션 쿠키를 다시 읽어야 하므로 전체 리로드가 필요하다
+    window.location.assign(new URL('/', window.location.origin).toString());
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 pb-24">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">설정</h1>
-        <p className="text-muted-foreground text-sm">
-          입력한 값은 대시보드의 갭 계산·세금 시뮬레이션·호재 추적에 즉시 반영됩니다.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">설정</h1>
+          <p className="text-muted-foreground text-sm">
+            입력한 값은 대시보드의 갭 계산·세금 시뮬레이션·호재 추적에 즉시 반영됩니다.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">{account.email}</span>
+          <Button type="button" variant="outline" size="sm" onClick={logout}>
+            로그아웃
+          </Button>
+        </div>
       </div>
+
+      {account.canImportLegacy ? (
+        <Alert>
+          <AlertTitle>이 계정에는 아직 설정이 없습니다</AlertTitle>
+          <AlertDescription className="flex flex-wrap items-center gap-3">
+            <span>로그인 도입 전에 쓰던 공용 설정을 이 계정으로 가져올 수 있습니다.</span>
+            <Button type="button" size="sm" onClick={importLegacy}>
+              기존 설정 가져오기
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {!flags.supabase ? (
         <Alert>

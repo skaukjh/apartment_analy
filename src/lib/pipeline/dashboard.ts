@@ -165,12 +165,14 @@ function buildGaps(config: UserConfig, quotes: Record<string, PriceQuote>): GapS
 export interface BuildDashboardOptions {
   /** 뉴스·거시지표 등 외부 라이브 호출을 생략 (빠른 렌더링용) */
   skipLive?: boolean;
+  /** 어느 사용자의 설정으로 조립할지. 생략하면 레거시 'default' */
+  userId?: string;
 }
 
 export async function buildDashboard(options: BuildDashboardOptions = {}): Promise<DashboardData> {
   const generatedAt = new Date().toISOString();
   const sourceStatus: SourceStatus[] = [];
-  const config = await loadConfig();
+  const config = await loadConfig(options.userId);
 
   // 실거래 집계가 1시간 넘게 낡았으면 최근월만 백그라운드로 다시 긁는다 (응답은 기다리지 않음)
   const lazy = options.skipLive

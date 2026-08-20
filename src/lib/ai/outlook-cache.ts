@@ -20,21 +20,24 @@ export const OUTLOOK_TTL_MS = 60 * 60 * 1000;
 
 interface CacheEnvelope {
   kind: typeof KIND;
+  /** 어느 사용자의 설정으로 만든 요약인지. 없으면 레거시 'default'. */
+  userId?: string;
   outlook: MarketOutlook;
 }
 
-/** 서버리스 인스턴스가 살아 있는 동안 쓰는 1차 캐시 */
-let memoryCache: { at: number; outlook: MarketOutlook } | null = null;
+/** 서버리스 인스턴스가 살아 있는 동안 쓰는 1차 캐시 (사용자별) */
+const memoryCache = new Map<string, { at: number; outlook: MarketOutlook }>();
 
 function isFresh(generatedAt: string): boolean {
   const t = Date.parse(generatedAt);
   return Number.isFinite(t) && Date.now() - t < OUTLOOK_TTL_MS;
 }
 
-/** 1시간 안에 만든 요약이 있으면 그걸 준다. 없으면 null. */
-export async function loadCachedOutlook(): Promise<MarketOutlook | null> {
-  if (memoryCache && Date.now() - memoryCache.at < OUTLOOK_TTL_MS) {
-    return memoryCache.outlook;
+/** 1시간 안에 만든 요약이 있으면 그걸 준다. 없으면 null. 사용자별로 분리된다. */
+export async function loadCachedOutlook(userId = 'default'): Promise<MarketOutlook | null> {
+  const mem = memoryCache.get(userId);
+  if (mem && Date.now() - mem.at < OUTLOOK_TTL_MS) {
+    return mem.outlook;
   }
 
   const client = getAdminClient();
@@ -53,8 +56,12 @@ export async function loadCachedOutlook(): Promise<MarketOutlook | null> {
   for (const row of data) {
     const payload = row.payload as CacheEnvelope | null;
     if (payload?.kind !== KIND || !payload.outlook) continue;
+    if ((payload.userId ?? 'default') !== userId) continue;
     if (!isFresh(payload.outlook.generatedAt)) continue;
-    memoryCache = { at: Date.parse(payload.outlook.generatedAt), outlook: payload.outlook };
+    memoryCache.set(userId, {
+      at: Date.parse(payload.outlook.generatedAt),
+      outlook: payload.outlook,
+    });
     return payload.outlook;
   }
 
@@ -62,13 +69,13 @@ export async function loadCachedOutlook(): Promise<MarketOutlook | null> {
 }
 
 /** 새로 만든 요약을 캐시에 넣는다. 실패해도 본 기능을 막지 않는다. */
-export async function saveOutlookCache(outlook: MarketOutlook): Promise<void> {
-  memoryCache = { at: Date.now(), outlook };
+export async function saveOutlookCache(outlook: MarketOutlook, userId = 'default'): Promise<void> {
+  memoryCache.set(userId, { at: Date.now(), outlook });
 
   const client = getAdminClient();
   if (!client) return;
 
-  const envelope: CacheEnvelope = { kind: KIND, outlook };
+  const envelope: CacheEnvelope = { kind: KIND, userId, outlook };
   const { error } = await client
     .from('dashboard_snapshot')
     .insert({ captured_at: outlook.generatedAt, payload: envelope });

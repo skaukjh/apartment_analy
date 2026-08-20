@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { recentBriefings, runBriefing } from '@/lib/pipeline/briefing-service';
 import { errorResponse } from '@/lib/api-auth';
+import { configIdForRequest } from '@/lib/auth/server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -9,7 +10,7 @@ export const maxDuration = 180;
 export async function GET() {
   try {
     const [result, history] = await Promise.all([
-      runBriefing({ dryRun: true }),
+      runBriefing({ dryRun: true, userId: await configIdForRequest() }),
       recentBriefings(10),
     ]);
     return NextResponse.json({ ok: true, preview: result, history });
@@ -28,6 +29,7 @@ export async function POST(request: Request) {
       recipientIds: Array.isArray(body?.recipientIds) ? body.recipientIds : undefined,
       // 시간대별 문구를 미리 확인할 때 쓴다 (morning | noon | evening | night)
       slot: body?.slot,
+      userId: await configIdForRequest(),
     });
     return NextResponse.json(result, { status: result.ok ? 200 : 502 });
   } catch (e) {

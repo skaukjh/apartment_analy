@@ -43,6 +43,7 @@ export type KakaoRecipient = KakaoTokenRecord;
 
 interface TokenRow {
   id: string;
+  user_id: string | null;
   access_token: string;
   refresh_token: string | null;
   expires_at: string;
@@ -56,6 +57,7 @@ interface TokenRow {
 function fromRow(r: TokenRow): KakaoRecipient {
   return {
     id: r.id,
+    userId: r.user_id ?? 'default',
     accessToken: r.access_token,
     refreshToken: r.refresh_token ?? undefined,
     expiresAt: r.expires_at,
@@ -67,18 +69,27 @@ function fromRow(r: TokenRow): KakaoRecipient {
   };
 }
 
-export async function listRecipients(): Promise<KakaoRecipient[]> {
+/**
+ * 수신자 목록. userId 를 주면 그 사용자의 수신자만.
+ * 다중 사용자 도입 후 각 사용자는 자기 수신자에게만 발송한다.
+ */
+export async function listRecipients(userId?: string): Promise<KakaoRecipient[]> {
   const client = getAdminClient();
   if (!client) {
-    return [...memoryState().kakaoTokens.values()];
+    return [...memoryState().kakaoTokens.values()].filter(
+      (r) => !userId || (r.userId ?? 'default') === userId,
+    );
   }
 
-  const { data, error } = await client
+  let query = client
     .from('kakao_token')
     .select(
-      'id, access_token, refresh_token, expires_at, scope, label, kakao_nick, kakao_id, enabled',
+      'id, user_id, access_token, refresh_token, expires_at, scope, label, kakao_nick, kakao_id, enabled',
     )
     .order('created_at', { ascending: true });
+  if (userId) query = query.eq('user_id', userId);
+
+  const { data, error } = await query;
 
   if (error) {
     console.error('[kakao] 수신자 조회 실패:', error.message);
@@ -99,6 +110,7 @@ export async function saveRecipient(recipient: KakaoRecipient): Promise<void> {
 
   const { error } = await client.from('kakao_token').upsert({
     id: recipient.id,
+    user_id: recipient.userId ?? 'default',
     access_token: recipient.accessToken,
     refresh_token: recipient.refreshToken ?? null,
     expires_at: recipient.expiresAt,
@@ -124,9 +136,9 @@ export async function setRecipientEnabled(id: string, enabled: boolean): Promise
   await saveRecipient({ ...r, enabled });
 }
 
-/** 같은 카카오 계정이 이미 등록돼 있는지 */
-async function findByKakaoId(kakaoId: string): Promise<KakaoRecipient | null> {
-  return (await listRecipients()).find((r) => r.kakaoId === kakaoId) ?? null;
+/** 같은 사용자가 같은 카카오 계정을 이미 등록했는지 */
+async function findByKakaoId(kakaoId: string, userId: string): Promise<KakaoRecipient | null> {
+  return (await listRecipients(userId)).find((r) => r.kakaoId === kakaoId) ?? null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -214,6 +226,7 @@ export async function exchangeCodeAndRegister(
   code: string,
   redirectUri: string,
   label?: string,
+  userId: string = 'default',
 ): Promise<KakaoRecipient> {
   const key = env.kakaoRestKey;
   if (!key) throw new Error('KAKAO_REST_API_KEY 가 설정되지 않았습니다.');
@@ -229,12 +242,16 @@ export async function exchangeCodeAndRegister(
   const token = await requestToken(body);
   const profile = await fetchProfile(token.accessToken);
 
-  const existing = profile.kakaoId ? await findByKakaoId(profile.kakaoId) : null;
-  const existingCount = (await listRecipients()).length;
+  const existing = profile.kakaoId ? await findByKakaoId(profile.kakaoId, userId) : null;
+  const existingCount = (await listRecipients(userId)).length;
 
   const recipient: KakaoRecipient = {
     ...token,
-    id: existing?.id ?? (existingCount === 0 ? PRIMARY_ID : crypto.randomUUID()),
+    userId,
+    // 레거시('default' 사용자)의 첫 수신자만 고정 id 를 쓴다 (기존 데이터 호환)
+    id:
+      existing?.id ??
+      (existingCount === 0 && userId === 'default' ? PRIMARY_ID : crypto.randomUUID()),
     label: label ?? existing?.label ?? profile.nickname,
     nickname: profile.nickname ?? existing?.nickname,
     kakaoId: profile.kakaoId ?? existing?.kakaoId,
@@ -331,9 +348,9 @@ export interface SendReport {
  */
 export async function broadcast(
   templates: KakaoTemplate[],
-  options: { recipientIds?: string[] } = {},
+  options: { recipientIds?: string[]; userId?: string } = {},
 ): Promise<SendReport[]> {
-  const all = await listRecipients();
+  const all = await listRecipients(options.userId);
   const targets = all.filter(
     (r) => r.enabled && (!options.recipientIds || options.recipientIds.includes(r.id)),
   );
@@ -360,7 +377,7 @@ export async function broadcast(
 }
 
 /** 연결 상태 요약 (설정 화면용) */
-export async function getConnectionStatus(): Promise<{
+export async function getConnectionStatus(userId?: string): Promise<{
   connected: boolean;
   reason?: string;
   recipients: Array<{
@@ -375,7 +392,7 @@ export async function getConnectionStatus(): Promise<{
   if (!env.kakaoRestKey) {
     return { connected: false, reason: 'KAKAO_REST_API_KEY 미설정', recipients: [] };
   }
-  const list = await listRecipients();
+  const list = await listRecipients(userId);
   return {
     connected: list.length > 0,
     reason: list.length === 0 ? '연결된 카카오 계정이 없습니다.' : undefined,

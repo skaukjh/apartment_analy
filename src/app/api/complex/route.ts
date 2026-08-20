@@ -22,10 +22,14 @@ export interface ComplexStat {
   /** 기준월 대비 변동률 (%) */
   changeSinceBase: number;
   recent3mChange: number;
-  /** 최근 거래가 중앙값 (원) */
+  /** 직전 실거래가 (원) — 가장 최근 체결 1건 */
   latestPrice: number;
-  /** ㎡당 최근 중앙값 (원) */
+  /** 그 거래의 ㎡당 가격 (원) */
   latestPricePerM2: number;
+  /** 그 거래의 전용면적 (㎡) */
+  latestAreaM2: number;
+  /** 최근 5건 중앙값 (원) — 단발 거래에 흔들리지 않는 참고값 */
+  medianPrice: number;
   sampleSize: number;
   latestDealDate: string;
   builtYear?: number;
@@ -162,14 +166,21 @@ export async function GET(request: Request) {
       });
       const sorted = [...entry.all].sort((a, b) => b.dealDate.localeCompare(a.dealDate));
       const recent = sorted.slice(0, 5);
+      const latest = sorted[0];
 
       complexes.push({
         name,
         dong: entry.dong,
         changeSinceBase: analysis.changeSinceBase,
         recent3mChange: analysis.recent3mChange,
-        latestPrice: Math.round(median(recent.map((t) => t.price))),
-        latestPricePerM2: Math.round(median(recent.map((t) => t.price / t.areaM2))),
+        /* 예전에는 거래가와 ㎡당 가격을 각각 따로 중앙값으로 냈다.
+           면적이 섞인 단지에서는 두 값이 서로 다른 거래에서 나와
+           "13.2억 ÷ 2,520만 = 52.4㎡" 처럼 존재하지 않는 면적이 계산됐다.
+           같은 한 건(가장 최근 거래)에서 뽑아 서로 맞아떨어지게 한다. */
+        latestPrice: latest?.price ?? 0,
+        latestPricePerM2: latest ? Math.round(latest.price / latest.areaM2) : 0,
+        latestAreaM2: latest?.areaM2 ?? 0,
+        medianPrice: Math.round(median(recent.map((t) => t.price))),
         sampleSize: entry.all.length,
         latestDealDate: sorted[0]?.dealDate ?? '',
         builtYear: entry.builtYear,

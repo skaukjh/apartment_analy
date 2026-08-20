@@ -443,6 +443,36 @@ export function KoreaMap({
     [zoomToBBox, fromMonth, toMonth, onDongChange, onComplexesChange],
   );
 
+  /* 기간을 바꾸면 이미 열어 둔 동의 단지 목록도 다시 받아야 한다.
+     예전에는 동을 "클릭할 때"만 불러와서, 기간을 2023-01 → 2026-01 로 바꿔도
+     오른쪽 패널은 예전 거래 건수를 그대로 보여줬다. */
+  const dongLevelCode = level.kind === 'dong' ? level.code : null;
+  const dongLevelName = level.kind === 'dong' ? level.dong : null;
+
+  useEffect(() => {
+    if (!dongLevelCode || !dongLevelName) return;
+
+    const token = ++complexRequestRef.current;
+    // 마운트 직후가 아니라 기간이 바뀔 때만 도는 효과라 다음 틱으로 미룬다
+    const id = setTimeout(() => {
+      setComplexes(null);
+      setComplexLoading(true);
+      onComplexesChange?.(null, true);
+
+      void loadComplexes(dongLevelCode, dongLevelName, fromMonth, toMonth)
+        .then((list) => {
+          if (complexRequestRef.current !== token) return;
+          setComplexes(list);
+          onComplexesChange?.(list, false);
+        })
+        .finally(() => {
+          if (complexRequestRef.current === token) setComplexLoading(false);
+        });
+    }, 0);
+
+    return () => clearTimeout(id);
+  }, [fromMonth, toMonth, dongLevelCode, dongLevelName, onComplexesChange]);
+
   /** 폴리곤의 codes 중 표본이 가장 많은 코드를 대표로 */
   const pickCode = useCallback(
     (shape: SigunguShape): string | undefined => {
@@ -776,9 +806,14 @@ export function KoreaMap({
           {level.kind === 'dong' && complexes
             ? complexes
                 .filter((c) => c.lat !== undefined && c.lon !== undefined)
-                .map((c) => {
+                .map((c, ci) => {
                   const { x, y } = projection.project(c.lat!, c.lon!);
-                  const r = Math.max(2.5, 9 / s);
+                  /* 반지름은 화면 픽셀 기준으로 고정한다.
+                     예전엔 Math.max(2.5, 9/s) 였는데, 동 단위로 확대하면 s 가 커져
+                     2.5 라는 바닥값이 지리적으로 거대해져 단지들이 겹쳐 보였다. */
+                  const r = 4 / s;
+                  // 라벨이 너무 많으면 서로 겹쳐 못 읽는다. 거래 많은 순 상위만 이름을 단다.
+                  const showLabel = ci < 12;
                   return (
                     <g key={`cx-${c.name}`}>
                       <circle
@@ -795,23 +830,25 @@ export function KoreaMap({
                           {` · 최근 ${(c.latestPrice / 100_000_000).toFixed(2)}억 · 거래 ${c.sampleSize}건`}
                         </title>
                       </circle>
-                      <text
-                        x={x}
-                        y={y - r - 2 / s}
-                        textAnchor="middle"
-                        pointerEvents="none"
-                        style={{
-                          fontSize: 11 / s,
-                          fontWeight: 600,
-                          fill: 'var(--foreground)',
-                          paintOrder: 'stroke',
-                          stroke: 'var(--background)',
-                          strokeWidth: 2.5 / s,
-                          strokeLinejoin: 'round',
-                        }}
-                      >
-                        {c.name.length > 10 ? `${c.name.slice(0, 9)}…` : c.name}
-                      </text>
+                      {showLabel ? (
+                        <text
+                          x={x}
+                          y={y - r - 2 / s}
+                          textAnchor="middle"
+                          pointerEvents="none"
+                          style={{
+                            fontSize: 9 / s,
+                            fontWeight: 600,
+                            fill: 'var(--foreground)',
+                            paintOrder: 'stroke',
+                            stroke: 'var(--background)',
+                            strokeWidth: 2.5 / s,
+                            strokeLinejoin: 'round',
+                          }}
+                        >
+                          {c.name.length > 10 ? `${c.name.slice(0, 9)}…` : c.name}
+                        </text>
+                      ) : null}
                     </g>
                   );
                 })

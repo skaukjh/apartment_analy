@@ -1,3 +1,4 @@
+import { configIdForRequest } from '@/lib/auth/server';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, CalendarDays, TrendingDown, TrendingUp, Minus } from 'lucide-react';
@@ -27,7 +28,7 @@ export default async function OutlookPage({ params }: { params: Promise<{ eventI
   const event = buildSchedule(180).find((e) => e.id === decoded);
   if (!event) notFound();
 
-  const data = await buildDashboard();
+  const data = await buildDashboard({ userId: await configIdForRequest() });
   const { spread } = summarizeDashboard(data);
   const outlook = buildOutlook(event, {
     macro: data.macro,

@@ -117,14 +117,21 @@ export function isConfigEmpty(config: UserConfig): boolean {
 /* 읽기 / 쓰기                                                          */
 /* ------------------------------------------------------------------ */
 
-export async function loadConfig(): Promise<UserConfig> {
+/**
+ * 사용자별 설정 조회.
+ *
+ * userId 는 반드시 서버에서 세션으로 확인한 값이어야 한다 (lib/auth/server.ts).
+ * 로그인하지 않은 요청은 레거시 'default' 를 쓴다 — 다중 사용자 도입 전의
+ * 단일 설정이 그 행에 남아 있다.
+ */
+export async function loadConfig(userId: string = CONFIG_ID): Promise<UserConfig> {
   const client = getAdminClient();
   if (!client) return memoryState().config ?? DEFAULT_CONFIG;
 
   const { data, error } = await client
     .from('user_config')
     .select('data')
-    .eq('id', CONFIG_ID)
+    .eq('id', userId)
     .maybeSingle();
 
   if (error) {
@@ -141,7 +148,7 @@ export async function loadConfig(): Promise<UserConfig> {
   return parsed.data as UserConfig;
 }
 
-export async function saveConfig(input: unknown): Promise<UserConfig> {
+export async function saveConfig(input: unknown, userId: string = CONFIG_ID): Promise<UserConfig> {
   const parsed = userConfigSchema.parse(input);
   const config: UserConfig = { ...parsed, updatedAt: new Date().toISOString() } as UserConfig;
 
@@ -153,11 +160,25 @@ export async function saveConfig(input: unknown): Promise<UserConfig> {
 
   const { error } = await client
     .from('user_config')
-    .upsert({ id: CONFIG_ID, data: config, updated_at: config.updatedAt });
+    .upsert({ id: userId, data: config, updated_at: config.updatedAt });
 
   if (error) throw new Error(`설정 저장 실패: ${error.message}`);
   memoryState().config = config;
   return config;
+}
+
+/**
+ * 설정이 저장된 모든 사용자 id.
+ * 브리핑 cron 이 사용자별로 발송을 돌 때 쓴다. 'default'(레거시) 포함.
+ */
+export async function listConfigUserIds(): Promise<string[]> {
+  const client = getAdminClient();
+  if (!client) return [CONFIG_ID];
+
+  const { data, error } = await client.from('user_config').select('id').limit(500);
+  if (error || !data) return [CONFIG_ID];
+  const ids = data.map((r) => r.id as string);
+  return ids.length > 0 ? ids : [CONFIG_ID];
 }
 
 /** 설정에서 분석 대상 시군구 코드 목록을 추출 */

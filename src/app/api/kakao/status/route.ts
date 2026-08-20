@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getConnectionStatus, removeRecipient, setRecipientEnabled } from '@/lib/kakao/client';
 import { errorResponse } from '@/lib/api-auth';
+import { configIdForRequest } from '@/lib/auth/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    return NextResponse.json({ ok: true, ...(await getConnectionStatus()) });
+    return NextResponse.json({
+      ok: true,
+      ...(await getConnectionStatus(await configIdForRequest())),
+    });
   } catch (e) {
     return errorResponse(e);
   }
@@ -19,7 +23,10 @@ export async function PATCH(request: Request) {
     const id = String(body?.id ?? '');
     if (!id) return NextResponse.json({ ok: false, error: 'id 가 필요합니다.' }, { status: 400 });
     await setRecipientEnabled(id, Boolean(body?.enabled));
-    return NextResponse.json({ ok: true, ...(await getConnectionStatus()) });
+    return NextResponse.json({
+      ok: true,
+      ...(await getConnectionStatus(await configIdForRequest())),
+    });
   } catch (e) {
     return errorResponse(e);
   }
@@ -32,10 +39,13 @@ export async function DELETE(request: Request) {
     if (id) {
       await removeRecipient(id);
     } else {
-      const status = await getConnectionStatus();
+      const status = await getConnectionStatus(await configIdForRequest());
       await Promise.all(status.recipients.map((r) => removeRecipient(r.id)));
     }
-    return NextResponse.json({ ok: true, ...(await getConnectionStatus()) });
+    return NextResponse.json({
+      ok: true,
+      ...(await getConnectionStatus(await configIdForRequest())),
+    });
   } catch (e) {
     return errorResponse(e);
   }

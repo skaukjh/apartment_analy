@@ -52,11 +52,13 @@ export async function runBriefing(
     recipientIds?: string[];
     /** 발송 시간대. 같은 데이터라도 시간대별로 먼저 보여줄 항목이 다르다. */
     slot?: BriefingSlot;
+    /** 어느 사용자의 설정·수신자로 보낼지. 생략하면 레거시 'default' */
+    userId?: string;
   } = {},
 ): Promise<BriefingRunResult> {
   const dryRun = options.dryRun ?? false;
 
-  const data = await buildDashboard();
+  const data = await buildDashboard({ userId: options.userId });
   const briefing = buildBriefing(data);
   const text = briefingToText(briefing);
   // 요약 1건 모드에서는 알림이 한 번만 울린다
@@ -86,7 +88,10 @@ export async function runBriefing(
     const templates = singleMessage
       ? briefingToSingleTemplate(briefing, env.appUrl, data, options.slot)
       : briefingToKakaoTemplates(briefing, env.appUrl);
-    const reports = await broadcast(templates, { recipientIds: options.recipientIds });
+    const reports = await broadcast(templates, {
+      recipientIds: options.recipientIds,
+      userId: options.userId ?? 'default',
+    });
 
     const failed = reports.filter((r) => !r.ok);
     const summary = reports

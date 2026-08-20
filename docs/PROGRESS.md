@@ -78,6 +78,27 @@ typecheck·lint 통과 상태. `npm run build` → 커밋 → 푸시 → `vercel
 
 ---
 
+### 다중 사용자 · 로그인 (이번 세션 후반 추가)
+
+- Supabase Auth 이메일+비밀번호. 가입은 서버 admin API(email_confirm)로 만들어
+  **대시보드 설정 없이 바로 로그인**된다 (/api/auth/signup).
+- 비밀번호 재설정은 Supabase 메일 → /login/update-password.
+  ⚠️ 배포 환경에서 재설정 메일이 동작하려면 Supabase 대시보드 →
+  Authentication → URL Configuration 에서 Site URL 을
+  https://apartment-analy.vercel.app 로, Redirect URLs 에
+  https://apartment-analy.vercel.app/login/update-password 를 추가해야 한다.
+  (이것만은 대시보드에서 수동으로 해야 함)
+- user_config.id = auth.users.id (레거시 비로그인 = 'default' 행 유지)
+- kakao_token.user_id 컬럼 추가 (마이그레이션 0004, pg 직접 적용 완료).
+  DB 직접 접속: aws-0-ap-northeast-2.pooler.supabase.com:5432,
+  user postgres.acfhrbhigwvsrkrekekn (비밀번호는 기존 문서 참고)
+- 설정(/settings)은 로그인 필수. 빈 계정엔 "기존 설정 가져오기" 버튼
+  (레거시 default 복사, /api/config?action=import-legacy)
+- 대시보드·오늘의 요약·시뮬레이션·AI 캐시·카카오 수신자·브리핑 발송 전부
+  세션 사용자 스코프. tick 은 모든 사용자를 돌며 각자 설정·수신자로 발송.
+- 세션 갱신은 src/proxy.ts (Next 16: middleware 가 proxy 로 개명됨)
+- 검증 완료: 가입→로그인→저장→조회 분리, 비로그인 401, 중복가입 409
+
 ## 이번 세션에 한 일 (되돌리지 말 것)
 
 ### 카카오 연동 (처음부터 끝까지)

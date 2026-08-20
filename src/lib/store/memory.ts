@@ -23,6 +23,8 @@ export interface MemoryState {
 }
 
 export interface KakaoTokenRecord {
+  /** 이 수신자를 등록한 사용자 (auth.users.id 또는 레거시 'default') */
+  userId?: string;
   id: string;
   accessToken: string;
   refreshToken?: string;

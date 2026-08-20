@@ -1,3 +1,4 @@
+import { configIdForRequest } from '@/lib/auth/server';
 import Link from 'next/link';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { buildDashboard, summarizeDashboard } from '@/lib/pipeline/dashboard';
@@ -28,10 +29,11 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function DashboardPage() {
-  const data = await buildDashboard();
+  const userId = await configIdForRequest();
+  const data = await buildDashboard({ userId });
   const { spread, primaryGap, newHighs, newLows } = summarizeDashboard(data);
   const briefing = buildBriefing(data);
-  const kakao = await getConnectionStatus().catch(() => ({ connected: false }));
+  const kakao = await getConnectionStatus(userId).catch(() => ({ connected: false }));
   const empty = isConfigEmpty(data.config);
   const heat = HEAT_META[data.sentiment.heatLevel];
 

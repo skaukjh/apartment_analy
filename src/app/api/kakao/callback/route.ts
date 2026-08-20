@@ -9,8 +9,23 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
   const error = url.searchParams.get('error');
-  // 수신자를 추가할 때 넘긴 별명 (state 에 실어 보낸다)
-  const label = url.searchParams.get('state')?.trim() || undefined;
+  // state 에는 별명(label)과 등록 대상 사용자 id 가 base64url JSON 으로 담겨 있다.
+  // 예전 형식(별명 문자열 그대로)도 파싱 실패 시 폴백으로 지원한다.
+  const rawState = url.searchParams.get('state')?.trim() || undefined;
+  let label: string | undefined = rawState;
+  let stateUserId = 'default';
+  if (rawState) {
+    try {
+      const parsed = JSON.parse(Buffer.from(rawState, 'base64url').toString('utf8')) as {
+        l?: string;
+        u?: string;
+      };
+      label = parsed.l;
+      if (parsed.u) stateUserId = parsed.u;
+    } catch {
+      /* 구형 state — 별명으로 취급 */
+    }
+  }
   const settingsUrl = new URL('/settings', url.origin);
 
   if (error) {
@@ -27,7 +42,7 @@ export async function GET(request: Request) {
 
   try {
     const redirectUri = env.kakaoRedirectUri ?? `${url.origin}/api/kakao/callback`;
-    const recipient = await exchangeCodeAndRegister(code, redirectUri, label);
+    const recipient = await exchangeCodeAndRegister(code, redirectUri, label, stateUserId);
     settingsUrl.searchParams.set('kakao', 'connected');
     settingsUrl.searchParams.set('name', recipient.label ?? recipient.nickname ?? '수신자');
     return NextResponse.redirect(settingsUrl);

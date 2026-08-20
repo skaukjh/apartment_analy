@@ -4,6 +4,7 @@ import { buildMarketOutlook } from '@/lib/ai/market-outlook';
 import { loadCachedOutlook, saveOutlookCache, OUTLOOK_TTL_MS } from '@/lib/ai/outlook-cache';
 import { hasOpenAI } from '@/lib/ai/client';
 import { errorResponse } from '@/lib/api-auth';
+import { configIdForRequest } from '@/lib/auth/server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -28,9 +29,10 @@ export async function GET(request: Request) {
     }
 
     const force = new URL(request.url).searchParams.get('refresh') === '1';
+    const userId = await configIdForRequest();
 
     if (!force) {
-      const cached = await loadCachedOutlook();
+      const cached = await loadCachedOutlook(userId);
       if (cached) {
         return NextResponse.json({
           ok: true,
@@ -45,9 +47,9 @@ export async function GET(request: Request) {
       }
     }
 
-    const data = await buildDashboard();
+    const data = await buildDashboard({ userId });
     const outlook = await buildMarketOutlook(data);
-    await saveOutlookCache(outlook);
+    await saveOutlookCache(outlook, userId);
 
     return NextResponse.json({ ok: true, ...outlook, cached: false });
   } catch (e) {

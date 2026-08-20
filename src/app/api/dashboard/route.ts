@@ -1,3 +1,4 @@
+import { configIdForRequest } from '@/lib/auth/server';
 import { NextResponse } from 'next/server';
 import { buildDashboard } from '@/lib/pipeline/dashboard';
 import { errorResponse } from '@/lib/api-auth';
@@ -9,7 +10,7 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const skipLive = url.searchParams.get('live') === '0';
-    const data = await buildDashboard({ skipLive });
+    const data = await buildDashboard({ skipLive, userId: await configIdForRequest() });
     return NextResponse.json({ ok: true, data });
   } catch (e) {
     return errorResponse(e);

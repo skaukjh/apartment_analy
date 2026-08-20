@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { authorizeCron, errorResponse } from '@/lib/api-auth';
 import { runBriefing } from '@/lib/pipeline/briefing-service';
 import { refreshRecent } from '@/lib/pipeline/refresh';
-import { analysisTargets, loadConfig } from '@/lib/store/config';
+import { analysisTargets, listConfigUserIds, loadConfig } from '@/lib/store/config';
 import { slotForHour, type BriefingSlot } from '@/lib/kakao/briefing';
 import { nowKst } from '@/lib/format';
 import { hasOpenAI } from '@/lib/ai/client';
@@ -43,23 +43,29 @@ export async function GET(request: Request) {
     const hour = kst.getHours();
     const slot = forced ?? slotForHour(hour);
 
-    /* 1) 최근 실거래 갱신 — 오늘의 요약이 실데이터를 보게 한다 */
-    const config = await loadConfig();
-    const codes = analysisTargets(config);
-    const refresh = await refreshRecent(codes, 2, { budgetMs: 120_000 });
+    /* 1) 최근 실거래 갱신 — 모든 사용자의 관심 지역을 합쳐 한 번만 긁는다 */
+    const userIds = await listConfigUserIds();
+    const codeSet = new Set<string>();
+    for (const uid of userIds) {
+      const cfg = await loadConfig(uid);
+      analysisTargets(cfg).forEach((c) => codeSet.add(c));
+    }
+    const refresh = await refreshRecent([...codeSet], 2, { budgetMs: 120_000 });
 
     /* 1-2) AI 요약을 미리 만들어 캐시에 넣는다.
        사용자가 페이지를 열 때 20~40초를 기다리지 않아도 되고,
        호출 횟수가 시간당 1회로 고정돼 비용이 예측 가능해진다. */
-    let outlookCached = false;
+    let outlookCached = 0;
     if (hasOpenAI()) {
-      try {
-        const data = await buildDashboard();
-        const outlook = await buildMarketOutlook(data);
-        await saveOutlookCache(outlook);
-        outlookCached = true;
-      } catch (e) {
-        console.error('[tick] AI 요약 생성 실패:', (e as Error).message);
+      for (const uid of userIds) {
+        try {
+          const data = await buildDashboard({ userId: uid });
+          const outlook = await buildMarketOutlook(data);
+          await saveOutlookCache(outlook, uid);
+          outlookCached += 1;
+        } catch (e) {
+          console.error('[tick] AI 요약 생성 실패:', uid.slice(0, 8), (e as Error).message);
+        }
       }
     }
 
@@ -80,18 +86,31 @@ export async function GET(request: Request) {
       });
     }
 
-    const result = await runBriefing({ slot });
+    /* 사용자마다 자기 설정으로 만든 브리핑을 자기 수신자에게 보낸다 */
+    const perUser: Array<{ userId: string; ok: boolean; sent: boolean; error?: string }> = [];
+    let firstPreview: string | undefined;
+
+    for (const uid of userIds) {
+      try {
+        const result = await runBriefing({ slot, userId: uid });
+        perUser.push({ userId: uid, ok: result.ok, sent: !result.skippedReason });
+        firstPreview ??= result.chunks[0]?.slice(0, 300);
+      } catch (e) {
+        // 수신자가 없는 사용자는 broadcast 가 던진다 — 정상 상황이므로 건너뛴다
+        perUser.push({ userId: uid, ok: false, sent: false, error: (e as Error).message });
+      }
+    }
+
+    const anySent = perUser.some((r) => r.sent);
 
     return NextResponse.json(
       {
-        ok: result.ok,
+        ok: true,
         hourKst: hour,
         slot,
-        sent: !result.skippedReason,
-        messageCount: result.messageCount,
-        skippedReason: result.skippedReason,
-        error: result.error,
-        preview: result.chunks[0]?.slice(0, 300),
+        sent: anySent,
+        users: perUser.map((r) => ({ ...r, userId: r.userId.slice(0, 8) })),
+        preview: firstPreview,
         outlookCached,
         refresh: {
           regions: refresh.regionsProcessed,
@@ -99,7 +118,7 @@ export async function GET(request: Request) {
           errors: refresh.errors.length,
         },
       },
-      { status: result.ok ? 200 : 502 },
+      { status: 200 },
     );
   } catch (e) {
     return errorResponse(e);
