@@ -1,0 +1,49 @@
+# 매시간 브리핑 tick 호출
+#
+# Vercel Hobby 요금제는 cron 을 하루 1회만 허용한다.
+# 하루 4회(05·11·18·22시 KST) 발송과 1시간 간격 데이터 갱신이 필요하므로
+# 스케줄만 GitHub Actions 로 옮기고, 실제 일은 배포된 앱이 한다.
+#
+# 준비: 레포 Settings → Secrets and variables → Actions 에 두 개 등록
+#   CRON_SECRET  — .env.local 의 값과 동일
+#   APP_URL      — https://apartment-analy.vercel.app
+name: 브리핑 tick
+
+on:
+  schedule:
+    # GitHub Actions 는 UTC 기준. KST = UTC + 9
+    - cron: '0 * * * *'
+  # 수동 실행 (테스트용)
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: '강제 발송할 슬롯 (morning/noon/evening/night). 비우면 현재 시각 기준'
+        required: false
+        default: ''
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: tick 호출
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SLOT: ${{ github.event.inputs.slot }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "APP_URL 또는 CRON_SECRET 시크릿이 없습니다."
+            exit 1
+          fi
+
+          URL="$APP_URL/api/cron/tick?secret=$CRON_SECRET"
+          if [ -n "$SLOT" ]; then
+            URL="$URL&slot=$SLOT"
+          fi
+
+          # 시크릿이 로그에 남지 않도록 URL 은 출력하지 않는다
+          CODE=$(curl -s -o response.json -w '%{http_code}' --max-time 290 "$URL")
+          echo "HTTP $CODE"
+          cat response.json
+          # 5xx 만 실패로 본다 (발송 시각이 아니면 200 + sent:false 가 정상)
+          [ "$CODE" -lt 500 ]
