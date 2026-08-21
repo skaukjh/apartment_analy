@@ -438,7 +438,6 @@ ${gaps.length > 0 ? `[확보하지 못한 정보]\n${gaps.map((g) => `- ${g}`).j
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: prompt },
     ],
-    temperature: 0.3,
   });
 
   const markdown = res.choices[0]?.message?.content?.trim() ?? '';

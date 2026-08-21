@@ -72,7 +72,6 @@ export async function POST(request: Request) {
 
     const completion = await getOpenAI(ai.key).chat.completions.create({
       model: OPENAI_MODEL,
-      temperature: 0.3,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         {

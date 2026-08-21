@@ -7,7 +7,6 @@ import { buildDashboard } from '@/lib/pipeline/dashboard';
 import {
   buildBriefing,
   briefingToKakaoTemplates,
-  briefingToImageTemplate,
   briefingToSingleTemplate,
   type BriefingSlot,
   briefingToText,
@@ -64,15 +63,15 @@ export async function runBriefing(
   const data = await buildDashboard({ userId: options.userId });
   const briefing = buildBriefing(data);
   const text = briefingToText(briefing);
-  const format = data.config.briefingFormat ?? 'image';
+  // 'image' 는 요약(텍스트 2건)으로 통합됐다 — 본문 1건 + 링크 포함 마무리 1건.
+  const rawFormat = data.config.briefingFormat ?? 'summary';
+  const format = rawFormat === 'image' ? 'summary' : rawFormat;
   const chunks =
-    format === 'image'
-      ? [text] // 이미지에는 전문이 통째로 들어간다 — 미리보기도 전문
-      : format === 'full'
-        ? previewChunks(briefing)
-        : briefingToSingleTemplate(briefing, env.appUrl, data, options.slot).map(
-            (t) => ('text' in t ? t.text : '') ?? '',
-          );
+    format === 'full'
+      ? previewChunks(briefing)
+      : briefingToSingleTemplate(briefing, env.appUrl, data, options.slot).map(
+          (t) => ('text' in t ? t.text : '') ?? '',
+        );
 
   const base: Omit<BriefingRunResult, 'ok'> = {
     dryRun,
@@ -113,9 +112,6 @@ export async function runBriefing(
           button_title: '오늘의 요약 열기',
         },
       ];
-    } else if (format === 'image') {
-      // 컴팩트 feed (이미지 없음) — 상세는 오늘의 요약 페이지가 담당
-      templates = [briefingToImageTemplate(briefing, env.appUrl, '', options.slot)];
     } else if (format === 'full') {
       templates = briefingToKakaoTemplates(briefing, env.appUrl);
     } else {

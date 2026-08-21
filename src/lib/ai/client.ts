@@ -16,7 +16,9 @@ export function hasOpenAI(): boolean {
   return Boolean(openaiKey());
 }
 
-export const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || 'gpt-4.1-mini';
+// gpt-5-mini: 4.1-mini 후속. 같은 급 비용에 요약·정리 품질이 좋아 기본값으로 쓴다.
+// 주의: gpt-5 계열은 temperature 지정을 지원하지 않는다 (기본 1 고정) — 실측 확인.
+export const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || 'gpt-5-mini';
 
 const cached = new Map<string, OpenAI>();
 

@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2, RefreshCw, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { SectionCard } from '@/components/ui-bits';
 
 interface OutlookSource {
   kind: 'official' | 'news' | 'blog' | 'cafe';
@@ -126,18 +127,20 @@ export function AiOutlookPanel({
   }
 
   return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
-        <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
-          <Sparkles className="size-3.5" />
-          {data?.model ?? 'AI'}
+    <SectionCard
+      title={
+        <>
+          <Sparkles className="size-4" /> AI 요약 · 전망
           {data?.generatedAt ? (
-            <strong className="text-primary font-semibold">
-              · {formatGeneratedAt(data.generatedAt)} 생성 내용
-            </strong>
-          ) : null}{' '}
-          · 새 자료(공식발표 1건+ 또는 기사·글 20건+)가 쌓일 때만 다시 만듭니다
-        </span>
+            <span className="text-muted-foreground ml-1 text-sm font-normal">
+              ({formatGeneratedAt(data.generatedAt)} 생성 내용)
+            </span>
+          ) : null}
+        </>
+      }
+      description="공식 발표와 정책, 커뮤니티 글을 읽고 보유·목표 아파트 기준으로 정리합니다. 새 자료(공식발표 1건+ 또는 기사·글 20건+)가 쌓일 때만 다시 만듭니다. 투자 자문이 아닙니다."
+    >
+      <div className="mb-3 flex items-center justify-end">
         {canRefresh ? (
           <Button
             type="button"
@@ -203,6 +206,6 @@ export function AiOutlookPanel({
           )}
         </>
       )}
-    </div>
+    </SectionCard>
   );
 }

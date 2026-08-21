@@ -59,12 +59,7 @@ export default async function TodayPage() {
       </div>
 
       <div className="mb-6">
-        <SectionCard
-          title="AI 요약 · 전망"
-          description="공식 발표와 정책, 커뮤니티 글을 읽고 보유·목표 아파트 기준으로 정리합니다. 투자 자문이 아닙니다."
-        >
-          <AiOutlookPanel enabled={hasOpenAI() || ai.allowed} canRefresh={ai.allowed} />
-        </SectionCard>
+        <AiOutlookPanel enabled={hasOpenAI() || ai.allowed} canRefresh={ai.allowed} />
       </div>
 
       <SectionCard title="오늘의 브리핑 전문" description="카카오톡으로 발송되는 내용입니다.">

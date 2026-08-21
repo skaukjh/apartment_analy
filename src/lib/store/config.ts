@@ -76,7 +76,7 @@ export const userConfigSchema = z.object({
   household: householdSchema.default(householdSchema.parse({})),
   kakaoBriefingEnabled: z.boolean().default(true),
   briefingHour: z.number().int().min(0).max(23).default(8),
-  briefingFormat: z.enum(['summary', 'full', 'image']).default('image'),
+  briefingFormat: z.enum(['summary', 'full', 'image']).default('summary'),
   openaiApiKey: z.string().trim().max(200).optional(),
   updatedAt: z.string().default(() => new Date().toISOString()),
 });
@@ -103,7 +103,7 @@ export const DEFAULT_CONFIG: UserConfig = {
   },
   kakaoBriefingEnabled: true,
   briefingHour: 8,
-  briefingFormat: 'image',
+  briefingFormat: 'summary',
   updatedAt: new Date(0).toISOString(),
 };
 
