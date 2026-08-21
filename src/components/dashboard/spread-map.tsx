@@ -209,23 +209,20 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
       badge={<Badge variant="secondary">확산률 {spread.spreadRate.toFixed(0)}%</Badge>}
       action={
         <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
-          <input
-            type="month"
+          <MonthSelect
             value={fromMonth}
-            max={toMonth || undefined}
-            onChange={(e) => setFromMonth(e.target.value)}
-            aria-label="비교 시작월"
-            className="bg-background min-w-0 flex-1 rounded-md border px-2 py-1 text-xs sm:flex-none"
+            onChange={setFromMonth}
+            max={toMonth || defaultTo}
+            label="시작"
           />
           <span className="text-muted-foreground text-xs">→</span>
-          <input
-            type="month"
+          <MonthSelect
             value={toMonth}
+            onChange={setToMonth}
             min={fromMonth}
-            max={defaultTo || undefined}
-            onChange={(e) => setToMonth(e.target.value)}
-            aria-label="비교 종료월 (비우면 최신)"
-            className="bg-background min-w-0 flex-1 rounded-md border px-2 py-1 text-xs sm:flex-none"
+            max={defaultTo}
+            label="최신"
+            allowEmpty
           />
           <Button
             size="sm"
@@ -426,7 +423,14 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
                       onClick={() => setSelected(r)}
                       className="hover:bg-muted flex w-full items-center justify-between rounded px-2 py-1 text-xs"
                     >
-                      <span>{r.regionName}</span>
+                      <span>
+                        {r.regionName}
+                        {r.recent3mChange > 0 ? (
+                          <span className="text-rise ml-1 text-[10px]" title="최근 3개월 상승 전환">
+                            ↗{formatPct(r.recent3mChange, 1)}
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="tabular text-fall">{formatPct(r.changeSinceBase, 1)}</span>
                     </button>
                   </li>
@@ -434,9 +438,108 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
               </ul>
             )}
           </div>
+
+          {spread.recentlyRecovered.length > 0 ? (
+            <div>
+              <h4 className="mb-2 text-sm font-semibold">
+                <span className="text-rise">반등 성공</span> — 저점 탈출 후 상승 중
+                <span className="text-muted-foreground ml-1 font-normal">
+                  ({spread.recentlyRecovered.length}곳)
+                </span>
+              </h4>
+              <ul className="thin-scrollbar max-h-48 space-y-1 overflow-y-auto pr-1">
+                {spread.recentlyRecovered.slice(0, 20).map((r) => (
+                  <li key={r.lawdCd}>
+                    <button
+                      type="button"
+                      onClick={() => setSelected(r)}
+                      className="hover:bg-muted flex w-full items-center justify-between rounded px-2 py-1 text-xs"
+                    >
+                      <span>
+                        {r.regionName}
+                        <span className="text-muted-foreground ml-1 text-[10px]">
+                          저점 대비 +{formatPct(r.reboundFromTrough, 1).replace('+', '')}
+                        </span>
+                      </span>
+                      <span className="tabular text-rise">
+                        3개월 {formatPct(r.recent3mChange, 1)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       </div>
     </SectionCard>
+  );
+}
+
+/** 연/월 드롭다운 — 브라우저 기본 month 입력이 투박해 교체 */
+function MonthSelect({
+  value,
+  onChange,
+  min,
+  max,
+  label,
+  allowEmpty = false,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  min?: string;
+  max?: string;
+  label: string;
+  allowEmpty?: boolean;
+}) {
+  const maxYm = max || `${new Date().getFullYear()}-12`;
+  const minYm = min || '2006-01';
+  const years: number[] = [];
+  for (let y = Number(maxYm.slice(0, 4)); y >= Number(minYm.slice(0, 4)); y -= 1) years.push(y);
+
+  const [year, month] = value ? [value.slice(0, 4), value.slice(5, 7)] : ['', ''];
+
+  const set = (y: string, m: string) => {
+    if (!y || !m) {
+      if (allowEmpty) onChange('');
+      return;
+    }
+    let ym = `${y}-${m}`;
+    if (ym < minYm) ym = minYm;
+    if (ym > maxYm) ym = maxYm;
+    onChange(ym);
+  };
+
+  return (
+    <span className="flex items-center gap-1">
+      <select
+        value={year}
+        onChange={(e) => set(e.target.value, month || '01')}
+        aria-label={`${label} 연도`}
+        className="bg-background rounded-md border px-1.5 py-1 text-xs"
+      >
+        {allowEmpty ? <option value="">{label}</option> : null}
+        {years.map((y) => (
+          <option key={y} value={y}>
+            {y}년
+          </option>
+        ))}
+      </select>
+      <select
+        value={month}
+        onChange={(e) => set(year || maxYm.slice(0, 4), e.target.value)}
+        aria-label={`${label} 월`}
+        disabled={!year && allowEmpty}
+        className="bg-background rounded-md border px-1.5 py-1 text-xs disabled:opacity-40"
+      >
+        {allowEmpty && !year ? <option value="">--</option> : null}
+        {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map((m) => (
+          <option key={m} value={m}>
+            {Number(m)}월
+          </option>
+        ))}
+      </select>
+    </span>
   );
 }
 
@@ -468,7 +571,17 @@ function RankList({
           className="size-2.5 shrink-0 rounded-full"
           style={{ background: changeColor(r.changeSinceBase, 20) }}
         />
-        <span className="flex-1 truncate text-left">{r.regionName}</span>
+        <span className="flex-1 truncate text-left">
+          {r.regionName}
+          {r.thinSample ? (
+            <span
+              className="text-muted-foreground ml-1 text-[10px]"
+              title="월 거래 30건 미만 — 거래 구성(신축 입주 등)에 따라 변동률이 크게 흔들릴 수 있습니다"
+            >
+              ⚠표본적음
+            </span>
+          ) : null}
+        </span>
         <span className={cn('tabular', r.changeSinceBase >= 0 ? 'text-rise' : 'text-fall')}>
           {formatPct(r.changeSinceBase, 1)}
         </span>

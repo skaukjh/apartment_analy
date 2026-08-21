@@ -12,6 +12,8 @@ import { GapSection } from '@/components/dashboard/gap-section';
 import { SpreadMap } from '@/components/dashboard/spread-map';
 import { CatalystSection } from '@/components/dashboard/catalyst-section';
 import { SentimentSection } from '@/components/dashboard/sentiment-section';
+import { SentimentNoteCard } from '@/components/dashboard/sentiment-note-card';
+import { loadSentimentNote } from '@/lib/ai/sentiment-note';
 import { ExtremesSection } from '@/components/dashboard/extremes-section';
 import { MacroSection } from '@/components/dashboard/macro-section';
 import { ScheduleSection } from '@/components/dashboard/schedule-section';
@@ -31,6 +33,7 @@ export default async function DashboardPage() {
   const { spread, primaryGap, newHighs, newLows } = summarizeDashboard(data);
   const empty = isConfigEmpty(data.config);
   const heat = HEAT_META[data.sentiment.heatLevel];
+  const sentimentNote = await loadSentimentNote().catch(() => null);
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6">
@@ -138,6 +141,7 @@ export default async function DashboardPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         {/* ⑥ 과열 */}
         <SentimentSection sentiment={data.sentiment} />
+        <SentimentNoteCard note={sentimentNote} />
         {/* ⑦ 신고가 */}
         <ExtremesSection extremes={data.extremes} />
       </div>

@@ -20,16 +20,25 @@ export const BASE_MONTH = '2023-01';
 const MIN_MONTHLY_TRADES = 5;
 
 /** 3개월 이동평균 평활 */
+function medianOf(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+/**
+ * 이동 3개월 "중앙값" 평활.
+ *
+ * 처음엔 거래량 가중평균을 썼는데, 신축 대단지 입주로 한 달에 494건이
+ * 몰린 달(중랑 2026-07)이 창 전체를 지배해 +36%짜리 허수 상승률을 만들었다.
+ * 달별 중앙값들의 중앙값은 스파이크 한 달이 끼어도 흔들리지 않는다.
+ * (신축 입주로 거래 구성 자체가 바뀌는 소도시의 편향은 이걸로도 못 없앤다 —
+ *  그런 지역은 thinSample 로 표시해 순위에서 걸러 읽게 한다)
+ */
 function smooth(series: RegionPricePoint[], window = 3): RegionPricePoint[] {
   return series.map((p, i) => {
     const slice = series.slice(Math.max(0, i - window + 1), i + 1);
-    const totalCount = slice.reduce((s, x) => s + x.count, 0);
-    // 거래건수 가중평균 — 표본이 적은 달의 영향력을 줄인다
-    const weighted =
-      totalCount > 0
-        ? slice.reduce((s, x) => s + x.pricePerM2 * x.count, 0) / totalCount
-        : p.pricePerM2;
-    return { ...p, pricePerM2: Math.round(weighted) };
+    return { ...p, pricePerM2: Math.round(medianOf(slice.map((x) => x.pricePerM2))) };
   });
 }
 
@@ -73,6 +82,7 @@ export function analyzeRebound(
     baseMonth,
     latestMonth: rawSeries[rawSeries.length - 1]?.month ?? baseMonth,
     baseShifted: false,
+    thinSample: true,
   };
 
   if (filtered.length < 6) return empty;
@@ -84,12 +94,8 @@ export function analyzeRebound(
    * 한 달치 중앙값은 그 달에 어떤 단지가 거래됐는지에 따라 쉽게 흔들리고,
    * 기준월에 거래가 적은 지역은 지수 전체가 왜곡되기 때문이다.
    */
-  const baseWindow = smoothed.slice(0, 3);
-  const baseWeight = baseWindow.reduce((s, p) => s + p.count, 0);
-  const basePrice =
-    baseWeight > 0
-      ? baseWindow.reduce((s, p) => s + p.pricePerM2 * p.count, 0) / baseWeight
-      : smoothed[0].pricePerM2;
+  const baseWindow = filtered.slice(0, 3);
+  const basePrice = medianOf(baseWindow.map((p) => p.pricePerM2));
 
   if (!basePrice) return empty;
 
@@ -112,6 +118,8 @@ export function analyzeRebound(
 
   const idx3mAgo = values[Math.max(0, values.length - 4)];
   const recent3mChange = ((indexNow - idx3mAgo) / idx3mAgo) * 100;
+
+  const thinSample = medianOf(filtered.map((p) => p.count)) < 30;
 
   // 저점 이후 경과 개월 — 최근에 저점을 찍었다면 아직 반등 초입
   const monthsSinceTrough = values.length - 1 - troughIdx;
@@ -137,6 +145,7 @@ export function analyzeRebound(
     changeSinceBase: Math.round(changeSinceBase * 10) / 10,
     recent3mChange: Math.round(recent3mChange * 100) / 100,
     stage,
+    thinSample,
     sampleSize: filtered.reduce((s, p) => s + p.count, 0),
     series: indexed,
     baseMonth: actualBaseMonth,
@@ -194,6 +203,8 @@ export interface SpreadSummary {
   topMomentum: ReboundAnalysis[];
   /** 2023년 초부터 전혀 반등하지 않은 지역 */
   neverRebounded: ReboundAnalysis[];
+  /** 미반등이었다가 최근 상승 전환에 성공한 지역 */
+  recentlyRecovered: ReboundAnalysis[];
 }
 
 export function summarizeSpread(analyses: ReboundAnalysis[]): SpreadSummary {
@@ -215,5 +226,9 @@ export function summarizeSpread(analyses: ReboundAnalysis[]): SpreadSummary {
     neverRebounded: valid
       .filter((a) => a.changeSinceBase < 0 && a.reboundFromTrough < 2)
       .sort((a, b) => a.changeSinceBase - b.changeSinceBase),
+    // 기준 대비는 아직 마이너스지만 저점을 확실히 벗어나 오르는 중 — "반등 성공" 후보
+    recentlyRecovered: valid
+      .filter((a) => a.changeSinceBase < 0 && a.reboundFromTrough >= 2 && a.recent3mChange > 0)
+      .sort((a, b) => b.recent3mChange - a.recent3mChange),
   };
 }

@@ -193,6 +193,11 @@ export interface ReboundAnalysis {
   latestMonth: string;
   /** 기준월이 요청값보다 뒤로 밀렸는지 */
   baseShifted: boolean;
+  /**
+   * 월 중앙 거래건수 30건 미만 — 소표본이라 변동률이 거래 구성(신축 입주 등)에
+   * 쉽게 휘둘린다. 순위에서 이 표시가 붙은 지역은 걸러 읽어야 한다.
+   */
+  thinSample: boolean;
 }
 
 /** 법정동 단위 반등 요약 (지도 드릴다운용) */
