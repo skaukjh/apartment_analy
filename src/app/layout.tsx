@@ -18,7 +18,7 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: '부동산인사이트',
+  title: '이사각',
   description:
     '보유 아파트와 목표 아파트의 시세 갭, 세금·거래비용, 상승장 확산, 호재 진행, 과열 지표를 한 화면에서 확인하고 카카오톡으로 일일 브리핑을 받습니다.',
 };
