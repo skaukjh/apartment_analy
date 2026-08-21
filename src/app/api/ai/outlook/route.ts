@@ -4,7 +4,8 @@ import { buildMarketOutlook } from '@/lib/ai/market-outlook';
 import { loadCachedOutlook, saveOutlookCache, OUTLOOK_TTL_MS } from '@/lib/ai/outlook-cache';
 import { hasOpenAI } from '@/lib/ai/client';
 import { errorResponse } from '@/lib/api-auth';
-import { configIdForRequest, getSessionUser } from '@/lib/auth/server';
+import { configIdForRequest, getSessionUser, resolveOpenAIKey } from '@/lib/auth/server';
+import { loadConfig } from '@/lib/store/config';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -31,13 +32,14 @@ export async function GET(request: Request) {
     const force = new URL(request.url).searchParams.get('refresh') === '1';
     const userId = await configIdForRequest();
     const user = await getSessionUser();
-    // 생성(=OpenAI 비용)은 관리자만. 일반 회원·비로그인은 캐시 열람만 가능하다.
-    // 자동 갱신은 매시간 tick 이 "새 자료 기준"을 만족할 때만 수행한다.
-    const canGenerate = Boolean(user?.isAdmin);
+    // 생성 비용 귀속: 관리자는 운영자 키, 회원은 자기 키(BYOK). 없으면 캐시 열람만.
+    const cfg = await loadConfig(userId);
+    const ai = resolveOpenAIKey(user, cfg.openaiApiKey);
+    const canGenerate = ai.allowed;
 
     if (force && !canGenerate) {
       return NextResponse.json(
-        { ok: false, error: '요약 재생성은 관리자만 쓸 수 있습니다.' },
+        { ok: false, error: ai.reason ?? '요약 재생성 권한이 없습니다.' },
         { status: user ? 403 : 401 },
       );
     }
@@ -69,7 +71,7 @@ export async function GET(request: Request) {
 
     const data = await buildDashboard({ userId });
     // "다시 생성" 버튼은 강제 재생성이므로 중복 건너뛰기를 적용하지 않는다
-    const outlook = await buildMarketOutlook(data);
+    const outlook = await buildMarketOutlook(data, { apiKey: ai.key });
     if (!outlook) {
       return NextResponse.json({ ok: false, error: '요약 생성에 실패했습니다.' }, { status: 502 });
     }

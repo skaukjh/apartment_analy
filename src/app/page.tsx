@@ -1,4 +1,4 @@
-import { getSessionUser } from '@/lib/auth/server';
+import { getSessionUser, resolveOpenAIKey } from '@/lib/auth/server';
 import Link from 'next/link';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { buildDashboardCached, summarizeDashboard } from '@/lib/pipeline/dashboard';
@@ -23,7 +23,6 @@ import { BriefingCard } from '@/components/dashboard/briefing-card';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { AiAdvisor } from '@/components/dashboard/ai-advisor';
 import { CommunitySection, PressSection } from '@/components/dashboard/press-community';
-import { hasOpenAI } from '@/lib/ai/client';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -149,8 +148,10 @@ export default async function DashboardPage() {
       </div>
 
       {/* AI 평가 · 상담 */}
-      {/* AI 상담·평가는 호출당 비용이 들어 관리자에게만 보인다 */}
-      {sessionUser?.isAdmin ? <AiAdvisor config={data.config} enabled={hasOpenAI()} /> : null}
+      {/* AI 상담·평가 — 관리자(운영자 키) 또는 개인 키(BYOK) 등록 회원에게만 */}
+      {resolveOpenAIKey(sessionUser, data.config.openaiApiKey).allowed ? (
+        <AiAdvisor config={data.config} enabled />
+      ) : null}
 
       {/* ④ 호재 */}
       <CatalystSection catalysts={data.catalysts} regions={data.config.watchRegions} />

@@ -150,9 +150,12 @@ export async function runBriefing(
 
     await logBriefing(
       failed.length === 0 ? 'sent' : 'failed',
-      `${text}\n\n[수신자] ${summary}`,
+      `${unchanged ? '(변동 없음 알림) ' : ''}${text}\n\n[수신자] ${summary}`,
       failed.length > 0 ? summary : undefined,
     );
+
+    // 발송 성공 시에만 본문 해시 갱신 — 다음 슬롯의 "변동 없음" 판정 기준
+    if (failed.length === 0) await saveLastBriefingHash(uid, contentHash);
 
     // 갭 변화 추적용 스냅샷
     await saveSnapshot({

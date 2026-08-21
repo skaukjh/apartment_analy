@@ -1,6 +1,7 @@
 import { errorResponse } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth/server';
+import { configIdForRequest, getSessionUser, resolveOpenAIKey } from '@/lib/auth/server';
+import { loadConfig as loadUserConfig } from '@/lib/store/config';
 import { buildDashboard } from '@/lib/pipeline/dashboard';
 import { buildPropertyContext } from '@/lib/ai/property-context';
 import { getOpenAI, hasOpenAI, OPENAI_MODEL, SYSTEM_PROMPT } from '@/lib/ai/client';
@@ -20,11 +21,13 @@ interface ChatMessage {
  */
 export async function POST(request: Request) {
   try {
-    // OpenAI 비용이 드는 기능 — 관리자 전용
+    // 비용 귀속: 관리자는 운영자 키, 회원은 자기 키(BYOK)
     const user = await getSessionUser();
-    if (!user?.isAdmin) {
+    const cfgForKey = await loadUserConfig(await configIdForRequest());
+    const ai = resolveOpenAIKey(user, cfgForKey.openaiApiKey);
+    if (!ai.allowed) {
       return NextResponse.json(
-        { ok: false, error: 'AI 상담·평가는 관리자만 쓸 수 있습니다.' },
+        { ok: false, error: ai.reason ?? 'AI 기능 권한이 없습니다.' },
         { status: user ? 403 : 401 },
       );
     }
@@ -65,7 +68,7 @@ export async function POST(request: Request) {
     // 컨텍스트가 길어 최근 12턴만 유지한다
     const trimmed = history.slice(-12);
 
-    const stream = await getOpenAI().chat.completions.create({
+    const stream = await getOpenAI(ai.key).chat.completions.create({
       model: OPENAI_MODEL,
       temperature: 0.4,
       stream: true,

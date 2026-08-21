@@ -1004,6 +1004,31 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
 
       {/* 카카오 */}
       <SectionCard
+        title="개인 OpenAI API 키"
+        description={
+          <>
+            등록하면{' '}
+            <strong className="text-primary font-semibold">AI 요약 재생성·매물 평가·상담</strong>을
+            자기 비용으로 쓸 수 있습니다. 키는 서버에서만 사용되며 요청당 약 5원입니다.
+          </>
+        }
+      >
+        <div className="flex max-w-xl items-center gap-2">
+          <Input
+            type="password"
+            autoComplete="off"
+            placeholder="sk-..."
+            value={config.openaiApiKey ?? ''}
+            onChange={(e) => patch({ openaiApiKey: e.target.value || undefined })}
+          />
+        </div>
+        <p className="text-muted-foreground mt-2 text-xs">
+          발급: platform.openai.com/api-keys · 저장 버튼을 눌러야 반영됩니다. 비우고 저장하면
+          해제됩니다.
+        </p>
+      </SectionCard>
+
+      <SectionCard
         title={
           <>
             <MessageCircle className="size-4" /> 카카오톡 브리핑

@@ -18,13 +18,22 @@ export function hasOpenAI(): boolean {
 
 export const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || 'gpt-4.1-mini';
 
-let cached: OpenAI | null = null;
+const cached = new Map<string, OpenAI>();
 
-export function getOpenAI(): OpenAI {
-  const key = openaiKey();
+/**
+ * OpenAI 클라이언트.
+ * @param apiKey 개인 키(BYOK). 생략하면 환경변수(운영자 키)를 쓴다.
+ *               일반 회원의 AI 기능은 각자 자기 키로만 동작한다 — 운영 비용 통제.
+ */
+export function getOpenAI(apiKey?: string): OpenAI {
+  const key = apiKey?.trim() || openaiKey();
   if (!key) throw new Error('OPENAI_API_KEY 가 설정되지 않았습니다.');
-  if (!cached) cached = new OpenAI({ apiKey: key });
-  return cached;
+  let c = cached.get(key);
+  if (!c) {
+    c = new OpenAI({ apiKey: key });
+    cached.set(key, c);
+  }
+  return c;
 }
 
 export const SYSTEM_PROMPT = `당신은 한국 부동산 시장을 분석하는 조력자입니다. 사용자는 실거주 목적의 갈아타기 또는 첫 주택 매수를 검토하고 있습니다.

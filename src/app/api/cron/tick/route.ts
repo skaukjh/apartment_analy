@@ -75,9 +75,18 @@ export async function GET(request: Request) {
        사용자가 페이지를 열 때 20~40초를 기다리지 않아도 되고,
        호출 횟수가 시간당 1회로 고정돼 비용이 예측 가능해진다. */
     let outlookCached = 0;
-    if (hasOpenAI()) {
+    {
       for (const uid of userIds) {
         try {
+          /* 키 귀속: 레거시(default)는 운영자 키, 회원은 자기 키(BYOK).
+             회원 키가 없으면 그 사용자 요약은 만들지 않는다 — 비용이 남에게
+             전가되지 않게. (관리자 계정의 uid 도 회원 행이지만 isAdmin 판정은
+             세션에서만 가능하므로, 여기서는 default=운영자 키 규칙만 쓴다) */
+          const cfgKey = uid === 'default' ? undefined : (await loadConfig(uid)).openaiApiKey;
+          const useEnvKey = uid === 'default';
+          if (!useEnvKey && !cfgKey?.trim()) continue;
+          if (useEnvKey && !hasOpenAI()) continue;
+
           const data = await buildDashboard({ userId: uid });
           // 페이지가 즉시 읽을 수 있게 대시보드 캐시도 여기서 채운다
           await saveDashboardCache(uid, data).catch(() => {});
@@ -88,6 +97,7 @@ export async function GET(request: Request) {
           const outlook = await buildMarketOutlook(data, {
             skipIfPromptHash: prev?.promptHash,
             previousSourceUrls: prev?.sources?.map((x) => x.url),
+            apiKey: cfgKey?.trim() || undefined,
           });
           if (outlook) {
             await saveOutlookCache(outlook, uid);

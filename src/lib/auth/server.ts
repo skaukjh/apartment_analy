@@ -79,3 +79,25 @@ export async function configIdForRequest(): Promise<string> {
   const user = await getSessionUser();
   return user?.id ?? ANON_CONFIG_ID;
 }
+
+/**
+ * 이 사용자가 쓸 OpenAI 키.
+ * - 관리자: 운영자 환경변수 키 (undefined 반환 → getOpenAI 가 env 사용)
+ * - 일반 회원: 설정에 저장한 개인 키(BYOK) — 없으면 null (AI 기능 잠김)
+ * 비용이 각자에게 귀속되므로 관리자 전용이던 AI 기능을 회원에게 열 수 있다.
+ */
+export function resolveOpenAIKey(
+  user: SessionUser | null,
+  configKey: string | undefined,
+): { key: string | undefined; allowed: boolean; reason?: string } {
+  if (user?.isAdmin) return { key: undefined, allowed: true };
+  if (!user) return { key: undefined, allowed: false, reason: '로그인이 필요합니다.' };
+  if (!user.approved) return { key: undefined, allowed: false, reason: '가입 승인 대기 중입니다.' };
+  const own = configKey?.trim();
+  if (own) return { key: own, allowed: true };
+  return {
+    key: undefined,
+    allowed: false,
+    reason: '설정에서 개인 OpenAI API 키를 등록하면 AI 기능을 쓸 수 있습니다.',
+  };
+}

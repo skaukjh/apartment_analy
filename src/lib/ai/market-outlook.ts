@@ -290,9 +290,11 @@ export async function buildMarketOutlook(
      * 뉴스 한두 건 바뀌었다고 매시간 다시 만들면 비용만 나간다.
      */
     previousSourceUrls?: string[];
+    /** 개인 키(BYOK) — 생략 시 운영자 환경변수 키 */
+    apiKey?: string;
   } = {},
 ): Promise<MarketOutlook | null> {
-  if (!hasOpenAI()) {
+  if (!hasOpenAI() && !options.apiKey) {
     throw new Error('OPENAI_API_KEY 가 설정되지 않았습니다.');
   }
 
@@ -429,7 +431,7 @@ ${gaps.length > 0 ? `[확보하지 못한 정보]\n${gaps.map((g) => `- ${g}`).j
     }
   }
 
-  const client = getOpenAI();
+  const client = getOpenAI(options.apiKey);
   const res = await client.chat.completions.create({
     model: OPENAI_MODEL,
     messages: [

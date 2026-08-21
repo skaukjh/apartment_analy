@@ -77,6 +77,7 @@ export const userConfigSchema = z.object({
   kakaoBriefingEnabled: z.boolean().default(true),
   briefingHour: z.number().int().min(0).max(23).default(8),
   briefingFormat: z.enum(['summary', 'full', 'image']).default('image'),
+  openaiApiKey: z.string().trim().max(200).optional(),
   updatedAt: z.string().default(() => new Date().toISOString()),
 });
 

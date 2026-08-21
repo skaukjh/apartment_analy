@@ -107,6 +107,8 @@ export interface UserConfig {
   briefingHour: number;
   /** 카카오톡 발송 형식. image = 전문 이미지 1장(기본), summary = 요약 2장, full = 전문 분할 */
   briefingFormat: 'summary' | 'full' | 'image';
+  /** 개인 OpenAI 키 (BYOK). 있으면 AI 기능을 자기 비용으로 쓴다. 서버에서만 사용. */
+  openaiApiKey?: string;
   updatedAt: string;
 }
 
