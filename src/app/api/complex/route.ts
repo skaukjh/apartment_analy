@@ -94,7 +94,7 @@ export async function GET(request: Request) {
             dong: dongFilter ?? null,
             complexes: [],
             note: `국토교통부 API 오류: ${e.message} 저장된 지역(보유·목표·관심)은 계속 볼 수 있습니다.`,
-            quotaExceeded: e.code === '22',
+            quotaExceeded: e.code === '22' || e.code === '429',
           });
         }
         throw e;
@@ -112,7 +112,7 @@ export async function GET(request: Request) {
           await fetchTrades(lawd, recentYearMonths(1)[0], 0);
         } catch (probe) {
           if (probe instanceof MolitError) {
-            quotaExceeded = probe.code === '22';
+            quotaExceeded = probe.code === '22' || probe.code === '429';
             note = `국토교통부 API 오류: ${probe.message} 저장된 지역(보유·목표·관심)은 계속 볼 수 있습니다.`;
           }
         }
