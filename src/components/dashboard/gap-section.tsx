@@ -73,10 +73,13 @@ export function GapSection({ config, quotes }: Props) {
         const targetPrice = tradePriceOf(quotes[target.id]);
         if (targetPrice <= 0) continue;
 
+        // 매도 중개보수는 양도세 필요경비 — 서버(buildGaps)와 같은 순서로 먼저 계산
+        const sellCost = calcTransactionCost({ price: holdingPrice, side: 'sell' });
+
         const cgt = calcCapitalGainsTax({
           salePrice: holdingPrice,
           acquisitionPrice: holding.acquisitionPrice,
-          expenses: holding.acquisitionCost + holding.capitalExpenditure,
+          expenses: holding.acquisitionCost + holding.capitalExpenditure + sellCost.brokerFee,
           acquiredAt: holding.acquiredAt,
           soldAt: todayKst(),
           residenceMonths: holding.residenceMonths,
@@ -88,7 +91,6 @@ export function GapSection({ config, quotes }: Props) {
         const acq = calcAcquisitionTaxFor(targetPrice, target.areaM2, config.household, {
           replacesExisting: true,
         });
-        const sellCost = calcTransactionCost({ price: holdingPrice, side: 'sell' });
         const buyCost = calcTransactionCost({
           price: targetPrice,
           side: 'buy',

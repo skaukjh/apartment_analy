@@ -70,16 +70,28 @@ function longTermRate(
 ): { rate: number; note: string } {
   const holdYears = Math.floor(holdingMonths / 12);
 
-  if (isOneHouseExempt) {
+  const residenceYears = Math.floor(residenceMonths / 12);
+
+  // 표2(보유 연 4% + 거주 연 4%)는 "보유기간 중 거주 2년 이상"인 1세대1주택에만
+  // 적용된다 (소득세법 제95조 제2항 단서, 2020.1.1 이후 양도분).
+  // 거주 2년 미만이면 1주택이라도 일반 표1(연 2%, 최대 30%)로 떨어진다.
+  if (isOneHouseExempt && residenceYears >= 2) {
     if (holdYears < 3) {
       return { rate: 0, note: '보유 3년 미만 — 장기보유특별공제 없음' };
     }
-    const residenceYears = Math.floor(residenceMonths / 12);
     const holdRate = Math.min(40, holdYears * 4);
-    const liveRate = residenceYears >= 2 ? Math.min(40, residenceYears * 4) : 0;
+    const liveRate = Math.min(40, residenceYears * 4);
     return {
       rate: holdRate + liveRate,
       note: `1세대1주택 표2 적용: 보유 ${holdYears}년 ${holdRate}% + 거주 ${residenceYears}년 ${liveRate}% = ${holdRate + liveRate}%`,
+    };
+  }
+
+  if (isOneHouseExempt && residenceYears < 2 && holdYears >= 3) {
+    const rate = Math.min(30, holdYears * 2);
+    return {
+      rate,
+      note: `거주 2년 미만이라 표2 대신 일반 표1 적용: 보유 ${holdYears}년 × 2% = ${rate}%`,
     };
   }
 

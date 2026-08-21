@@ -20,6 +20,7 @@ import { configuredRssFeeds, fetchOfficialPress } from '@/lib/sources/gov';
 import { fetchNetMigration, hasKosis } from '@/lib/sources/kosis';
 import { analysisTargets, loadConfig } from '@/lib/store/config';
 import { loadRegionMonthly, loadTradeCache } from '@/lib/store/market-data';
+import { loadSnapshotBefore } from '@/lib/store/market-data';
 import { analyzeRebound, summarizeSpread } from '@/lib/analysis/rebound';
 import {
   computeSentiment,
@@ -119,11 +120,18 @@ function buildGaps(config: UserConfig, quotes: Record<string, PriceQuote>): GapS
       const targetPrice = tradePriceOf(quotes[target.id]);
       if (holdingPrice <= 0 || targetPrice <= 0) continue;
 
-      // 세후 실제 필요 자금 = (매수가 + 취득세 + 매수부대) - (매도가 - 양도세 - 매도부대 - 대출/보증금)
+      /* 세후 실소요 자금 = (매수가 + 취득세 + 매수부대) − (매도가 − 양도세 − 매도부대).
+         기존 대출 상환·전세보증금 반환은 "자산이 줄어드는" 게 아니라 부채가 사라지는
+         것이므로 여기 넣지 않는다 — 그 금액까지 합친 "당장 준비할 현금·대출"은
+         갭 카드 상세 패널에 별도로 보여준다. 주석과 산식이 달라 혼선을 준 이력이 있어
+         정의를 여기 못박는다. */
+      // 매도 중개보수는 양도세 필요경비로 공제된다 — 먼저 계산해 경비에 넣는다
+      const sellCost = calcTransactionCost({ price: holdingPrice, side: 'sell' });
+
       const cgt = calcCapitalGainsTax({
         salePrice: holdingPrice,
         acquisitionPrice: holding.acquisitionPrice,
-        expenses: holding.acquisitionCost + holding.capitalExpenditure,
+        expenses: holding.acquisitionCost + holding.capitalExpenditure + sellCost.brokerFee,
         acquiredAt: holding.acquiredAt,
         soldAt: todayKst(),
         residenceMonths: holding.residenceMonths,
@@ -135,7 +143,6 @@ function buildGaps(config: UserConfig, quotes: Record<string, PriceQuote>): GapS
       const acq = calcAcquisitionTaxFor(targetPrice, target.areaM2, config.household, {
         replacesExisting: true,
       });
-      const sellCost = calcTransactionCost({ price: holdingPrice, side: 'sell' });
       const buyCost = calcTransactionCost({ price: targetPrice, side: 'buy', withMortgage: true });
 
       const netFromSale = holdingPrice - cgt.total - sellCost.total;
@@ -235,9 +242,9 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
     .sort((a, b) => b.changeSinceBase - a.changeSinceBase);
 
   /* --- 3) 보유/목표 아파트 시세 (요구사항 1) --- */
-  const twelveMonthsAgo = new Date();
-  twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 24);
-  const tradeFromMonth = `${twelveMonthsAgo.getFullYear()}${String(twelveMonthsAgo.getMonth() + 1).padStart(2, '0')}`;
+  const tradeWindowStart = new Date();
+  tradeWindowStart.setMonth(tradeWindowStart.getMonth() - 24);
+  const tradeFromMonth = `${tradeWindowStart.getFullYear()}${String(tradeWindowStart.getMonth() + 1).padStart(2, '0')}`;
 
   let userTrades: TradeRecord[] = [];
   try {
@@ -260,6 +267,26 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
   }
 
   const gaps = buildGaps(config, quotes);
+
+  /* 갭 변화(전주 대비) — 브리핑 발송 때 저장해 둔 스냅샷과 비교한다.
+     타입에 gapBefore/gapDelta 가 정의만 있고 채우는 곳이 없어
+     "갭 축소/확대" 문구가 영영 안 나가던 것을 여기서 살린다. */
+  try {
+    const before = (await loadSnapshotBefore(7)) as { gaps?: GapSummary[] } | null;
+    if (before?.gaps?.length) {
+      for (const g of gaps) {
+        const prev = before.gaps.find(
+          (b) => b.holdingId === g.holdingId && b.targetId === g.targetId,
+        );
+        if (prev && prev.gap > 0) {
+          g.gapBefore = prev.gap;
+          g.gapDelta = g.gap - prev.gap;
+        }
+      }
+    }
+  } catch {
+    /* 스냅샷이 없으면 변화 없이 표시 */
+  }
 
   /* --- 4) 신고가 / 신저가 (요구사항 7) --- */
   const cutoff = new Date();

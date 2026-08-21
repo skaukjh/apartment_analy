@@ -51,7 +51,9 @@ export function buildBriefing(data: DashboardData): Briefing {
     ];
     if (data.gaps.length > 1) {
       lines.push(
-        `그 외 후보 ${data.gaps.length - 1}건 · 최소 갭 ${formatEok(Math.min(...data.gaps.map((g) => g.gap)))}`,
+        `그 외 후보 ${data.gaps.length - 1}건 · 최소 갭 ${formatEok(
+          Math.min(...data.gaps.slice(1).map((g) => g.gap)),
+        )}`,
       );
     }
     sections.push({ heading: '🏠 갈아타기 갭', lines });
@@ -300,7 +302,7 @@ function briefingToSummaryTexts(
 
   const gapDelta =
     primaryGap?.gapDelta !== undefined
-      ? `📉 3개월 갭 ${primaryGap.gapDelta < 0 ? '축소' : '확대'} ${formatEok(Math.abs(primaryGap.gapDelta))}`
+      ? `📉 전주 대비 갭 ${primaryGap.gapDelta < 0 ? '축소' : '확대'} ${formatEok(Math.abs(primaryGap.gapDelta))}`
       : null;
 
   const otherGap =
