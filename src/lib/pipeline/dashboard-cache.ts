@@ -36,22 +36,24 @@ export async function loadDashboardCache(userId: string): Promise<DashboardData 
   if (!client) return null;
 
   const since = new Date(Date.now() - DASHBOARD_CACHE_TTL_MS).toISOString();
+  // 스냅샷 테이블에는 다른 종류의 큰 행들도 섞여 있다.
+  // kind/userId 로 서버에서 걸러 정확히 1행만 받는다 — 훑어오면 수 MB 를 나른다.
   const { data, error } = await client
     .from('dashboard_snapshot')
     .select('payload, captured_at')
     .gte('captured_at', since)
+    .eq('payload->>kind', KIND)
+    .eq('payload->>userId', userId)
     .order('captured_at', { ascending: false })
-    .limit(30);
+    .limit(1)
+    .maybeSingle();
 
   if (error || !data) return null;
 
-  for (const row of data) {
-    const p = row.payload as CacheEnvelope | null;
-    if (p?.kind !== KIND || p.userId !== userId || !p.data) continue;
-    memory.set(userId, { at: Date.parse(row.captured_at as string), data: p.data });
-    return p.data;
-  }
-  return null;
+  const p = data.payload as CacheEnvelope | null;
+  if (p?.kind !== KIND || !p.data) return null;
+  memory.set(userId, { at: Date.parse(data.captured_at as string), data: p.data });
+  return p.data;
 }
 
 export async function saveDashboardCache(userId: string, data: DashboardData): Promise<void> {
