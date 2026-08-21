@@ -22,8 +22,8 @@ import { cn } from '@/lib/utils';
 // 메뉴 4개를 긴 이름 그대로 두면 390px 화면에서 뒤쪽 두 개가 밖으로 밀려나
 // 가로 스크롤을 해야만 눌린다. 실제로 "메뉴가 안 눌린다"는 제보가 있었다.
 const NAV = [
-  { href: '/', label: '대시보드', short: '대시보드', icon: Building2 },
   { href: '/today', label: '오늘의 요약', short: '요약', icon: Sparkles },
+  { href: '/', label: '대시보드', short: '대시보드', icon: Building2 },
   { href: '/simulation', label: '갈아타기 시뮬레이션', short: '시뮬레이션', icon: LineChart },
   { href: '/settings', label: '설정', short: '설정', icon: Settings },
 ];
