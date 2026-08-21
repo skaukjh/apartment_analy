@@ -275,20 +275,22 @@ export function latestPassedSlot(hourKst: number): BriefingSlot | null {
   return null;
 }
 
-function briefingToSummaryText(
+/**
+ * 요약을 카카오 text 메시지 여러 장으로 만든다 (기본 2장).
+ *
+ * text 템플릿은 장당 200자 제한이라 한 장으로는 "정보가 너무 적다"는 피드백이
+ * 있었다. 두 장이면 알림은 두 번이지만 내용이 두 배다.
+ * 시간대별 우선순위 순서로 후보를 채우되, 같은 정보는 한 번만 넣는다.
+ */
+function briefingToSummaryTexts(
   data: DashboardData,
   title: string,
   appUrl?: string,
   slot: BriefingSlot = 'morning',
-): string {
+  pages = 2,
+): string[] {
   const { spread, primaryGap, newHighs, newLows } = summarizeDashboard(data);
   const heat = HEAT_META[data.sentiment.heatLevel];
-
-  const head = `[${title} · ${SLOT_LABEL[slot]}]`;
-
-  // 링크는 버튼과 별개로 본문에도 넣는다. 버튼이 안 보이는 환경이 있어서다.
-  const tail = appUrl ? `\n▶ ${appUrl}` : '';
-  const budget = KAKAO_TEXT_LIMIT - tail.length;
 
   /* 조각들 — 시간대별로 순서만 바꿔 쓴다 */
 
@@ -301,46 +303,143 @@ function briefingToSummaryText(
       ? `📉 3개월 갭 ${primaryGap.gapDelta < 0 ? '축소' : '확대'} ${formatEok(Math.abs(primaryGap.gapDelta))}`
       : null;
 
-  const heatLine = `🌡️ ${heat?.label ?? ''} ${data.sentiment.heatScore}/100 · 수급 ${data.sentiment.supplyDemandIndex.toFixed(0)}`;
+  const otherGap =
+    data.gaps.length > 1
+      ? `🏠 차순위 ${data.gaps[1].targetName} 갭 ${formatEok(data.gaps[1].gap)}`
+      : null;
+
+  const heatLine = `🌡️ ${heat?.label ?? ''} ${data.sentiment.heatScore}/100 · 수급 ${data.sentiment.supplyDemandIndex.toFixed(0)} · 신고가비중 ${data.sentiment.newHighRatio.toFixed(0)}%`;
   const extremeLine = `📈 신고가 ${newHighs.length} · 신저가 ${newLows.length}건`;
+  const topHigh = newHighs[0]
+    ? `▲ ${newHighs[0].complexName} ${formatKrw(newHighs[0].price, { compact: true })} (${formatPct(newHighs[0].gapRate, 1)})`
+    : null;
   const spreadLine = `🗺️ 상승확산 ${spread.spreadRate.toFixed(0)}% (${spread.leading.length + spread.spreading.length}/${spread.total}곳) · 미반등 ${spread.neverRebounded.length}곳`;
+  const momentum =
+    spread.topMomentum.length > 0
+      ? `🚀 모멘텀 ${spread.topMomentum
+          .slice(0, 2)
+          .map((r) => `${r.regionName} ${formatPct(r.recent3mChange, 1)}`)
+          .join(', ')}`
+      : null;
   const volumeLine = `🔁 거래량 전년비 ${data.sentiment.volumeYoy.toFixed(0)}%`;
 
-  const rate = data.macro?.find((m) => m.key === 'mortgage-rate');
-  const rateLine = rate ? `💰 주담대 ${rate.latest}% (${rate.latestPeriod})` : null;
+  const baseRate = data.macro?.find((m) => m.key === 'base-rate');
+  const mortRate = data.macro?.find((m) => m.key === 'mortgage-rate');
+  const rateLine =
+    baseRate || mortRate
+      ? `💰 ${[
+          baseRate ? `기준금리 ${baseRate.latest}%` : null,
+          mortRate ? `주담대 ${mortRate.latest}%` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}`
+      : null;
 
-  const nextEvent = data.schedule?.[0];
-  const scheduleLine = nextEvent ? `📅 ${nextEvent.date} ${nextEvent.title}` : null;
+  const events = (data.schedule ?? []).slice(0, 2);
+  const scheduleLine =
+    events.length > 0
+      ? `📅 ${events.map((e) => `${e.date.slice(5)} ${e.title.slice(0, 18)}`).join(' / ')}`
+      : null;
 
-  const topNews = data.news?.find((n) => n.tone !== 'neutral');
-  const newsLine = topNews
-    ? `📰 ${topNews.tone === 'positive' ? '🟢' : '🔴'} ${topNews.title.slice(0, 40)}`
-    : null;
+  const newsPicks = (data.news ?? []).filter((n) => n.tone !== 'neutral').slice(0, 2);
+  const newsLines = newsPicks.map(
+    (n) => `📰 ${n.tone === 'positive' ? '🟢' : '🔴'} ${n.title.slice(0, 44)}`,
+  );
 
-  // 시간대별 우선순위 — 앞에 오는 것부터 200자를 채운다
+  // 시간대별 우선순위 — 앞에 오는 것부터 채운다
   const ORDER: Record<BriefingSlot, Array<string | null>> = {
     // 아침: 오늘 무엇을 볼지
-    morning: [myGap, scheduleLine, heatLine, rateLine, spreadLine],
+    morning: [
+      myGap,
+      scheduleLine,
+      heatLine,
+      rateLine,
+      spreadLine,
+      gapDelta,
+      extremeLine,
+      momentum,
+      newsLines[0] ?? null,
+      volumeLine,
+      otherGap,
+    ],
     // 오전: 지금 시장 온도
-    noon: [heatLine, extremeLine, volumeLine, myGap, spreadLine],
+    noon: [
+      heatLine,
+      extremeLine,
+      topHigh,
+      volumeLine,
+      myGap,
+      spreadLine,
+      momentum,
+      rateLine,
+      newsLines[0] ?? null,
+      scheduleLine,
+      gapDelta,
+    ],
     // 저녁: 오늘 시장이 어땠나
-    evening: [extremeLine, spreadLine, newsLine, heatLine, myGap],
+    evening: [
+      extremeLine,
+      topHigh,
+      spreadLine,
+      newsLines[0] ?? null,
+      heatLine,
+      myGap,
+      momentum,
+      newsLines[1] ?? null,
+      volumeLine,
+      rateLine,
+      gapDelta,
+    ],
     // 마감: 하루 정리와 내 위치
-    night: [myGap, gapDelta, spreadLine, volumeLine, heatLine],
+    night: [
+      myGap,
+      gapDelta,
+      spreadLine,
+      volumeLine,
+      heatLine,
+      otherGap,
+      momentum,
+      extremeLine,
+      newsLines[0] ?? null,
+      rateLine,
+      scheduleLine,
+    ],
   };
 
-  const candidates = ORDER[slot].filter((v): v is string => Boolean(v));
+  const pool = ORDER[slot].filter((v): v is string => Boolean(v));
+  const tail = appUrl
+    ? `
+▶ ${appUrl}`
+    : '';
 
-  const picks: string[] = [];
-  for (const line of candidates) {
-    if ([head, ...picks, line].join('\n').length > budget) continue;
-    picks.push(line);
+  const messages: string[] = [];
+  let cursor = 0;
+  for (let page = 0; page < pages && cursor < pool.length; page += 1) {
+    const isLast = page === pages - 1 || cursor >= pool.length - 1;
+    const head =
+      page === 0 ? `[${title} · ${SLOT_LABEL[slot]}]` : `[${title} · ${SLOT_LABEL[slot]} ②]`;
+    // 링크는 마지막 장에만 (본문 자리를 아끼고, 버튼도 마지막 장에 달린다)
+    const budget = KAKAO_TEXT_LIMIT - (isLast ? tail.length : 0);
+
+    const picks: string[] = [];
+    while (cursor < pool.length) {
+      const line = pool[cursor];
+      if ([head, ...picks, line].join('\n').length > budget) {
+        // 이 줄이 안 들어가면 다음 장으로 넘긴다 (건너뛰지 않는다 — 우선순위 보존)
+        break;
+      }
+      picks.push(line);
+      cursor += 1;
+    }
+    if (picks.length === 0) break;
+    messages.push(`${[head, ...picks].join('\n')}${isLast ? tail : ''}`);
+    if (isLast) break;
   }
 
-  return `${[head, ...picks].join('\n')}${tail}`;
+  return messages.length > 0 ? messages : [`[${title} · ${SLOT_LABEL[slot]}]${tail}`];
 }
 
-/** 요약 1건짜리 템플릿 (알림 1번) */
+/** 요약 템플릿 (기본 2장 — 마지막 장에만 버튼) */
 export function briefingToSingleTemplate(
   briefing: Briefing,
   appUrl: string,
@@ -350,14 +449,13 @@ export function briefingToSingleTemplate(
   // 브리핑 전문과 AI 요약이 함께 있는 "오늘의 요약" 으로 보낸다
   const target = `${appUrl.replace(/\/$/, '')}/today`;
   const link = { web_url: target, mobile_web_url: target };
-  return [
-    {
-      object_type: 'text',
-      text: briefingToSummaryText(data, briefing.title, target, slot),
-      link,
-      button_title: '오늘의 요약 열기',
-    },
-  ];
+  const texts = briefingToSummaryTexts(data, briefing.title, target, slot);
+  return texts.map((text, i) => ({
+    object_type: 'text' as const,
+    text,
+    link,
+    ...(i === texts.length - 1 ? { button_title: '오늘의 요약 열기' } : {}),
+  }));
 }
 
 /**

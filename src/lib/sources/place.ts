@@ -48,6 +48,7 @@ export async function geocodeComplex(
   complexName: string,
   sigungu: string,
   dong?: string,
+  jibun?: string,
 ): Promise<Coord | null> {
   const addressQuery = [sigungu, dong].filter(Boolean).join(' ');
 
@@ -63,7 +64,22 @@ export async function geocodeComplex(
     /* 아래 주소 검색으로 넘어간다 */
   }
 
-  // 2) 실패 시 법정동 주소로 대략적 좌표
+  // 2) 지번이 있으면 지번 주소가 정확하다.
+  //    국토부 등록명("우성2")이 지도 검색에 안 잡히는 단지가 실제로 있었는데,
+  //    지번은 국토부 응답에 항상 있고 주소 검색은 이름과 무관하게 맞는다.
+  if (jibun && addressQuery) {
+    try {
+      const json = await kakaoGet<{
+        documents: Array<{ address_name: string; x: string; y: string }>;
+      }>(`${SEARCH_ADDRESS}?query=${encodeURIComponent(`${addressQuery} ${jibun}`)}&size=1`);
+      const d = json.documents[0];
+      if (d) return { lat: Number(d.y), lon: Number(d.x), via: 'address', matched: d.address_name };
+    } catch {
+      /* 아래 동 대표 좌표로 넘어간다 */
+    }
+  }
+
+  // 3) 실패 시 법정동 주소로 대략적 좌표
   if (!addressQuery) return null;
   try {
     const json = await kakaoGet<{

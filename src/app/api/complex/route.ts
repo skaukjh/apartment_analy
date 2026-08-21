@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { errorResponse } from '@/lib/api-auth';
-import { loadTradeCache } from '@/lib/store/market-data';
+import { loadTradeCache, saveTradeCache } from '@/lib/store/market-data';
 import { analyzeRebound, BASE_MONTH } from '@/lib/analysis/rebound';
 import { findSigungu } from '@/lib/regions';
 import { geocodeComplex, hasPlaceApi } from '@/lib/sources/place';
@@ -8,7 +8,7 @@ import type { RegionPricePoint, TradeRecord } from '@/lib/types';
 import { median, recentYearMonths } from '@/lib/format';
 import { baseDongName, dongMatches } from '@/lib/dong-name';
 import { adminDongOf, canResolveAdminDong, resolveAdminDongs } from '@/lib/sources/admin-dong';
-import { fetchTradesForMonths } from '@/lib/sources/molit';
+import { fetchTradesForMonths, MolitError } from '@/lib/sources/molit';
 
 /** 캐시가 없을 때 국토부에서 바로 받아올 개월 수 */
 const LIVE_MONTHS = 24;
@@ -38,6 +38,8 @@ export interface ComplexStat {
   /** 지도 표시용 좌표 (지오코딩 성공 시) */
   lat?: number;
   lon?: number;
+  /** 지번 — 이름 검색이 실패하는 단지의 주소 지오코딩 폴백에 쓴다 */
+  jibun?: string;
 }
 
 /**
@@ -70,9 +72,33 @@ export async function GET(request: Request) {
     // 그 외 지역을 눌렀을 때 빈 화면을 주지 않도록 국토부에서 바로 받아온다.
     if (trades.length === 0) {
       const months = recentYearMonths(LIVE_MONTHS);
-      const byMonth = await fetchTradesForMonths(lawd, months);
-      trades = Object.values(byMonth).flat();
-      liveFetched = true;
+      try {
+        const byMonth = await fetchTradesForMonths(lawd, months);
+        trades = Object.values(byMonth).flat();
+        liveFetched = true;
+
+        // 받아온 것은 trade_cache 에 저장한다.
+        // 안 하면 같은 지역을 볼 때마다 국토부를 24회씩 다시 부르고,
+        // 일일 쿼터가 소진된 오후에는 빈 화면이 된다 (실제로 있었던 일).
+        await Promise.all(
+          Object.entries(byMonth)
+            .filter(([, list]) => list.length > 0)
+            .map(([ym, list]) => saveTradeCache(lawd, ym, list).catch(() => {})),
+        );
+      } catch (e) {
+        // 일일 쿼터 초과(22) 등 — 죽은 화면 대신 이유를 말한다
+        if (e instanceof MolitError) {
+          return NextResponse.json({
+            ok: true,
+            lawd,
+            dong: dongFilter ?? null,
+            complexes: [],
+            note: `국토교통부 API 오류: ${e.message} 저장된 지역(보유·목표·관심)은 계속 볼 수 있습니다.`,
+            quotaExceeded: e.code === '22',
+          });
+        }
+        throw e;
+      }
     }
 
     if (trades.length === 0) {
@@ -184,6 +210,7 @@ export async function GET(request: Request) {
         sampleSize: entry.all.length,
         latestDealDate: sorted[0]?.dealDate ?? '',
         builtYear: entry.builtYear,
+        jibun: entry.jibun,
         hasTrend: analysis.stage !== 'insufficient-data',
       });
     }
@@ -196,7 +223,9 @@ export async function GET(request: Request) {
       const top = complexes.slice(0, 20);
       await Promise.all(
         top.map(async (c) => {
-          const coord = await geocodeComplex(c.name, region?.name ?? '', c.dong).catch(() => null);
+          const coord = await geocodeComplex(c.name, region?.name ?? '', c.dong, c.jibun).catch(
+            () => null,
+          );
           if (coord) {
             c.lat = coord.lat;
             c.lon = coord.lon;

@@ -233,14 +233,18 @@ async function fetchFromEndpoint(
 
     let xml = '';
 
-    // 초당 요청제한(23)은 잠깐 쉬었다 다시 하면 풀리므로 그 자리에서 재시도한다
+    // 초당 요청제한(23)은 잠깐 쉬었다 다시 하면 풀리므로 그 자리에서 재시도한다.
+    // attempt > 0 은 no-store — Next 데이터 캐시에 오류 XML 이 저장되면 TTL 동안
+    // 계속 오류를 돌려주므로, 재시도는 반드시 캐시를 우회해야 한다.
     for (let attempt = 0; ; attempt += 1) {
       await acquireSlot();
 
-      const res = await fetch(url, {
-        next: { revalidate },
-        headers: { Accept: 'application/xml' },
-      });
+      const res = await fetch(
+        url,
+        attempt === 0
+          ? { next: { revalidate }, headers: { Accept: 'application/xml' } }
+          : { cache: 'no-store', headers: { Accept: 'application/xml' } },
+      );
 
       if (!res.ok) {
         throw new MolitError(`실거래가 API HTTP ${res.status}`, String(res.status));
@@ -403,19 +407,37 @@ export function aggregateMonthlyByDong(
 }
 
 /** 특정 단지·면적대의 최근 실거래만 추출 */
+/**
+ * 단지명 비교 키.
+ *
+ * 사람이 부르는 이름과 국토부 등록명이 다르다:
+ *   "상계주공7단지" ↔ 등록명 "상계주공7(고층)"
+ *   "자양우성2차"   ↔ 등록명 "우성2"
+ * 괄호 수식어와 '단지·차·아파트' 꼬리를 떼고 비교해야 실거래가 잡힌다.
+ * 이게 어긋나면 시세가 "표본 0 → 호가 폴백"이 되고, 갭·세금 계산은
+ * 실거래만 쓰므로 갭이 통째로 사라진다 (실제로 있었던 버그).
+ */
+function looseNameKey(name: string): string {
+  return name
+    .replace(/\s+/g, '')
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, '')
+    .replace(/(단지|차|아파트|apt)$/g, '');
+}
+
 export function filterComplex(
   trades: TradeRecord[],
   complexName: string,
   areaM2: number,
   areaTolerance = 3,
 ): TradeRecord[] {
-  const normalized = complexName.replace(/\s+/g, '').toLowerCase();
+  const key = looseNameKey(complexName);
+  if (!key) return [];
   return trades
     .filter((t) => {
-      const name = t.complexName.replace(/\s+/g, '').toLowerCase();
+      const name = looseNameKey(t.complexName);
       return (
-        (name.includes(normalized) || normalized.includes(name)) &&
-        Math.abs(t.areaM2 - areaM2) <= areaTolerance
+        (name.includes(key) || key.includes(name)) && Math.abs(t.areaM2 - areaM2) <= areaTolerance
       );
     })
     .sort((a, b) => b.dealDate.localeCompare(a.dealDate));

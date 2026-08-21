@@ -28,10 +28,12 @@ interface TileProps {
   tiles: Record<string, readonly [number, number]>;
   byCode: Map<string, ReboundAnalysis>;
   onSelect: (a: ReboundAnalysis | null) => void;
+  /** 클릭(드릴다운 의도) — hover 의 onSelect 와 구분한다 */
+  onOpen?: (a: ReboundAnalysis) => void;
   selected: ReboundAnalysis | null;
 }
 
-function TileGrid({ tiles, byCode, onSelect, selected }: TileProps) {
+function TileGrid({ tiles, byCode, onSelect, onOpen, selected }: TileProps) {
   const entries = Object.entries(tiles);
   const cols = Math.max(...entries.map(([, c]) => c[0])) + 1;
   const rows = Math.max(...entries.map(([, c]) => c[1])) + 1;
@@ -57,7 +59,11 @@ function TileGrid({ tiles, byCode, onSelect, selected }: TileProps) {
             type="button"
             onMouseEnter={() => onSelect(analysis ?? null)}
             onFocus={() => onSelect(analysis ?? null)}
-            onClick={() => onSelect(analysis ?? null)}
+            onClick={() => {
+              onSelect(analysis ?? null);
+              // 클릭은 "들어가겠다"는 뜻 — 전국 지도의 동 단위로 진입시킨다
+              if (analysis && onOpen) onOpen(analysis);
+            }}
             style={{
               gridColumnStart: col + 1,
               gridRowStart: row + 1,
@@ -95,6 +101,14 @@ const MONTH_RE = /^\d{4}-\d{2}$/;
 export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
   const [selected, setSelected] = useState<ReboundAnalysis | null>(null);
   const [sidoFilter, setSidoFilter] = useState<string>('전국');
+  // 카토그램 탭에서 구를 클릭하면 전국 탭으로 넘어가 그 구의 동 단위를 보여준다.
+  // KoreaMap 은 selected 가 바뀌면 스스로 그 시군구로 들어가므로 탭만 바꾸면 된다.
+  const [mapTab, setMapTab] = useState('nation');
+
+  const openInNationMap = (a: ReboundAnalysis) => {
+    setSelected(a);
+    setMapTab('nation');
+  };
 
   // 동 드릴다운 상태 — 실제 지도(카카오맵) 패널과 공유한다
   const [activeDong, setActiveDong] = useState<{
@@ -238,7 +252,7 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div>
-          <Tabs defaultValue="nation">
+          <Tabs value={mapTab} onValueChange={setMapTab}>
             <TabsList>
               <TabsTrigger value="nation">전국</TabsTrigger>
               <TabsTrigger value="seoul">서울 25개구</TabsTrigger>
@@ -266,10 +280,11 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
                 tiles={SEOUL_TILES}
                 byCode={byCode}
                 onSelect={setSelected}
+                onOpen={openInNationMap}
                 selected={selected}
               />
               <p className="text-muted-foreground mt-2 text-[11px]">
-                실제 면적이 아닌 격자 배치(카토그램)입니다
+                실제 면적이 아닌 격자 배치(카토그램)입니다 · 구를 클릭하면 동 단위 지도로 들어갑니다
               </p>
             </TabsContent>
 
@@ -278,10 +293,12 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
                 tiles={METRO_TILES}
                 byCode={byCode}
                 onSelect={setSelected}
+                onOpen={openInNationMap}
                 selected={selected}
               />
               <p className="text-muted-foreground mt-2 text-[11px]">
-                실제 면적이 아닌 격자 배치(카토그램)입니다
+                실제 면적이 아닌 격자 배치(카토그램)입니다 · 시·구를 클릭하면 동 단위 지도로
+                들어갑니다
               </p>
             </TabsContent>
           </Tabs>
