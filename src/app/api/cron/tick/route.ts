@@ -3,6 +3,7 @@ import { authorizeCron, errorResponse } from '@/lib/api-auth';
 import { runBriefing } from '@/lib/pipeline/briefing-service';
 import { refreshRecent } from '@/lib/pipeline/refresh';
 import { analysisTargets, listConfigUserIds, loadConfig } from '@/lib/store/config';
+import { CORE_WATCH_REGIONS } from '@/lib/regions';
 import { latestPassedSlot, type BriefingSlot } from '@/lib/kakao/briefing';
 import { nowKst } from '@/lib/format';
 import { hasOpenAI } from '@/lib/ai/client';
@@ -48,14 +49,26 @@ export async function GET(request: Request) {
     const dateKst = `${kst.getFullYear()}-${String(kst.getMonth() + 1).padStart(2, '0')}-${String(kst.getDate()).padStart(2, '0')}`;
     const slot = forced ?? latestPassedSlot(hour);
 
-    /* 1) 최근 실거래 갱신 — 모든 사용자의 관심 지역을 합쳐 한 번만 긁는다 */
+    /* 1) 최근 실거래 갱신 — 12시간에 1번(05·17시 KST)만.
+       실거래는 하루 두 번이면 충분하다 (신고 기한 30일, 당일 체결 즉시 반영도 아님).
+       뉴스·AI 요약은 아래에서 매시간 그대로 돈다.
+       대상 = 핵심 지역군(서울 전역+경기 남부) ∪ 사용자 설정 지역. */
     const userIds = await listConfigUserIds();
-    const codeSet = new Set<string>();
+    const codeSet = new Set<string>(CORE_WATCH_REGIONS);
     for (const uid of userIds) {
       const cfg = await loadConfig(uid);
       analysisTargets(cfg).forEach((c) => codeSet.add(c));
     }
-    const refresh = await refreshRecent([...codeSet], 2, { budgetMs: 120_000 });
+
+    const isTradeRefreshHour =
+      hour === 5 || hour === 17 || url.searchParams.get('refreshTrades') === '1';
+    const refresh = isTradeRefreshHour
+      ? await refreshRecent([...codeSet], 2, {
+          budgetMs: 180_000,
+          // 원본 거래까지 저장해 단지 목록·검색·시세가 쿼터와 무관하게 뜨도록
+          cacheTradesFor: codeSet,
+        })
+      : { regionsProcessed: 0, monthsFetched: 0, tradesCollected: 0, errors: [] as string[] };
 
     /* 1-2) AI 요약을 미리 만들어 캐시에 넣는다.
        사용자가 페이지를 열 때 20~40초를 기다리지 않아도 되고,
