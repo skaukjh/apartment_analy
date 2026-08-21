@@ -11,6 +11,7 @@
  */
 
 import { fetchTradesForMonths } from '@/lib/sources/molit';
+import { loadTradeCache, saveTradeCache } from '@/lib/store/market-data';
 import { recentYearMonths } from '@/lib/format';
 import { findSigungu } from '@/lib/regions';
 import type { TradeRecord } from '@/lib/types';
@@ -115,8 +116,20 @@ export async function searchComplexes(
   const months = recentYearMonths(
     Math.min(MAX_LOOKBACK_MONTHS, Math.max(1, Math.round(lookbackMonths))),
   );
-  const byMonth = await fetchTradesForMonths(lawdCd, months);
-  const trades = Object.values(byMonth).flat();
+
+  /* 저장된 원본 거래가 있으면 국토부를 부르지 않는다.
+     일일 쿼터가 소진된 오후에 "검색이 안 된다"던 문제의 재발 방지다.
+     없으면 한 번 받아서 저장한다 — 다음 검색부터는 쿼터와 무관해진다. */
+  let trades = await loadTradeCache([lawdCd], months[0]);
+  if (trades.length === 0) {
+    const byMonth = await fetchTradesForMonths(lawdCd, months);
+    trades = Object.values(byMonth).flat();
+    await Promise.all(
+      Object.entries(byMonth)
+        .filter(([, list]) => list.length > 0)
+        .map(([ym, list]) => saveTradeCache(lawdCd, ym, list).catch(() => {})),
+    );
+  }
 
   const region = findSigungu(lawdCd);
 
