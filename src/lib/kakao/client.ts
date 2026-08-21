@@ -321,7 +321,7 @@ export interface KakaoFeedTemplate {
   content: {
     title: string;
     description?: string;
-    image_url: string;
+    image_url?: string;
     image_width?: number;
     image_height?: number;
     link: KakaoLink;

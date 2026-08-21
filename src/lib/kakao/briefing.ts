@@ -448,25 +448,25 @@ function briefingToSummaryTexts(
 export function briefingToImageTemplate(
   briefing: Briefing,
   appUrl: string,
-  renderToken: string,
+  _renderToken: string,
   slot: BriefingSlot = 'morning',
 ): KakaoFeedTemplate {
+  /* 이미지 없는 컴팩트 feed.
+     이미지 방식은 카카오 수집기 타임아웃으로 종종 이미지가 빠졌는데,
+     정작 사용자는 "제목+헤드라인+버튼"만 있는 그 형태를 선호했다.
+     상세는 어차피 오늘의 요약 페이지가 갖고 있으므로 알림은 가볍게,
+     탭하면(본문·버튼 모두) 요약 페이지로 보낸다. */
   const base = appUrl.replace(/\/$/, '');
-  const imageUrl = `${base}/api/briefing/image?tk=${renderToken}`;
   const todayUrl = `${base}/today`;
+  const link = { web_url: todayUrl, mobile_web_url: todayUrl };
   return {
     object_type: 'feed',
     content: {
       title: `${briefing.title} · ${SLOT_LABEL[slot]}`,
       description: briefing.headline,
-      image_url: imageUrl,
-      image_width: 800,
-      // 카카오톡에서 이미지를 탭하면 "확대"가 아니라 이 링크가 열린다.
-      // 사용자 기대는 전문 확대이므로, 콘텐츠 탭 = 이미지 원본(브라우저에서
-      // 자유롭게 확대)으로 걸고 웹 페이지는 아래 버튼으로 분리한다.
-      link: { web_url: imageUrl, mobile_web_url: imageUrl },
+      link,
     },
-    buttons: [{ title: '오늘의 요약 열기', link: { web_url: todayUrl, mobile_web_url: todayUrl } }],
+    buttons: [{ title: '오늘의 요약 열기', link }],
   };
 }
 

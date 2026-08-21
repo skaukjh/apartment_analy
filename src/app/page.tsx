@@ -19,7 +19,6 @@ import { MacroSection } from '@/components/dashboard/macro-section';
 import { ScheduleSection } from '@/components/dashboard/schedule-section';
 import { NewsSection } from '@/components/dashboard/news-section';
 import { SourceStatusSection } from '@/components/dashboard/source-status';
-import { BriefingCard } from '@/components/dashboard/briefing-card';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { AiAdvisor } from '@/components/dashboard/ai-advisor';
 import { CommunitySection, PressSection } from '@/components/dashboard/press-community';
@@ -171,11 +170,6 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <BriefingCard
-          text={briefingToText(briefing)}
-          chunkCount={previewChunks(briefing).length}
-          kakaoConnected={kakao.connected}
-        />
         {/* 소스 상태는 운영 정보라 관리자에게만 보인다 */}
         {sessionUser?.isAdmin ? (
           <SourceStatusSection sources={data.sourceStatus} generatedAt={data.generatedAt} />

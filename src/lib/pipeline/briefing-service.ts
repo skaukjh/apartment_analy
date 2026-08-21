@@ -17,7 +17,6 @@ import { broadcast, type SendReport } from '@/lib/kakao/client';
 import { saveSnapshot } from '@/lib/store/market-data';
 import { getAdminClient } from '@/lib/store/supabase';
 import { env } from '@/lib/env';
-import { saveBriefingRender } from '@/lib/store/briefing-render';
 import { loadLastBriefingHash, saveLastBriefingHash } from '@/lib/store/briefing-mark';
 import { createHash } from 'node:crypto';
 import type { Briefing } from '@/lib/kakao/briefing';
@@ -115,24 +114,8 @@ export async function runBriefing(
         },
       ];
     } else if (format === 'image') {
-      // 이미지 라우트가 그릴 내용을 토큰과 함께 저장 — 카카오가 URL 을 긁을 때 쓴다
-      const renderToken = crypto.randomUUID();
-      await saveBriefingRender(renderToken, briefing);
-
-      /* 프리워밍: 발송 전에 이미지를 우리가 먼저 한 번 렌더링한다.
-         카카오 수집기의 타임아웃은 짧은데, 콜드스타트에서 한글 폰트(9MB)를
-         받느라 첫 렌더가 수 초 걸리면 이미지가 통째로 빠진 메시지가 간다
-         (실제로 아침 브리핑에서 발생). 미리 데워 두면 카카오는 따뜻한
-         인스턴스에서 1초 안에 받아간다. 실패해도 발송은 진행한다. */
-      const imageUrl = `${env.appUrl.replace(/\/$/, '')}/api/briefing/image?tk=${renderToken}`;
-      try {
-        const warm = await fetch(imageUrl, { cache: 'no-store' });
-        if (!warm.ok) console.error('[briefing] 이미지 프리워밍 실패:', warm.status);
-      } catch (e) {
-        console.error('[briefing] 이미지 프리워밍 오류:', (e as Error).message);
-      }
-
-      templates = [briefingToImageTemplate(briefing, env.appUrl, renderToken, options.slot)];
+      // 컴팩트 feed (이미지 없음) — 상세는 오늘의 요약 페이지가 담당
+      templates = [briefingToImageTemplate(briefing, env.appUrl, '', options.slot)];
     } else if (format === 'full') {
       templates = briefingToKakaoTemplates(briefing, env.appUrl);
     } else {
