@@ -81,7 +81,7 @@ export function SiteHeader() {
       <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-2 px-4">
         <Link href="/" className="mr-2 flex items-center gap-2 font-semibold">
           <Building2 className="size-5" />
-          <span className="hidden sm:inline">부동산 갈아타기</span>
+          <span className="hidden sm:inline">이사각</span>
         </Link>
 
         <nav className="thin-scrollbar flex flex-1 items-center gap-1 overflow-x-auto">
