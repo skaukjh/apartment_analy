@@ -22,6 +22,14 @@ export async function GET(request: Request) {
     // 콜백에서 "누구의 수신자로 등록할지"를 알 수 있게 state 에 사용자 id 를 실어 보낸다.
     // (카카오를 거쳐 돌아오는 동안 세션 쿠키는 유지되지만, state 로 명시하는 쪽이 안전하다)
     const user = await getSessionUser();
+    // 승인 전에는 카카오 연결을 막는다 (미승인 계정의 발송 채널 생성 방지).
+    // 비로그인(레거시)은 기존 동작 유지.
+    if (user && !user.approved) {
+      const back = new URL('/settings', url.origin);
+      back.searchParams.set('kakao', 'error');
+      back.searchParams.set('message', '가입 승인 후 카카오를 연결할 수 있습니다.');
+      return NextResponse.redirect(back);
+    }
     const state = Buffer.from(
       JSON.stringify({ l: label || undefined, u: user?.id ?? ANON_CONFIG_ID }),
       'utf8',

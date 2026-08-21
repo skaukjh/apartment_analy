@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { loadConfig, saveConfig, isConfigEmpty } from '@/lib/store/config';
-import { getSessionUser, ANON_CONFIG_ID } from '@/lib/auth/server';
+import { getSessionUser, requireApprovedUser, ANON_CONFIG_ID } from '@/lib/auth/server';
 import { errorResponse } from '@/lib/api-auth';
 import { featureFlags } from '@/lib/env';
 
@@ -29,13 +29,11 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
-    const user = await getSessionUser();
-    if (!user) {
-      return NextResponse.json(
-        { ok: false, error: '로그인해야 설정을 저장할 수 있습니다.' },
-        { status: 401 },
-      );
+    const gate = await requireApprovedUser();
+    if ('error' in gate) {
+      return NextResponse.json({ ok: false, error: gate.error }, { status: gate.status });
     }
+    const user = gate.user;
 
     const body = await request.json();
     const config = await saveConfig(body, user.id);
@@ -63,10 +61,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: '알 수 없는 action' }, { status: 400 });
     }
 
-    const user = await getSessionUser();
-    if (!user) {
-      return NextResponse.json({ ok: false, error: '로그인이 필요합니다.' }, { status: 401 });
+    const gate = await requireApprovedUser();
+    if ('error' in gate) {
+      return NextResponse.json({ ok: false, error: gate.error }, { status: gate.status });
     }
+    const user = gate.user;
 
     const mine = await loadConfig(user.id);
     if (!isConfigEmpty(mine)) {

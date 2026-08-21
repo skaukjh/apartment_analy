@@ -4,7 +4,7 @@ import { buildMarketOutlook } from '@/lib/ai/market-outlook';
 import { loadCachedOutlook, saveOutlookCache, OUTLOOK_TTL_MS } from '@/lib/ai/outlook-cache';
 import { hasOpenAI } from '@/lib/ai/client';
 import { errorResponse } from '@/lib/api-auth';
-import { configIdForRequest } from '@/lib/auth/server';
+import { configIdForRequest, getSessionUser } from '@/lib/auth/server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -30,6 +30,16 @@ export async function GET(request: Request) {
 
     const force = new URL(request.url).searchParams.get('refresh') === '1';
     const userId = await configIdForRequest();
+    const user = await getSessionUser();
+    // 생성(=OpenAI 비용)은 승인 계정만. 비로그인·미승인은 캐시 열람만 가능하다.
+    const canGenerate = Boolean(user?.approved);
+
+    if (force && !canGenerate) {
+      return NextResponse.json(
+        { ok: false, error: '요약 재생성은 승인된 계정만 쓸 수 있습니다. 로그인 후 이용하세요.' },
+        { status: user ? 403 : 401 },
+      );
+    }
 
     if (!force) {
       const cached = await loadCachedOutlook(userId);
@@ -47,8 +57,21 @@ export async function GET(request: Request) {
       }
     }
 
+    if (!canGenerate) {
+      // 캐시가 없어도 비용 드는 생성은 하지 않는다 — 매시간 tick 이 곧 채운다
+      return NextResponse.json({
+        ok: false,
+        pending: true,
+        error: '요약을 준비 중입니다. 잠시 후 다시 열어 주세요.',
+      });
+    }
+
     const data = await buildDashboard({ userId });
+    // "다시 생성" 버튼은 강제 재생성이므로 중복 건너뛰기를 적용하지 않는다
     const outlook = await buildMarketOutlook(data);
+    if (!outlook) {
+      return NextResponse.json({ ok: false, error: '요약 생성에 실패했습니다.' }, { status: 502 });
+    }
     await saveOutlookCache(outlook, userId);
 
     return NextResponse.json({ ok: true, ...outlook, cached: false });

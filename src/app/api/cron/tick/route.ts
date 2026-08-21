@@ -9,7 +9,7 @@ import { nowKst } from '@/lib/format';
 import { hasOpenAI } from '@/lib/ai/client';
 import { buildDashboard } from '@/lib/pipeline/dashboard';
 import { buildMarketOutlook } from '@/lib/ai/market-outlook';
-import { saveOutlookCache } from '@/lib/ai/outlook-cache';
+import { loadLatestOutlook, saveOutlookCache } from '@/lib/ai/outlook-cache';
 import { saveDashboardCache } from '@/lib/pipeline/dashboard-cache';
 import { markBriefingSent, wasBriefingSent } from '@/lib/store/briefing-mark';
 
@@ -81,9 +81,20 @@ export async function GET(request: Request) {
           const data = await buildDashboard({ userId: uid });
           // 페이지가 즉시 읽을 수 있게 대시보드 캐시도 여기서 채운다
           await saveDashboardCache(uid, data).catch(() => {});
-          const outlook = await buildMarketOutlook(data);
-          await saveOutlookCache(outlook, uid);
-          outlookCached += 1;
+
+          // 수치·자료가 지난번과 같으면 OpenAI 를 부르지 않는다.
+          // 같은 입력에 같은 요약이면 충분하고, 호출당 비용이 든다.
+          const prev = await loadLatestOutlook(uid);
+          const outlook = await buildMarketOutlook(data, {
+            skipIfPromptHash: prev?.promptHash,
+          });
+          if (outlook) {
+            await saveOutlookCache(outlook, uid);
+            outlookCached += 1;
+          } else if (prev) {
+            // 내용은 그대로 두고 시각만 갱신해 캐시 신선도를 유지한다
+            await saveOutlookCache({ ...prev, generatedAt: new Date().toISOString() }, uid);
+          }
         } catch (e) {
           console.error('[tick] AI 요약 생성 실패:', uid.slice(0, 8), (e as Error).message);
         }

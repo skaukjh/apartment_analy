@@ -11,6 +11,7 @@
  * 섞이므로 그대로 사실처럼 옮기면 위험하다.
  */
 
+import { createHash } from 'node:crypto';
 import { getOpenAI, hasOpenAI, OPENAI_MODEL, SYSTEM_PROMPT } from '@/lib/ai/client';
 import { naverSearchRaw, stripTags, searchNews } from '@/lib/sources/news';
 import { fetchOfficialPress } from '@/lib/sources/gov';
@@ -37,6 +38,11 @@ export interface TokenUsage {
 export interface MarketOutlook {
   /** 마크다운 본문 */
   markdown: string;
+  /**
+   * 프롬프트(수치+자료) 해시. 다음 생성 때 이 값이 같으면 입력이 그대로라는
+   * 뜻이므로 OpenAI 호출을 건너뛴다 — 같은 입력은 같은 요약이면 충분하다.
+   */
+  promptHash?: string;
   /** 토큰 사용량 (모델이 알려준 실측값) */
   usage?: TokenUsage;
   /** 읽은 자료 */
@@ -273,7 +279,13 @@ function renderNumbers(data: DashboardData): string {
  *
  * @param data 대시보드 데이터 (수치의 유일한 출처)
  */
-export async function buildMarketOutlook(data: DashboardData): Promise<MarketOutlook> {
+export async function buildMarketOutlook(
+  data: DashboardData,
+  options: {
+    /** 직전 생성의 promptHash — 입력이 같으면 null 을 돌려주고 호출을 아낀다 */
+    skipIfPromptHash?: string;
+  } = {},
+): Promise<MarketOutlook | null> {
   if (!hasOpenAI()) {
     throw new Error('OPENAI_API_KEY 가 설정되지 않았습니다.');
   }
@@ -383,6 +395,12 @@ ${gaps.length > 0 ? `[확보하지 못한 정보]\n${gaps.map((g) => `- ${g}`).j
 ## 지켜볼 변수
 앞으로 판단을 뒤집을 수 있는 것 3가지.`;
 
+  const promptHash = createHash('sha256').update(prompt).digest('hex').slice(0, 32);
+  if (options.skipIfPromptHash && options.skipIfPromptHash === promptHash) {
+    // 수치도 자료도 그대로 — 새로 물어봐도 같은 답이 나온다
+    return null;
+  }
+
   const client = getOpenAI();
   const res = await client.chat.completions.create({
     model: OPENAI_MODEL,
@@ -398,6 +416,7 @@ ${gaps.length > 0 ? `[확보하지 못한 정보]\n${gaps.map((g) => `- ${g}`).j
 
   return {
     markdown,
+    promptHash,
     usage: res.usage
       ? {
           input: res.usage.prompt_tokens,

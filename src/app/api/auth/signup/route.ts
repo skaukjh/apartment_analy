@@ -45,6 +45,8 @@ export async function POST(request: Request) {
       password,
       // 확인 메일 없이 바로 로그인 가능하게. 어차피 비밀번호 재설정이 메일 소유를 검증한다.
       email_confirm: true,
+      // 가입 남발 방지 — 관리자가 승인하기 전까지 설정·발송 등 쓰기 기능이 잠긴다
+      app_metadata: { approved: false },
     });
 
     if (error) {
@@ -54,7 +56,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: friendly }, { status: 409 });
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      pendingApproval: true,
+      message: '가입 완료. 관리자 승인 후 설정 기능을 쓸 수 있습니다.',
+    });
   } catch (e) {
     return errorResponse(e);
   }

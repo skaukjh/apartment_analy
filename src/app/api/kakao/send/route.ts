@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { recentBriefings, runBriefing } from '@/lib/pipeline/briefing-service';
 import { errorResponse } from '@/lib/api-auth';
-import { configIdForRequest } from '@/lib/auth/server';
+import { configIdForRequest, getSessionUser } from '@/lib/auth/server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -22,6 +22,12 @@ export async function GET() {
 /** 즉시 발송 */
 export async function POST(request: Request) {
   try {
+    // 수동 발송은 비용·알림이 드는 동작 — 승인 계정 또는 레거시(비로그인 로컬 운영)만.
+    const user = await getSessionUser();
+    if (user && !user.approved) {
+      return NextResponse.json({ ok: false, error: '가입 승인 대기 중입니다.' }, { status: 403 });
+    }
+
     const body = await request.json().catch(() => ({}));
     const result = await runBriefing({
       dryRun: Boolean(body?.dryRun),

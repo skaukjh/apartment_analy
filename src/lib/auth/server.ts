@@ -21,6 +21,14 @@ export const ANON_CONFIG_ID = 'default';
 export interface SessionUser {
   id: string;
   email: string | null;
+  /**
+   * 가입 승인 여부 — 남발 방지용.
+   * 신규 가입은 app_metadata.approved=false 로 시작하고 관리자가 승인한다.
+   * app_metadata 는 서버(admin API)만 쓸 수 있어 클라이언트가 위조할 수 없다.
+   */
+  approved: boolean;
+  /** ADMIN_EMAILS 에 있는 계정 — 승인 권한 */
+  isAdmin: boolean;
 }
 
 function authConfigured(): boolean {
@@ -47,7 +55,23 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const { data, error } = await client.auth.getUser();
   if (error || !data.user) return null;
 
-  return { id: data.user.id, email: data.user.email ?? null };
+  const email = data.user.email?.toLowerCase() ?? null;
+  const isAdmin = Boolean(email && env.adminEmails.includes(email));
+  const approved =
+    isAdmin || (data.user.app_metadata as Record<string, unknown> | null)?.approved === true;
+
+  return { id: data.user.id, email, approved, isAdmin };
+}
+
+/** 승인된 사용자만 통과. 아니면 이유를 담은 에러 정보를 돌려준다. */
+export async function requireApprovedUser(): Promise<
+  { user: SessionUser } | { error: string; status: number }
+> {
+  const user = await getSessionUser();
+  if (!user) return { error: '로그인이 필요합니다.', status: 401 };
+  if (!user.approved)
+    return { error: '가입 승인 대기 중입니다. 관리자 승인 후 이용할 수 있습니다.', status: 403 };
+  return { user };
 }
 
 /** 로그인했으면 그 사용자의 설정 id, 아니면 레거시 'default' */

@@ -41,7 +41,7 @@ export default async function DashboardPage() {
     <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">이사각 대시보드</h1>
+          <h1 className="text-2xl font-bold tracking-tight">부동산인사이트</h1>
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-muted-foreground text-sm">
               국토교통부 실거래가 · 한국은행 ECOS · 한국부동산원 · 네이버 뉴스 기반

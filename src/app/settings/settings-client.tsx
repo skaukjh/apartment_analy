@@ -42,7 +42,7 @@ interface Props {
   initialConfig: UserConfig;
   kakao: { connected: boolean; reason?: string; recipients: KakaoRecipientView[] };
   /** 로그인 계정 정보 (설정은 로그인해야 진입 가능) */
-  account: { email: string; canImportLegacy: boolean };
+  account: { email: string; canImportLegacy: boolean; isAdmin: boolean };
   flags: Record<'supabase' | 'molit' | 'ecos' | 'reb' | 'naver' | 'kakao', boolean>;
 }
 
@@ -53,6 +53,78 @@ interface FillReport {
   skipped: string[];
   householdNotes: string[];
   asOf: string;
+}
+
+/** 관리자용 — 가입 승인 대기 목록. 시간 제한 없이 언제든 승인/취소할 수 있다. */
+function AdminApprovalPanel() {
+  const [users, setUsers] = useState<
+    Array<{ id: string; email: string; createdAt: string; approved: boolean; isAdmin: boolean }>
+  >([]);
+  const [loaded, setLoaded] = useState(false);
+
+  async function refresh() {
+    const j = await fetch('/api/admin/users')
+      .then((r) => r.json())
+      .catch(() => null);
+    if (j?.ok) setUsers(j.users);
+    setLoaded(true);
+  }
+
+  useEffect(() => {
+    const id = setTimeout(() => void refresh(), 0);
+    return () => clearTimeout(id);
+  }, []);
+
+  async function setApprove(userId: string, approve: boolean) {
+    const j = await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, approve }),
+    }).then((r) => r.json());
+    if (j.ok) {
+      toast.success(approve ? '승인했습니다.' : '승인을 취소했습니다.');
+      void refresh();
+    } else toast.error(j.error ?? '실패');
+  }
+
+  const pending = users.filter((u) => !u.approved);
+  if (!loaded || users.length === 0) return null;
+
+  return (
+    <SectionCard
+      title="가입 승인 (관리자)"
+      description="신규 가입은 승인 전까지 열람만 가능합니다. 언제든 승인·취소할 수 있습니다."
+      badge={pending.length > 0 ? <Badge>{pending.length}명 대기</Badge> : undefined}
+    >
+      <ul className="space-y-2">
+        {users.map((u) => (
+          <li key={u.id} className="flex items-center justify-between rounded border px-3 py-2">
+            <span className="text-sm">
+              {u.email}
+              <span className="text-muted-foreground ml-2 text-xs">
+                {u.createdAt.slice(0, 10)}
+                {u.isAdmin ? ' · 관리자' : u.approved ? ' · 승인됨' : ' · 대기'}
+              </span>
+            </span>
+            {u.isAdmin ? null : u.approved ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setApprove(u.id, false)}
+              >
+                승인 취소
+              </Button>
+            ) : (
+              <Button type="button" size="sm" onClick={() => setApprove(u.id, true)}>
+                승인
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </SectionCard>
+  );
 }
 
 export function SettingsClient({ initialConfig, kakao, account, flags }: Props) {
@@ -348,6 +420,8 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
           </Button>
         </div>
       </div>
+
+      {account.isAdmin ? <AdminApprovalPanel /> : null}
 
       {account.canImportLegacy ? (
         <Alert>

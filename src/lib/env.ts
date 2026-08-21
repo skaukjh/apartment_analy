@@ -52,6 +52,13 @@ export const env = {
   get cronSecret() {
     return get('CRON_SECRET');
   },
+  /** 관리자 이메일 목록 (콤마 구분) — 가입 승인 권한 */
+  get adminEmails(): string[] {
+    return (get('ADMIN_EMAILS') ?? '')
+      .split(',')
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+  },
   /** 앱 공개 URL (카카오 메시지 링크용) */
   get appUrl() {
     return (

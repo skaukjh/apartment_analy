@@ -33,6 +33,32 @@ function isFresh(generatedAt: string): boolean {
   return Number.isFinite(t) && Date.now() - t < OUTLOOK_TTL_MS;
 }
 
+/**
+ * 가장 최근 요약 — 신선도 무시 (중복 생성 판단용).
+ * "지난번과 입력이 같은가"를 보려면 낡은 것이라도 이전 결과가 필요하다.
+ */
+export async function loadLatestOutlook(userId = 'default'): Promise<MarketOutlook | null> {
+  const mem = memoryCache.get(userId);
+  if (mem) return mem.outlook;
+
+  const client = getAdminClient();
+  if (!client) return null;
+
+  const since = new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString();
+  const { data } = await client
+    .from('dashboard_snapshot')
+    .select('payload')
+    .gte('captured_at', since)
+    .eq('payload->>kind', KIND)
+    .eq('payload->>userId', userId)
+    .order('captured_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const p = (data?.payload ?? null) as CacheEnvelope | null;
+  return p?.outlook ?? null;
+}
+
 /** 1시간 안에 만든 요약이 있으면 그걸 준다. 없으면 null. 사용자별로 분리된다. */
 export async function loadCachedOutlook(userId = 'default'): Promise<MarketOutlook | null> {
   const mem = memoryCache.get(userId);
