@@ -8,7 +8,7 @@ import type { RegionPricePoint, TradeRecord } from '@/lib/types';
 import { median, recentYearMonths } from '@/lib/format';
 import { baseDongName, dongMatches } from '@/lib/dong-name';
 import { adminDongOf, canResolveAdminDong, resolveAdminDongs } from '@/lib/sources/admin-dong';
-import { fetchTradesForMonths, MolitError } from '@/lib/sources/molit';
+import { fetchTrades, fetchTradesForMonths, MolitError } from '@/lib/sources/molit';
 
 /** 캐시가 없을 때 국토부에서 바로 받아올 개월 수 */
 const LIVE_MONTHS = 24;
@@ -102,12 +102,28 @@ export async function GET(request: Request) {
     }
 
     if (trades.length === 0) {
+      /* 전부 비어 있으면 "거래가 없는 지역"과 "쿼터/네트워크 문제"를 구분해야 한다.
+         월별 조회는 개별 실패를 조용히 빈 배열로 처리하므로(한 달 실패로 전체를
+         죽이지 않기 위해), 여기서 캐시를 우회한 1회 프로브로 원인을 확인한다. */
+      let note = '최근 실거래가 없는 지역입니다.';
+      let quotaExceeded = false;
+      if (liveFetched) {
+        try {
+          await fetchTrades(lawd, recentYearMonths(1)[0], 0);
+        } catch (probe) {
+          if (probe instanceof MolitError) {
+            quotaExceeded = probe.code === '22';
+            note = `국토교통부 API 오류: ${probe.message} 저장된 지역(보유·목표·관심)은 계속 볼 수 있습니다.`;
+          }
+        }
+      }
       return NextResponse.json({
         ok: true,
         lawd,
         dong: dongFilter ?? null,
         complexes: [],
-        note: '최근 실거래가 없는 지역입니다.',
+        note,
+        quotaExceeded,
       });
     }
 
