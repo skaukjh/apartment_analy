@@ -1,0 +1,46 @@
+# 과거 실거래 백필 (일회성 — 2006~2021 구간)
+#
+# 매일 자정(KST) 국토부 일일 쿼터가 리셋되면 배포된 앱의 백필 엔드포인트를
+# 반복 호출한다. 이미 받은 (지역, 월)은 서버가 건너뛰므로 몇 번을 돌려도 안전하고,
+# 전 구간이 끝나면(remaining 0) 즉시 종료라 완료 후에도 부담이 없다.
+#
+# 로컬 PC 를 켜 둘 필요가 없도록 클라우드로 옮긴 것. 완료 확인 후 이 파일은
+# 지워도 된다 (남겨 둬도 하루 1회 가벼운 확인 호출만 한다).
+name: 실거래 백필
+
+on:
+  schedule:
+    # 00:10 KST = 15:10 UTC — 쿼터 리셋 직후
+    - cron: '10 15 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: 반복 백필
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "APP_URL / CRON_SECRET 시크릿이 없습니다."; exit 1
+          fi
+
+          for i in $(seq 1 900); do
+            R=$(curl -s --max-time 295 "$APP_URL/api/cron/backfill?secret=$CRON_SECRET&regions=4&from=200601" || echo '{}')
+            REMAIN=$(echo "$R" | grep -o '"remaining":[0-9]*' | head -1 | cut -d: -f2)
+            ERR=$(echo "$R" | grep -o '"errors":\[[^]]*\]' | head -1)
+            echo "[$i] remaining=${REMAIN:-?} ${ERR:0:120}"
+
+            # 전 구간 완료
+            if [ "$REMAIN" = "0" ]; then echo "백필 완료"; exit 0; fi
+            # 일일 한도 — 내일 이어서
+            case "$ERR" in *일일*|*429*|*트래픽*) echo "일일 한도 도달, 내일 계속"; exit 0;; esac
+            # 응답 파싱 실패가 이어지면 서버 문제로 보고 종료 (내일 재시도)
+            if [ -z "$REMAIN" ]; then
+              sleep 20
+            fi
+          done
+          echo "회차 한도 도달, 내일 계속"
