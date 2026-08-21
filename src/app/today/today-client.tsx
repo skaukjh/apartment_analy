@@ -28,6 +28,13 @@ interface OutlookResponse {
   generatedAt?: string;
 }
 
+/** '8월 22일 14시' 형태 — 이 요약이 언제 기준인지 한눈에 */
+function formatGeneratedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${d.getHours()}시`;
+}
+
 const KIND_LABEL: Record<OutlookSource['kind'], string> = {
   official: '공식발표',
   news: '기사',
@@ -123,7 +130,13 @@ export function AiOutlookPanel({
       <div className="mb-3 flex items-center justify-between">
         <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
           <Sparkles className="size-3.5" />
-          {data?.model ?? 'AI'} · 공식발표·기사·블로그·카페를 읽고 정리합니다
+          {data?.model ?? 'AI'}
+          {data?.generatedAt ? (
+            <strong className="text-primary font-semibold">
+              · {formatGeneratedAt(data.generatedAt)} 생성 내용
+            </strong>
+          ) : null}{' '}
+          · 새 자료(공식발표 1건+ 또는 기사·글 20건+)가 쌓일 때만 다시 만듭니다
         </span>
         {canRefresh ? (
           <Button

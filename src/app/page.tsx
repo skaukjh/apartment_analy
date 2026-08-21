@@ -2,8 +2,6 @@ import { getSessionUser, resolveOpenAIKey } from '@/lib/auth/server';
 import Link from 'next/link';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { buildDashboardCached, summarizeDashboard } from '@/lib/pipeline/dashboard';
-import { buildBriefing, briefingToText, previewChunks } from '@/lib/kakao/briefing';
-import { getConnectionStatus } from '@/lib/kakao/client';
 import { isConfigEmpty } from '@/lib/store/config';
 import { HEAT_META } from '@/lib/analysis/market-signals';
 import { formatEok, formatKrw, formatPct } from '@/lib/format';
@@ -31,8 +29,6 @@ export default async function DashboardPage() {
   const userId = sessionUser?.id ?? 'default';
   const data = await buildDashboardCached(userId);
   const { spread, primaryGap, newHighs, newLows } = summarizeDashboard(data);
-  const briefing = buildBriefing(data);
-  const kakao = await getConnectionStatus(userId).catch(() => ({ connected: false }));
   const empty = isConfigEmpty(data.config);
   const heat = HEAT_META[data.sentiment.heatLevel];
 
