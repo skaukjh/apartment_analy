@@ -35,13 +35,14 @@ export interface RebSpec {
 export const REB_SPECS = {
   /** 주간 아파트 매매가격지수 */
   weeklySalePriceIndex: {
-    statblId: process.env.REB_STATBL_WEEKLY_PRICE ?? 'A_2024_00178',
+    // R-ONE 카탈로그(docs/REB-CATALOG.md)에서 확인한 실제 ID — 기존 A_2024_00178 은 존재하지 않았다
+    statblId: process.env.REB_STATBL_WEEKLY_PRICE ?? 'T244183132827305',
     cycle: 'WK' as const,
     label: '주간 아파트 매매가격지수',
   },
   /** 매매수급동향 */
   supplyDemand: {
-    statblId: process.env.REB_STATBL_SUPPLY_DEMAND ?? 'A_2024_00179',
+    statblId: process.env.REB_STATBL_SUPPLY_DEMAND ?? 'T248163133074619',
     cycle: 'WK' as const,
     label: '아파트 매매수급동향',
   },
