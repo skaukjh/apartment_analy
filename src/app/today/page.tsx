@@ -3,9 +3,7 @@ import Link from 'next/link';
 import { buildDashboardCached } from '@/lib/pipeline/dashboard';
 import { buildBriefing } from '@/lib/kakao/briefing';
 import { hasOpenAI } from '@/lib/ai/client';
-import { HEAT_META } from '@/lib/analysis/market-signals';
-import { formatEok, formatPct } from '@/lib/format';
-import { SectionCard, Stat } from '@/components/ui-bits';
+import { SectionCard } from '@/components/ui-bits';
 import { AiOutlookPanel } from './today-client';
 
 export const dynamic = 'force-dynamic';
@@ -22,8 +20,6 @@ export default async function TodayPage() {
   const data = await buildDashboardCached(sessionUser?.id ?? 'default');
   const ai = resolveOpenAIKey(sessionUser, data.config.openaiApiKey);
   const briefing = buildBriefing(data);
-  const heat = HEAT_META[data.sentiment.heatLevel];
-  const topGap = data.gaps[0];
 
   return (
     <div className="mx-auto max-w-[1100px] px-4 py-6">
@@ -38,24 +34,6 @@ export default async function TodayPage() {
         >
           대시보드로
         </Link>
-      </div>
-
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Stat
-          label="최소 갈아타기 갭"
-          value={topGap ? formatEok(topGap.gap) : '—'}
-          sub={topGap ? `${topGap.holdingName} → ${topGap.targetName}` : '보유·목표를 등록하세요'}
-        />
-        <Stat
-          label="시장 과열도"
-          value={`${data.sentiment.heatScore}/100`}
-          sub={heat?.label ?? ''}
-        />
-        <Stat
-          label="신고가 비중"
-          value={formatPct(data.sentiment.newHighRatio, 1)}
-          sub={`거래량 전년비 ${formatPct(data.sentiment.volumeYoy, 1)}`}
-        />
       </div>
 
       <div className="mb-6">

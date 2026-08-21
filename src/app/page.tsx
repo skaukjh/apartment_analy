@@ -4,13 +4,14 @@ import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { buildDashboardCached, summarizeDashboard } from '@/lib/pipeline/dashboard';
 import { isConfigEmpty } from '@/lib/store/config';
 import { HEAT_META } from '@/lib/analysis/market-signals';
-import { formatEok, formatKrw, formatPct } from '@/lib/format';
+import { formatEok, formatKrw } from '@/lib/format';
 import { Stat } from '@/components/ui-bits';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { GapSection } from '@/components/dashboard/gap-section';
 import { SpreadMap } from '@/components/dashboard/spread-map';
 import { CatalystSection } from '@/components/dashboard/catalyst-section';
+import { catalystCoverageRegions } from '@/lib/analysis/catalysts';
 import { SentimentSection } from '@/components/dashboard/sentiment-section';
 import { SentimentNoteCard } from '@/components/dashboard/sentiment-note-card';
 import { loadSentimentNote } from '@/lib/ai/sentiment-note';
@@ -153,7 +154,7 @@ export default async function DashboardPage() {
       ) : null}
 
       {/* ④ 호재 */}
-      <CatalystSection catalysts={data.catalysts} regions={data.config.watchRegions} />
+      <CatalystSection catalysts={data.catalysts} regions={catalystCoverageRegions(data.config)} />
 
       {/* 공식 발표 · 커뮤니티 */}
       <div className="grid gap-6 xl:grid-cols-2">
@@ -162,7 +163,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* ⑧ 지수 + 브리핑 */}
-      <MacroSection macro={data.macro} sentiment={data.sentiment} />
+      <MacroSection macro={data.macro} />
 
       <div className="grid gap-6 xl:grid-cols-2">
         <ScheduleSection schedule={data.schedule} />
@@ -175,10 +176,6 @@ export default async function DashboardPage() {
           <SourceStatusSection sources={data.sourceStatus} generatedAt={data.generatedAt} />
         ) : null}
       </div>
-
-      <p className="text-muted-foreground pt-2 text-center text-xs">
-        상승 확산률 {formatPct(spread.spreadRate, 0)} 기준 · 분석 대상 {spread.total}개 시군구
-      </p>
     </div>
   );
 }

@@ -342,6 +342,12 @@ export interface CatalystStatus {
   /** 시세 영향도 (사용자 판단 또는 자동 추정) */
   impact: 'high' | 'medium' | 'low';
   sourceUrl?: string;
+  /** 악재 여부. 생략하면 호재 */
+  polarity?: 'positive' | 'negative';
+  /** 이 항목이 걸린 지역 이름 (관심·보유·목표 지역) */
+  matchedRegions?: string[];
+  /** 근거 출처 링크 — 공식 자료·뉴스, 최대 5개 */
+  sourceLinks?: Array<{ title: string; url: string }>;
 }
 
 /** 주요 일정 (요구사항 8) */

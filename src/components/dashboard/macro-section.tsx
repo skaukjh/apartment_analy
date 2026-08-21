@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import type { MacroIndicator, MarketSentiment } from '@/lib/types';
+import type { MacroIndicator } from '@/lib/types';
 import { formatPct } from '@/lib/format';
 import { SectionCard, EmptyHint, Delta } from '@/components/ui-bits';
 import { Badge } from '@/components/ui/badge';
@@ -19,11 +19,10 @@ import { ExternalLink } from 'lucide-react';
 
 interface Props {
   macro: MacroIndicator[];
-  sentiment: MarketSentiment;
 }
 
 /** 지표 조합으로 한 줄 해설을 만든다 */
-function buildCommentary(macro: MacroIndicator[], sentiment: MarketSentiment): string[] {
+function buildCommentary(macro: MacroIndicator[]): string[] {
   const notes: string[] = [];
   const find = (k: MacroIndicator['key']) => macro.find((m) => m.key === k);
 
@@ -74,15 +73,11 @@ function buildCommentary(macro: MacroIndicator[], sentiment: MarketSentiment): s
     );
   }
 
-  notes.push(
-    `현재 시장은 과열점수 ${sentiment.heatScore}/100 구간이며, ` +
-      `신고가 비중 ${sentiment.newHighRatio.toFixed(1)}%, 거래량은 전년 동월 대비 ${formatPct(sentiment.volumeYoy, 0)} 입니다.`,
-  );
-
+  // 과열점수·신고가·거래량은 ⑥ 과열 지표 카드가 이미 보여준다 — 여기서 반복하지 않는다
   return notes;
 }
 
-export function MacroSection({ macro, sentiment }: Props) {
+export function MacroSection({ macro }: Props) {
   const [selected, setSelected] = useState(0);
 
   if (macro.length === 0) {
@@ -110,7 +105,7 @@ export function MacroSection({ macro, sentiment }: Props) {
 
   const active = macro[Math.min(selected, macro.length - 1)];
   const chartData = active.series.slice(-60);
-  const commentary = buildCommentary(macro, sentiment);
+  const commentary = buildCommentary(macro);
 
   return (
     <SectionCard

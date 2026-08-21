@@ -27,7 +27,7 @@ import {
   findPriceExtremes,
   mergeMonthlySeries,
 } from '@/lib/analysis/market-signals';
-import { buildCatalysts } from '@/lib/analysis/catalysts';
+import { buildCatalysts, catalystCoverageRegions } from '@/lib/analysis/catalysts';
 import { buildSchedule } from '@/lib/analysis/schedule';
 import { fetchAllMacro } from '@/lib/sources/ecos';
 import { fetchMarketNews, fetchRegionNews } from '@/lib/sources/news';
@@ -391,9 +391,12 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
 
   /* --- 7) 뉴스 · 호재 (요구사항 4) --- */
   let news: NewsItem[] = [];
+  // 호재·악재 추적 지역: 관심 지역에 보유·목표 아파트 지역을 합친다
+  const catalystRegions = catalystCoverageRegions(config);
+
   if (!options.skipLive && featureFlags.hasNaver) {
     const [regionNews, marketNews] = await Promise.all([
-      fetchRegionNews(config.watchRegions).catch(() => ({ items: [], errors: ['지역 뉴스 실패'] })),
+      fetchRegionNews(catalystRegions).catch(() => ({ items: [], errors: ['지역 뉴스 실패'] })),
       fetchMarketNews().catch(() => ({ items: [], errors: ['시장 뉴스 실패'] })),
     ]);
     news = [...regionNews.items, ...marketNews.items];
@@ -416,7 +419,7 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
     });
   }
 
-  const catalysts = buildCatalysts({ regions: config.watchRegions, news });
+  const catalysts = buildCatalysts({ regions: catalystRegions, news });
 
   /* --- 7-2) 공식 발표 + 블로그·카페 (참고용) --- */
   let press: NewsItem[] = [];

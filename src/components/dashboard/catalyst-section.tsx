@@ -58,8 +58,8 @@ export function CatalystSection({ catalysts, regions }: Props) {
   if (regions.length === 0) {
     return (
       <SectionCard
-        title="④ 관심 지역 호재 현황"
-        description="관심 지역을 등록하면 해당 지역에 걸린 교통·개발·공급 호재의 진행 단계를 추적합니다."
+        title="④ 관심 지역 호재 · 악재"
+        description="관심 지역을 등록하면 해당 지역(보유·목표 아파트 지역 포함)에 걸린 교통·개발·공급 호재와 규제 악재를 추적합니다."
       >
         <EmptyHint>
           <p className="mb-3">관심 지역이 등록되지 않았습니다.</p>
@@ -73,24 +73,33 @@ export function CatalystSection({ catalysts, regions }: Props) {
 
   if (catalysts.length === 0) {
     return (
-      <SectionCard title="④ 관심 지역 호재 현황">
-        <EmptyHint>등록된 관심 지역에 매칭되는 주요 호재가 없습니다.</EmptyHint>
+      <SectionCard title="④ 관심 지역 호재 · 악재">
+        <EmptyHint>등록된 관심 지역에 매칭되는 주요 호재·악재가 없습니다.</EmptyHint>
       </SectionCard>
     );
   }
 
+  const positives = catalysts.filter((c) => c.polarity !== 'negative');
+  const negatives = catalysts.filter((c) => c.polarity === 'negative');
+  const coverage = regions.map((r) => r.name).join(' · ');
+
   return (
     <SectionCard
-      title="④ 관심 지역 호재 현황"
-      description="진행 단계는 최신 뉴스 헤드라인에서 자동 추론합니다. '미확인'은 최근 관련 보도가 없다는 뜻이며, 공식 출처로 직접 확인하세요."
-      badge={<Badge variant="secondary">{catalysts.length}건</Badge>}
+      title="④ 관심 지역 호재 · 악재"
+      description={`추적 지역(보유·목표 포함): ${coverage}. 진행 단계는 최신 뉴스 헤드라인에서 자동 추론하며, '미확인'은 최근 관련 보도가 없다는 뜻입니다.`}
+      badge={
+        <Badge variant="secondary">
+          호재 {positives.length} · 악재 {negatives.length}
+        </Badge>
+      }
     >
       <div className="grid gap-3 lg:grid-cols-2">
-        {catalysts.map((c) => {
+        {[...positives, ...negatives].map((c) => {
           const meta = CATEGORY_META[c.category];
           const Icon = meta.icon;
           const stageIndex = STAGE_LABELS.indexOf(c.stage);
           const unconfirmed = c.lastUpdate === '미확인';
+          const negative = c.polarity === 'negative';
 
           return (
             <div key={c.id} className="rounded-lg border p-4">
@@ -100,8 +109,21 @@ export function CatalystSection({ catalysts, regions }: Props) {
                     <Icon className="size-4" />
                   </span>
                   <div>
-                    <div className="leading-tight font-medium">{c.title}</div>
-                    <div className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-[11px]">
+                    <div className="flex items-center gap-1.5 leading-tight font-medium">
+                      <span>{c.title}</span>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'px-1.5 py-0 text-[10px]',
+                          negative
+                            ? 'border-red-500/40 text-red-600 dark:text-red-400'
+                            : 'border-emerald-500/40 text-emerald-600 dark:text-emerald-400',
+                        )}
+                      >
+                        {negative ? '악재' : '호재'}
+                      </Badge>
+                    </div>
+                    <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
                       <span>{meta.label}</span>
                       <span>·</span>
                       <span>{IMPACT_LABEL[c.impact]}</span>
@@ -111,6 +133,12 @@ export function CatalystSection({ catalysts, regions }: Props) {
                           ? '최근 보도 없음'
                           : `업데이트 ${formatShortDate(c.lastUpdate.slice(0, 10))}`}
                       </span>
+                      {c.matchedRegions && c.matchedRegions.length > 0 ? (
+                        <>
+                          <span>·</span>
+                          <span>{c.matchedRegions.slice(0, 3).join(', ')}</span>
+                        </>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -127,27 +155,48 @@ export function CatalystSection({ catalysts, regions }: Props) {
                 ) : null}
               </div>
 
-              <div className="mt-3">
-                <div className="mb-1.5 flex items-center justify-between text-[11px]">
-                  <span className={cn('font-medium', unconfirmed && 'text-muted-foreground')}>
-                    {unconfirmed ? '단계 미확인' : c.stage}
-                  </span>
-                  <span className="tabular text-muted-foreground">{c.progress}%</span>
-                </div>
-                <Progress value={c.progress} className="h-1.5" />
-                <div className="text-muted-foreground mt-1.5 flex justify-between text-[9px]">
-                  {STAGE_LABELS.map((s, i) => (
-                    <span
-                      key={s}
-                      className={cn(
-                        i === stageIndex && !unconfirmed && 'text-foreground font-semibold',
-                      )}
-                    >
-                      {s}
+              {/* 악재는 '착공→준공' 단계 개념이 없어 진행 바를 숨긴다 */}
+              {!negative ? (
+                <div className="mt-3">
+                  <div className="mb-1.5 flex items-center justify-between text-[11px]">
+                    <span className={cn('font-medium', unconfirmed && 'text-muted-foreground')}>
+                      {unconfirmed ? '단계 미확인' : c.stage}
                     </span>
+                    <span className="tabular text-muted-foreground">{c.progress}%</span>
+                  </div>
+                  <Progress value={c.progress} className="h-1.5" />
+                  <div className="text-muted-foreground mt-1.5 flex justify-between text-[9px]">
+                    {STAGE_LABELS.map((s, i) => (
+                      <span
+                        key={s}
+                        className={cn(
+                          i === stageIndex && !unconfirmed && 'text-foreground font-semibold',
+                        )}
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* 근거 출처 — 공식 자료·뉴스, 최대 5개 */}
+              {c.sourceLinks && c.sourceLinks.length > 0 ? (
+                <div className="mt-2.5 space-y-1 border-t pt-2">
+                  {c.sourceLinks.slice(0, 5).map((l) => (
+                    <a
+                      key={l.url}
+                      href={l.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-[11px]"
+                    >
+                      <ExternalLink className="size-3 shrink-0" />
+                      <span className="truncate">{l.title}</span>
+                    </a>
                   ))}
                 </div>
-              </div>
+              ) : null}
             </div>
           );
         })}

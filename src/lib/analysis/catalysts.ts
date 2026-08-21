@@ -7,7 +7,7 @@
  * 뉴스가 없으면 '미확인'으로 표시하고 공식 출처 링크를 제공한다.
  */
 
-import type { CatalystStatus, NewsItem, WatchRegion } from '@/lib/types';
+import type { CatalystStatus, NewsItem, UserConfig, WatchRegion } from '@/lib/types';
 
 /** 사업 단계와 진행률 매핑 */
 const STAGE_ORDER: Array<{ stage: CatalystStatus['stage']; progress: number; patterns: RegExp }> = [
@@ -39,10 +39,12 @@ export interface CatalystSeed {
   category: CatalystStatus['category'];
   /** 뉴스 검색 및 매칭에 사용할 키워드 */
   keywords: string[];
-  /** 이 호재가 영향을 주는 시군구 법정동코드 (부분 매칭용 접두어도 허용) */
+  /** 영향 시군구 법정동코드. '*' 하나만 넣으면 모든 관심 지역에 해당(전국 규제 등) */
   affects: string[];
   impact: CatalystStatus['impact'];
   sourceUrl: string;
+  /** 악재 여부. 생략하면 호재 */
+  polarity?: 'negative';
 }
 
 export const CATALYST_SEEDS: CatalystSeed[] = [
@@ -181,7 +183,63 @@ export const CATALYST_SEEDS: CatalystSeed[] = [
     impact: 'high',
     sourceUrl: 'https://www.sejong.go.kr',
   },
+
+  /* ── 악재 — 가격에 부담을 주는 규제·정책. affects '*' 는 모든 관심 지역 노출 ── */
+  {
+    id: 'land-permit-zone',
+    title: '토지거래허가구역 (강남3구·용산 등)',
+    category: 'policy',
+    polarity: 'negative',
+    keywords: ['토지거래허가'],
+    affects: ['11680', '11650', '11710', '11170'],
+    impact: 'high',
+    sourceUrl: 'https://news.seoul.go.kr',
+  },
+  {
+    id: 'recon-levy',
+    title: '재건축초과이익환수제 (재초환)',
+    category: 'policy',
+    polarity: 'negative',
+    keywords: ['재건축초과이익', '재초환'],
+    affects: ['11350', '11320', '11470', '11680', '11650', '11710', '11560'],
+    impact: 'medium',
+    sourceUrl: 'https://www.molit.go.kr',
+  },
+  {
+    id: 'loan-regulation',
+    title: '대출 규제 (스트레스 DSR·주담대 한도)',
+    category: 'policy',
+    polarity: 'negative',
+    keywords: ['스트레스 DSR', '주담대 한도', '대출 규제'],
+    affects: ['*'],
+    impact: 'high',
+    sourceUrl: 'https://www.fsc.go.kr',
+  },
 ];
+
+/**
+ * 호재·악재를 추적할 지역 = 관심 지역 ∪ 보유 아파트 지역 ∪ 목표 아파트 지역.
+ * 보유·목표는 단지 단위라 시군구로 승격해 합친다 (lawdCd 기준 중복 제거).
+ * "왜 내 보유 지역 호재가 안 보이지?"를 없애기 위한 규칙이다.
+ */
+export function catalystCoverageRegions(
+  config: Pick<UserConfig, 'watchRegions' | 'holdings' | 'targets'>,
+): WatchRegion[] {
+  const byCode = new Map<string, WatchRegion>();
+  for (const r of config.watchRegions) byCode.set(r.lawdCd, r);
+  for (const a of [...config.holdings, ...config.targets]) {
+    if (!a.lawdCd || byCode.has(a.lawdCd)) continue;
+    byCode.set(a.lawdCd, {
+      id: `asset-${a.lawdCd}`,
+      name: `${a.sido} ${a.sigungu}`.trim(),
+      sido: a.sido,
+      sigungu: a.sigungu,
+      lawdCd: a.lawdCd,
+      keywords: [],
+    });
+  }
+  return [...byCode.values()];
+}
 
 /** 뉴스 텍스트에서 진행 단계를 추론 */
 export function inferStage(
@@ -217,7 +275,9 @@ export function buildCatalysts(options: BuildCatalystOptions): CatalystStatus[] 
   const results: CatalystStatus[] = [];
 
   for (const seed of CATALYST_SEEDS) {
-    const hitCodes = seed.affects.filter((c) => regionCodes.has(c));
+    const hitCodes = seed.affects.includes('*')
+      ? regions.map((r) => r.lawdCd)
+      : seed.affects.filter((c) => regionCodes.has(c));
     if (hitCodes.length === 0) continue;
 
     const related = news
@@ -226,6 +286,16 @@ export function buildCatalysts(options: BuildCatalystOptions): CatalystStatus[] 
 
     const inferred = inferStage(related.slice(0, 8).map((n) => `${n.title} ${n.summary}`));
     const region = regions.find((r) => hitCodes.includes(r.lawdCd));
+
+    // 출처 링크 — 공식 출처 1 + 최신 관련 뉴스로 채워 최대 5개 (URL 중복 제거)
+    const sourceLinks: Array<{ title: string; url: string }> = [
+      { title: '공식 출처', url: seed.sourceUrl },
+    ];
+    for (const n of related) {
+      if (sourceLinks.length >= 5) break;
+      if (sourceLinks.some((l) => l.url === n.url)) continue;
+      sourceLinks.push({ title: n.title, url: n.url });
+    }
 
     results.push({
       id: seed.id,
@@ -237,6 +307,9 @@ export function buildCatalysts(options: BuildCatalystOptions): CatalystStatus[] 
       lastUpdate: related[0]?.publishedAt ?? '미확인',
       impact: seed.impact,
       sourceUrl: related[0]?.url ?? seed.sourceUrl,
+      polarity: seed.polarity ?? 'positive',
+      matchedRegions: regions.filter((r) => hitCodes.includes(r.lawdCd)).map((r) => r.name),
+      sourceLinks,
       expectedAt: undefined,
     });
   }
