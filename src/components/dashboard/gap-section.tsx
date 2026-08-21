@@ -138,7 +138,14 @@ export function GapSection({ config, quotes }: Props) {
   return (
     <SectionCard
       title="① 보유 ↔ 목표 시세 갭"
-      description="갭은 단순 시세 차이이고, 실소요 자금은 양도세·취득세·중개보수까지 반영한 실제로 더 필요한 현금입니다."
+      description={
+        <>
+          갭은 단순 시세 차이이고,{' '}
+          <strong className="text-primary font-semibold">실소요 자금</strong>은
+          양도세·취득세·중개보수까지 반영한{' '}
+          <strong className="text-primary font-semibold">실제로 더 필요한 현금</strong>입니다.
+        </>
+      }
       badge={<Badge variant="secondary">{pairs.length}개 조합</Badge>}
     >
       <div className="space-y-3">
@@ -213,9 +220,14 @@ export function GapSection({ config, quotes }: Props) {
                   </div>
                   <div>
                     <div className="text-muted-foreground text-xs">세후 실소요 자금</div>
-                    <div className="tabular text-lg font-bold">{formatKrw(p.realCashNeeded)}</div>
+                    <div className="tabular text-primary text-lg font-bold underline decoration-dotted underline-offset-4">
+                      {formatKrw(p.realCashNeeded)}
+                    </div>
                     <div className="text-muted-foreground text-[11px]">
-                      갭 대비 +{formatKrw(p.realCashNeeded - p.gap)}
+                      갭 대비 +{formatKrw(p.realCashNeeded - p.gap)} ·{' '}
+                      <strong className="text-primary font-semibold">
+                        {open ? '접기' : '클릭해 세금·수수료 분해 보기'}
+                      </strong>
                     </div>
                   </div>
                 </div>

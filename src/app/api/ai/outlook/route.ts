@@ -31,12 +31,13 @@ export async function GET(request: Request) {
     const force = new URL(request.url).searchParams.get('refresh') === '1';
     const userId = await configIdForRequest();
     const user = await getSessionUser();
-    // 생성(=OpenAI 비용)은 승인 계정만. 비로그인·미승인은 캐시 열람만 가능하다.
-    const canGenerate = Boolean(user?.approved);
+    // 생성(=OpenAI 비용)은 관리자만. 일반 회원·비로그인은 캐시 열람만 가능하다.
+    // 자동 갱신은 매시간 tick 이 "새 자료 기준"을 만족할 때만 수행한다.
+    const canGenerate = Boolean(user?.isAdmin);
 
     if (force && !canGenerate) {
       return NextResponse.json(
-        { ok: false, error: '요약 재생성은 승인된 계정만 쓸 수 있습니다. 로그인 후 이용하세요.' },
+        { ok: false, error: '요약 재생성은 관리자만 쓸 수 있습니다.' },
         { status: user ? 403 : 401 },
       );
     }

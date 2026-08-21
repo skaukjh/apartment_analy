@@ -87,6 +87,7 @@ export async function GET(request: Request) {
           const prev = await loadLatestOutlook(uid);
           const outlook = await buildMarketOutlook(data, {
             skipIfPromptHash: prev?.promptHash,
+            previousSourceUrls: prev?.sources?.map((x) => x.url),
           });
           if (outlook) {
             await saveOutlookCache(outlook, uid);

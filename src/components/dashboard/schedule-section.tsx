@@ -35,7 +35,13 @@ export function ScheduleSection({ schedule }: { schedule: ScheduleEvent[] }) {
   return (
     <SectionCard
       title="주요 일정"
-      description="일정을 누르면 그 결과에 따라 부동산 시장이 어느 방향으로 움직이는지 시나리오별로 볼 수 있습니다."
+      description={
+        <>
+          <strong className="text-primary font-semibold">일정을 누르면</strong> 그 결과에 따라
+          부동산 시장이 어느 방향으로 움직이는지{' '}
+          <strong className="text-primary font-semibold">시나리오별</strong>로 볼 수 있습니다.
+        </>
+      }
     >
       <ol className="relative space-y-1 border-l pl-5">
         {upcoming.map((e) => {

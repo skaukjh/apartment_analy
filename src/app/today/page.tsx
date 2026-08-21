@@ -1,4 +1,4 @@
-import { configIdForRequest } from '@/lib/auth/server';
+import { getSessionUser } from '@/lib/auth/server';
 import Link from 'next/link';
 import { buildDashboardCached } from '@/lib/pipeline/dashboard';
 import { buildBriefing } from '@/lib/kakao/briefing';
@@ -18,7 +18,8 @@ export const revalidate = 0;
  * 카톡은 200자 제한이라 요약만 가고, 여기가 그 "전체 보기" 목적지다.
  */
 export default async function TodayPage() {
-  const data = await buildDashboardCached(await configIdForRequest());
+  const sessionUser = await getSessionUser();
+  const data = await buildDashboardCached(sessionUser?.id ?? 'default');
   const briefing = buildBriefing(data);
   const heat = HEAT_META[data.sentiment.heatLevel];
   const topGap = data.gaps[0];
@@ -61,7 +62,7 @@ export default async function TodayPage() {
           title="AI 요약 · 전망"
           description="공식 발표와 정책, 커뮤니티 글을 읽고 보유·목표 아파트 기준으로 정리합니다. 투자 자문이 아닙니다."
         >
-          <AiOutlookPanel enabled={hasOpenAI()} />
+          <AiOutlookPanel enabled={hasOpenAI()} canRefresh={Boolean(sessionUser?.isAdmin)} />
         </SectionCard>
       </div>
 

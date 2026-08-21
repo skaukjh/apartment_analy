@@ -1,4 +1,4 @@
-import { configIdForRequest } from '@/lib/auth/server';
+import { getSessionUser } from '@/lib/auth/server';
 import Link from 'next/link';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { buildDashboardCached, summarizeDashboard } from '@/lib/pipeline/dashboard';
@@ -29,7 +29,8 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function DashboardPage() {
-  const userId = await configIdForRequest();
+  const sessionUser = await getSessionUser();
+  const userId = sessionUser?.id ?? 'default';
   const data = await buildDashboardCached(userId);
   const { spread, primaryGap, newHighs, newLows } = summarizeDashboard(data);
   const briefing = buildBriefing(data);
@@ -148,7 +149,8 @@ export default async function DashboardPage() {
       </div>
 
       {/* AI 평가 · 상담 */}
-      <AiAdvisor config={data.config} enabled={hasOpenAI()} />
+      {/* AI 상담·평가는 호출당 비용이 들어 관리자에게만 보인다 */}
+      {sessionUser?.isAdmin ? <AiAdvisor config={data.config} enabled={hasOpenAI()} /> : null}
 
       {/* ④ 호재 */}
       <CatalystSection catalysts={data.catalysts} regions={data.config.watchRegions} />
@@ -173,7 +175,10 @@ export default async function DashboardPage() {
           chunkCount={previewChunks(briefing).length}
           kakaoConnected={kakao.connected}
         />
-        <SourceStatusSection sources={data.sourceStatus} generatedAt={data.generatedAt} />
+        {/* 소스 상태는 운영 정보라 관리자에게만 보인다 */}
+        {sessionUser?.isAdmin ? (
+          <SourceStatusSection sources={data.sourceStatus} generatedAt={data.generatedAt} />
+        ) : null}
       </div>
 
       <p className="text-muted-foreground pt-2 text-center text-xs">

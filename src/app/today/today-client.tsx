@@ -79,14 +79,21 @@ function renderMarkdown(md: string) {
   });
 }
 
-export function AiOutlookPanel({ enabled }: { enabled: boolean }) {
+export function AiOutlookPanel({
+  enabled,
+  canRefresh = false,
+}: {
+  enabled: boolean;
+  /** 재생성(비용)은 관리자만 — 일반 사용자에게는 버튼을 숨긴다 */
+  canRefresh?: boolean;
+}) {
   const [data, setData] = useState<OutlookResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function load() {
+  async function load(force = false) {
     setLoading(true);
     try {
-      const res = await fetch('/api/ai/outlook');
+      const res = await fetch('/api/ai/outlook' + (force ? '?refresh=1' : ''));
       setData(await res.json());
     } catch (e) {
       setData({ ok: false, error: (e as Error).message });
@@ -118,10 +125,22 @@ export function AiOutlookPanel({ enabled }: { enabled: boolean }) {
           <Sparkles className="size-3.5" />
           {data?.model ?? 'AI'} · 공식발표·기사·블로그·카페를 읽고 정리합니다
         </span>
-        <Button type="button" variant="ghost" size="sm" disabled={loading} onClick={load}>
-          {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-          <span className="ml-1">다시 생성</span>
-        </Button>
+        {canRefresh ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={loading}
+            onClick={() => void load(true)}
+          >
+            {loading ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="size-4" />
+            )}
+            <span className="ml-1">다시 생성</span>
+          </Button>
+        ) : null}
       </div>
 
       {loading && !data && (

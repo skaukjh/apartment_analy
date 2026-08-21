@@ -284,6 +284,12 @@ export async function buildMarketOutlook(
   options: {
     /** 직전 생성의 promptHash — 입력이 같으면 null 을 돌려주고 호출을 아낀다 */
     skipIfPromptHash?: string;
+    /**
+     * 직전 생성이 읽었던 자료 URL 목록.
+     * "새 자료가 충분히 쌓였을 때만" 재생성하는 기준에 쓴다 —
+     * 뉴스 한두 건 바뀌었다고 매시간 다시 만들면 비용만 나간다.
+     */
+    previousSourceUrls?: string[];
   } = {},
 ): Promise<MarketOutlook | null> {
   if (!hasOpenAI()) {
@@ -399,6 +405,28 @@ ${gaps.length > 0 ? `[확보하지 못한 정보]\n${gaps.map((g) => `- ${g}`).j
   if (options.skipIfPromptHash && options.skipIfPromptHash === promptHash) {
     // 수치도 자료도 그대로 — 새로 물어봐도 같은 답이 나온다
     return null;
+  }
+
+  /* 새 자료가 충분할 때만 재생성한다.
+     기준(전체 수집 풀 기준, 직전 생성 이후 처음 보는 URL):
+       - 새 공식발표(정부·정책) 1건 이상   → 정책 변화는 즉시 반영 가치가 있다
+       - 또는 새 일반 기사 20건 이상
+       - 또는 새 블로그·카페 글 20건 이상
+     미달이면 이전 요약을 그대로 쓴다. */
+  if (options.previousSourceUrls && options.previousSourceUrls.length > 0) {
+    const seen = new Set(options.previousSourceUrls);
+    const fresh = sources.filter((s2) => !seen.has(s2.url));
+    const newOfficial = fresh.filter((s2) => s2.kind === 'official').length;
+    const newNews = fresh.filter((s2) => s2.kind === 'news').length;
+    const newOpinions = fresh.filter((s2) => s2.kind === 'blog' || s2.kind === 'cafe').length;
+
+    const enough = newOfficial >= 1 || newNews >= 20 || newOpinions >= 20;
+    if (!enough) {
+      console.log(
+        `[outlook] 재생성 보류 — 새 자료 부족 (공식 ${newOfficial}, 기사 ${newNews}, 의견 ${newOpinions})`,
+      );
+      return null;
+    }
   }
 
   const client = getOpenAI();

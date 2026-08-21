@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getSessionUser } from '@/lib/auth/server';
 import { errorResponse } from '@/lib/api-auth';
 import { buildDashboard } from '@/lib/pipeline/dashboard';
 import { buildPropertyContext } from '@/lib/ai/property-context';
@@ -33,6 +34,15 @@ const EVALUATE_INSTRUCTION = `[컨텍스트]의 아파트를 다음 순서로 �
  */
 export async function POST(request: Request) {
   try {
+    // OpenAI 비용이 드는 기능 — 관리자 전용
+    const user = await getSessionUser();
+    if (!user?.isAdmin) {
+      return NextResponse.json(
+        { ok: false, error: 'AI 상담·평가는 관리자만 쓸 수 있습니다.' },
+        { status: user ? 403 : 401 },
+      );
+    }
+
     if (!hasOpenAI()) {
       return NextResponse.json(
         { ok: false, error: 'OPENAI_API_KEY 가 설정되지 않았습니다.' },

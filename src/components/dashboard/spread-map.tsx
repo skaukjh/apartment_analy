@@ -250,8 +250,9 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
     >
       {rangeError ? <p className="text-destructive mb-3 text-xs">{rangeError}</p> : null}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div>
+      {/* 지도가 화면을 지배하지 않게 2/5 로 줄인다. svg 는 폭 기준이라 비율은 유지된다 */}
+      <div className="grid gap-6 lg:grid-cols-5">
+        <div className="lg:col-span-2">
           <Tabs value={mapTab} onValueChange={setMapTab}>
             <TabsList>
               <TabsTrigger value="nation">전국</TabsTrigger>
@@ -271,7 +272,8 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
                 onComplexesChange={handleComplexes}
               />
               <p className="text-muted-foreground mt-1 text-right text-[11px]">
-                시·도 → 구·군 → 동 순서로 클릭해 내려갑니다 · 경계: 통계청 행정구역(간략판)
+                <strong className="text-primary font-semibold">시·도 → 구·군 → 동</strong> 순서로
+                클릭해 내려갑니다 · 경계: 통계청 행정구역(간략판)
               </p>
             </TabsContent>
 
@@ -316,7 +318,7 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
         </div>
 
         {/* 지도가 세로로 길어 스크롤해도 목록이 따라오도록 고정한다 */}
-        <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+        <div className="space-y-4 lg:sticky lg:top-20 lg:col-span-3 lg:self-start">
           {/* 동을 고르면 실제 지도(카카오맵) 위에 단지를 찍는다 */}
           {activeDong ? (
             <div className="rounded-lg border p-3">
@@ -373,7 +375,8 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
             </div>
           ) : (
             <div className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
-              지도의 지역을 클릭하면 상세 지표가 표시됩니다.
+              지도의 지역을 <strong className="text-primary font-semibold">클릭</strong>하면{' '}
+              <strong className="text-primary font-semibold">상세 지표</strong>가 표시됩니다.
             </div>
           )}
 
