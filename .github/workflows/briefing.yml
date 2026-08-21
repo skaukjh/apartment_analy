@@ -11,8 +11,10 @@ name: 브리핑 tick
 
 on:
   schedule:
-    # GitHub Actions 는 UTC 기준. KST = UTC + 9
-    - cron: '0 * * * *'
+    # GitHub Actions 는 UTC 기준. KST = UTC + 9.
+    # 무료 러너의 cron 은 30~50분씩 밀리고 가끔 한 시간을 통째로 거른다.
+    # 30분 간격 두 번으로 촘촘히 하고, 서버(tick)가 중복 발송을 막는다.
+    - cron: '0,30 * * * *'
   # 수동 실행 (테스트용)
   workflow_dispatch:
     inputs:

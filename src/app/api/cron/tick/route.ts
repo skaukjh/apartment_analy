@@ -3,12 +3,13 @@ import { authorizeCron, errorResponse } from '@/lib/api-auth';
 import { runBriefing } from '@/lib/pipeline/briefing-service';
 import { refreshRecent } from '@/lib/pipeline/refresh';
 import { analysisTargets, listConfigUserIds, loadConfig } from '@/lib/store/config';
-import { slotForHour, type BriefingSlot } from '@/lib/kakao/briefing';
+import { latestPassedSlot, type BriefingSlot } from '@/lib/kakao/briefing';
 import { nowKst } from '@/lib/format';
 import { hasOpenAI } from '@/lib/ai/client';
 import { buildDashboard } from '@/lib/pipeline/dashboard';
 import { buildMarketOutlook } from '@/lib/ai/market-outlook';
 import { saveOutlookCache } from '@/lib/ai/outlook-cache';
+import { markBriefingSent, wasBriefingSent } from '@/lib/store/briefing-mark';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -23,7 +24,10 @@ export const maxDuration = 300;
  *
  * 하는 일:
  *  1. 매시간 — 최근 실거래를 갱신한다 (오늘의 요약 페이지가 최신 데이터를 쓰도록)
- *  2. 05·11·18·22시(KST) — 그 시간대에 맞는 카카오톡 브리핑을 보낸다
+ *  2. 05·11·18·22시(KST) 슬롯 — "지나간 슬롯 중 아직 안 보낸 것"을 보낸다.
+ *     정각 일치 방식은 GitHub Actions cron 이 밀리거나 한 시간을 통째로 거르면
+ *     그 슬롯이 영영 빠진다 (실제로 11시 브리핑이 빠진 날이 있었다).
+ *     따라잡기 방식이면 다음 실행에서 자동 복구되고, 발송 표시로 중복도 막는다.
  *
  * 수동 실행:
  *  /api/cron/tick?secret=…            지금 시각 기준으로 판단
@@ -41,7 +45,8 @@ export async function GET(request: Request) {
 
     const kst = nowKst();
     const hour = kst.getHours();
-    const slot = forced ?? slotForHour(hour);
+    const dateKst = `${kst.getFullYear()}-${String(kst.getMonth() + 1).padStart(2, '0')}-${String(kst.getDate()).padStart(2, '0')}`;
+    const slot = forced ?? latestPassedSlot(hour);
 
     /* 1) 최근 실거래 갱신 — 모든 사용자의 관심 지역을 합쳐 한 번만 긁는다 */
     const userIds = await listConfigUserIds();
@@ -86,18 +91,35 @@ export async function GET(request: Request) {
       });
     }
 
-    /* 사용자마다 자기 설정으로 만든 브리핑을 자기 수신자에게 보낸다 */
+    /* 사용자마다 자기 설정으로 만든 브리핑을 자기 수신자에게 보낸다.
+       (날짜, 슬롯, 사용자)별 발송 표시로 중복을 막는다 — cron 이 한 시간에
+       두 번 오든, 다음 시간에 따라잡든 같은 슬롯은 한 번만 나간다. */
     const perUser: Array<{ userId: string; ok: boolean; sent: boolean; error?: string }> = [];
     let firstPreview: string | undefined;
 
     for (const uid of userIds) {
       try {
+        // 강제 슬롯(테스트)은 표시를 무시하고 보낸다
+        if (!forced && (await wasBriefingSent(dateKst, slot, uid))) {
+          perUser.push({ userId: uid, ok: true, sent: false, error: '이미 발송됨' });
+          continue;
+        }
+
         const result = await runBriefing({ slot, userId: uid });
-        perUser.push({ userId: uid, ok: result.ok, sent: !result.skippedReason });
+        const sent = result.ok && !result.skippedReason;
+        perUser.push({ userId: uid, ok: result.ok, sent });
         firstPreview ??= result.chunks[0]?.slice(0, 300);
+
+        if (sent) await markBriefingSent(dateKst, slot, uid);
+        // 설정에서 브리핑을 꺼둔 사용자도 표시해 매시간 재시도하지 않는다
+        if (result.skippedReason) await markBriefingSent(dateKst, slot, uid);
       } catch (e) {
-        // 수신자가 없는 사용자는 broadcast 가 던진다 — 정상 상황이므로 건너뛴다
+        // 수신자가 없는 사용자는 broadcast 가 던진다 — 다음 실행에서 재시도해도
+        // 같은 결과이므로 표시해 두고 넘어간다
         perUser.push({ userId: uid, ok: false, sent: false, error: (e as Error).message });
+        if (/발송 대상이 없습니다/.test((e as Error).message)) {
+          await markBriefingSent(dateKst, slot, uid);
+        }
       }
     }
 

@@ -259,6 +259,22 @@ export function slotForHour(hourKst: number): BriefingSlot | null {
   return null;
 }
 
+/**
+ * 지금(KST) 기준으로 가장 최근에 지나간 발송 슬롯.
+ *
+ * 스케줄러(GitHub Actions)는 정각에 오지 않는다 — 30~50분 밀리고 가끔
+ * 한 시간을 통째로 거른다. 실제로 11시 브리핑이 통째로 빠진 날이 있었다.
+ * 그래서 "정각 일치"가 아니라 "지나간 슬롯 중 미발송분을 따라잡기"로 판단한다.
+ * 새벽(0~4시)에는 보낼 슬롯이 없으므로 null.
+ */
+export function latestPassedSlot(hourKst: number): BriefingSlot | null {
+  if (hourKst >= 22) return 'night';
+  if (hourKst >= 18) return 'evening';
+  if (hourKst >= 11) return 'noon';
+  if (hourKst >= 5) return 'morning';
+  return null;
+}
+
 function briefingToSummaryText(
   data: DashboardData,
   title: string,
