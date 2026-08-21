@@ -18,6 +18,8 @@ import { saveSnapshot } from '@/lib/store/market-data';
 import { getAdminClient } from '@/lib/store/supabase';
 import { env } from '@/lib/env';
 import { saveBriefingRender } from '@/lib/store/briefing-render';
+import { loadLastBriefingHash, saveLastBriefingHash } from '@/lib/store/briefing-mark';
+import { createHash } from 'node:crypto';
 import type { Briefing } from '@/lib/kakao/briefing';
 
 export interface BriefingRunResult {
@@ -91,8 +93,28 @@ export async function runBriefing(
   }
 
   try {
+    /* 직전 발송과 본문이 완전히 같으면 이미지·전문 대신 한 줄짜리 알림만 보낸다.
+       실거래는 12시간 주기라 연속 슬롯의 내용이 자주 같은데,
+       같은 이미지를 또 보내면 "뭐가 바뀌었지?" 하고 읽는 수고만 생긴다. */
+    const contentHash = createHash('sha256').update(text).digest('hex').slice(0, 32);
+    const uid = options.userId ?? 'default';
+    const lastHash = await loadLastBriefingHash(uid);
+    const unchanged = lastHash !== null && lastHash === contentHash;
+
     let templates;
-    if (format === 'image') {
+    if (unchanged) {
+      const target = `${env.appUrl.replace(/\/$/, '')}/today`;
+      const link = { web_url: target, mobile_web_url: target };
+      templates = [
+        {
+          object_type: 'text' as const,
+          text: `[${briefing.title}]
+직전 브리핑과 내용이 동일합니다 (변동 없음).`,
+          link,
+          button_title: '오늘의 요약 열기',
+        },
+      ];
+    } else if (format === 'image') {
       // 이미지 라우트가 그릴 내용을 토큰과 함께 저장 — 카카오가 URL 을 긁을 때 쓴다
       const renderToken = crypto.randomUUID();
       await saveBriefingRender(renderToken, briefing);

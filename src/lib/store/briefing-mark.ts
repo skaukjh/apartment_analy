@@ -76,3 +76,53 @@ export async function markBriefingSent(date: string, slot: string, userId: strin
     .insert({ captured_at: new Date().toISOString(), payload: envelope });
   if (error) console.error('[briefing] 발송 표시 저장 실패:', error.message);
 }
+
+/* ------------------------------------------------------------------ */
+/* 마지막 발송 본문 해시 — "내용이 그대로면 짧은 알림만" 판단용            */
+/* ------------------------------------------------------------------ */
+
+const LAST_KIND = 'briefing-last-hash';
+
+interface LastHashEnvelope {
+  kind: typeof LAST_KIND;
+  userId: string;
+  hash: string;
+}
+
+const lastHashMemory = new Map<string, string>();
+
+/** 이 사용자에게 마지막으로 실제 발송한 브리핑 본문의 해시 */
+export async function loadLastBriefingHash(userId: string): Promise<string | null> {
+  const mem = lastHashMemory.get(userId);
+  if (mem) return mem;
+
+  const client = getAdminClient();
+  if (!client) return null;
+
+  const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  const { data } = await client
+    .from('dashboard_snapshot')
+    .select('payload')
+    .gte('captured_at', since)
+    .eq('payload->>kind', LAST_KIND)
+    .eq('payload->>userId', userId)
+    .order('captured_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const p = (data?.payload ?? null) as LastHashEnvelope | null;
+  if (p?.hash) lastHashMemory.set(userId, p.hash);
+  return p?.hash ?? null;
+}
+
+export async function saveLastBriefingHash(userId: string, hash: string): Promise<void> {
+  lastHashMemory.set(userId, hash);
+
+  const client = getAdminClient();
+  if (!client) return;
+
+  const envelope: LastHashEnvelope = { kind: LAST_KIND, userId, hash };
+  await client
+    .from('dashboard_snapshot')
+    .insert({ captured_at: new Date().toISOString(), payload: envelope });
+}
