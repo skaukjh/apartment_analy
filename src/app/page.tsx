@@ -1,7 +1,7 @@
 import { configIdForRequest } from '@/lib/auth/server';
 import Link from 'next/link';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { buildDashboard, summarizeDashboard } from '@/lib/pipeline/dashboard';
+import { buildDashboardCached, summarizeDashboard } from '@/lib/pipeline/dashboard';
 import { buildBriefing, briefingToText, previewChunks } from '@/lib/kakao/briefing';
 import { getConnectionStatus } from '@/lib/kakao/client';
 import { isConfigEmpty } from '@/lib/store/config';
@@ -30,7 +30,7 @@ export const revalidate = 0;
 
 export default async function DashboardPage() {
   const userId = await configIdForRequest();
-  const data = await buildDashboard({ userId });
+  const data = await buildDashboardCached(userId);
   const { spread, primaryGap, newHighs, newLows } = summarizeDashboard(data);
   const briefing = buildBriefing(data);
   const kakao = await getConnectionStatus(userId).catch(() => ({ connected: false }));

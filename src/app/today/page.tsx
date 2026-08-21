@@ -1,6 +1,6 @@
 import { configIdForRequest } from '@/lib/auth/server';
 import Link from 'next/link';
-import { buildDashboard } from '@/lib/pipeline/dashboard';
+import { buildDashboardCached } from '@/lib/pipeline/dashboard';
 import { buildBriefing } from '@/lib/kakao/briefing';
 import { hasOpenAI } from '@/lib/ai/client';
 import { HEAT_META } from '@/lib/analysis/market-signals';
@@ -18,7 +18,7 @@ export const revalidate = 0;
  * 카톡은 200자 제한이라 요약만 가고, 여기가 그 "전체 보기" 목적지다.
  */
 export default async function TodayPage() {
-  const data = await buildDashboard({ userId: await configIdForRequest() });
+  const data = await buildDashboardCached(await configIdForRequest());
   const briefing = buildBriefing(data);
   const heat = HEAT_META[data.sentiment.heatLevel];
   const topGap = data.gaps[0];

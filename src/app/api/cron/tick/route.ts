@@ -10,6 +10,7 @@ import { hasOpenAI } from '@/lib/ai/client';
 import { buildDashboard } from '@/lib/pipeline/dashboard';
 import { buildMarketOutlook } from '@/lib/ai/market-outlook';
 import { saveOutlookCache } from '@/lib/ai/outlook-cache';
+import { saveDashboardCache } from '@/lib/pipeline/dashboard-cache';
 import { markBriefingSent, wasBriefingSent } from '@/lib/store/briefing-mark';
 
 export const dynamic = 'force-dynamic';
@@ -78,6 +79,8 @@ export async function GET(request: Request) {
       for (const uid of userIds) {
         try {
           const data = await buildDashboard({ userId: uid });
+          // 페이지가 즉시 읽을 수 있게 대시보드 캐시도 여기서 채운다
+          await saveDashboardCache(uid, data).catch(() => {});
           const outlook = await buildMarketOutlook(data);
           await saveOutlookCache(outlook, uid);
           outlookCached += 1;

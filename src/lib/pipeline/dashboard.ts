@@ -35,6 +35,7 @@ import { filterComplex } from '@/lib/sources/molit';
 import { DEFAULT_ANALYSIS_REGIONS } from '@/lib/regions';
 import { featureFlags } from '@/lib/env';
 import { maybeRefreshTrades } from './lazy-refresh';
+import { loadDashboardCache, saveDashboardCache } from './dashboard-cache';
 import { formatArea, median, todayKst } from '@/lib/format';
 import { tradePriceOf } from '@/lib/analysis/price-basis';
 import { calcAcquisitionTaxFor } from '@/lib/tax/acquisition';
@@ -167,6 +168,26 @@ export interface BuildDashboardOptions {
   skipLive?: boolean;
   /** 어느 사용자의 설정으로 조립할지. 생략하면 레거시 'default' */
   userId?: string;
+}
+
+/**
+ * 캐시 우선 조회 — 페이지 렌더링용.
+ *
+ * 매시간 tick 이 buildDashboard 를 돌려 캐시를 채우므로, 페이지는
+ * 대부분 저장된 결과(<1초)를 읽는다. 캐시가 없거나 낡았을 때만
+ * 직접 조립하고 그 결과를 캐시에 넣는다.
+ */
+export async function buildDashboardCached(
+  userId: string,
+  options: { fresh?: boolean } = {},
+): Promise<DashboardData> {
+  if (!options.fresh) {
+    const cached = await loadDashboardCache(userId);
+    if (cached) return cached;
+  }
+  const data = await buildDashboard({ userId });
+  await saveDashboardCache(userId, data).catch(() => {});
+  return data;
 }
 
 export async function buildDashboard(options: BuildDashboardOptions = {}): Promise<DashboardData> {

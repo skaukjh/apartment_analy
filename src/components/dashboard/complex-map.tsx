@@ -224,11 +224,14 @@ export function ComplexMap({
               </div>
             </div>
             <a
-              href={`https://map.kakao.com/?q=${encodeURIComponent(`${regionLabel} ${selected.name}`)}`}
+              // 네이버부동산에는 공식 딥링크 스펙이 없어 검색 결과로 연다.
+              // PC 용 new.land.naver.com/search?sk= 형식은 404 로 확인돼 모바일 URL 을 쓴다
+              // (PC 브라우저에서도 정상 동작한다).
+              href={`https://m.land.naver.com/search/result/${encodeURIComponent(`${regionLabel} ${selected.name}`)}`}
               target="_blank"
               rel="noreferrer"
               className="text-muted-foreground hover:text-foreground"
-              title="카카오맵에서 열기"
+              title="네이버부동산에서 보기"
             >
               <ExternalLink className="size-4" />
             </a>
