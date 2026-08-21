@@ -306,6 +306,49 @@ export function SimulationClient({ config, quotes }: Props) {
             </div>
           }
         >
+          {baseline
+            ? (() => {
+                /* 실소요를 "대출로 충당"과 "현금으로 준비"로 나눈다.
+                 사용자가 가장 궁금한 질문은 결국 "그래서 현금이 얼마 필요한가"다. */
+                const need = Math.max(0, baseline.totalNeeded - baseline.netFromSale);
+                const byLoan = Math.min(loanLimit.result.limit, need);
+                const byCash = Math.max(0, need - byLoan);
+                const cashGap = config.household.cashAssets - byCash;
+                return (
+                  <div className="mb-4 grid gap-3 sm:grid-cols-3">
+                    <Stat
+                      label="세후 실소요 자금"
+                      value={formatKrw(need, { compact: true })}
+                      sub="매도 순현금 반영 후 더 필요한 금액"
+                    />
+                    <Stat
+                      label="대출로 충당 가능"
+                      value={formatKrw(byLoan, { compact: true })}
+                      sub={`한도 ${formatKrw(loanLimit.result.limit, { compact: true })} (${loanLimit.result.bindingFactor})`}
+                    />
+                    <Stat
+                      label="현금으로 준비"
+                      value={formatKrw(byCash, { compact: true })}
+                      sub={
+                        config.household.cashAssets > 0
+                          ? cashGap >= 0
+                            ? `보유 현금 대비 여유 ${formatKrw(cashGap, { compact: true })}`
+                            : `보유 현금 대비 부족 ${formatKrw(-cashGap, { compact: true })}`
+                          : '설정 > 자금·소득에 현금자산을 입력하세요'
+                      }
+                      tone={
+                        config.household.cashAssets > 0
+                          ? cashGap >= 0
+                            ? 'rise'
+                            : 'fall'
+                          : undefined
+                      }
+                    />
+                  </div>
+                );
+              })()
+            : null}
+
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <div>
               <div className="grid gap-3 sm:grid-cols-2">
