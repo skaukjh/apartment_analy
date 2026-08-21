@@ -311,7 +311,25 @@ export interface KakaoTextTemplate {
   button_title?: string;
 }
 
-export type KakaoTemplate = KakaoTextTemplate;
+/**
+ * feed 템플릿 — 이미지 1장 + 제목/설명 + 버튼.
+ * text 는 200자 제한이지만 이미지에는 제한이 없어, 브리핑 전문을
+ * 이미지로 렌더링해 알림 한 번에 전부 보여줄 수 있다.
+ */
+export interface KakaoFeedTemplate {
+  object_type: 'feed';
+  content: {
+    title: string;
+    description?: string;
+    image_url: string;
+    image_width?: number;
+    image_height?: number;
+    link: KakaoLink;
+  };
+  buttons?: Array<{ title: string; link: KakaoLink }>;
+}
+
+export type KakaoTemplate = KakaoTextTemplate | KakaoFeedTemplate;
 
 async function sendMemoAs(recipient: KakaoRecipient, template: KakaoTemplate): Promise<void> {
   const accessToken = await ensureAccessToken(recipient);

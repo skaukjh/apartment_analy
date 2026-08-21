@@ -7,6 +7,7 @@ import { buildDashboard } from '@/lib/pipeline/dashboard';
 import {
   buildBriefing,
   briefingToKakaoTemplates,
+  briefingToImageTemplate,
   briefingToSingleTemplate,
   type BriefingSlot,
   briefingToText,
@@ -16,6 +17,7 @@ import { broadcast, type SendReport } from '@/lib/kakao/client';
 import { saveSnapshot } from '@/lib/store/market-data';
 import { getAdminClient } from '@/lib/store/supabase';
 import { env } from '@/lib/env';
+import { saveBriefingRender } from '@/lib/store/briefing-render';
 import type { Briefing } from '@/lib/kakao/briefing';
 
 export interface BriefingRunResult {
@@ -61,11 +63,15 @@ export async function runBriefing(
   const data = await buildDashboard({ userId: options.userId });
   const briefing = buildBriefing(data);
   const text = briefingToText(briefing);
-  // 요약 1건 모드에서는 알림이 한 번만 울린다
-  const singleMessage = data.config.briefingFormat !== 'full';
-  const chunks = singleMessage
-    ? briefingToSingleTemplate(briefing, env.appUrl, data, options.slot).map((t) => t.text ?? '')
-    : previewChunks(briefing);
+  const format = data.config.briefingFormat ?? 'image';
+  const chunks =
+    format === 'image'
+      ? [text] // 이미지에는 전문이 통째로 들어간다 — 미리보기도 전문
+      : format === 'full'
+        ? previewChunks(briefing)
+        : briefingToSingleTemplate(briefing, env.appUrl, data, options.slot).map(
+            (t) => ('text' in t ? t.text : '') ?? '',
+          );
 
   const base: Omit<BriefingRunResult, 'ok'> = {
     dryRun,
@@ -85,9 +91,17 @@ export async function runBriefing(
   }
 
   try {
-    const templates = singleMessage
-      ? briefingToSingleTemplate(briefing, env.appUrl, data, options.slot)
-      : briefingToKakaoTemplates(briefing, env.appUrl);
+    let templates;
+    if (format === 'image') {
+      // 이미지 라우트가 그릴 내용을 토큰과 함께 저장 — 카카오가 URL 을 긁을 때 쓴다
+      const renderToken = crypto.randomUUID();
+      await saveBriefingRender(renderToken, briefing);
+      templates = [briefingToImageTemplate(briefing, env.appUrl, renderToken, options.slot)];
+    } else if (format === 'full') {
+      templates = briefingToKakaoTemplates(briefing, env.appUrl);
+    } else {
+      templates = briefingToSingleTemplate(briefing, env.appUrl, data, options.slot);
+    }
     const reports = await broadcast(templates, {
       recipientIds: options.recipientIds,
       userId: options.userId ?? 'default',

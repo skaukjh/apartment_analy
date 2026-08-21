@@ -18,7 +18,7 @@ import {
   nowKst,
   todayKst,
 } from '@/lib/format';
-import type { KakaoTemplate } from './client';
+import type { KakaoFeedTemplate, KakaoTemplate } from './client';
 
 export interface BriefingSection {
   heading: string;
@@ -437,6 +437,32 @@ function briefingToSummaryTexts(
   }
 
   return messages.length > 0 ? messages : [`[${title} · ${SLOT_LABEL[slot]}]${tail}`];
+}
+
+/**
+ * 이미지 1장짜리 템플릿 — 브리핑 전문이 이미지에 다 들어간다 (알림 1번).
+ * 이미지 URL 은 발송 직전에 저장된 렌더 토큰을 가리킨다.
+ */
+export function briefingToImageTemplate(
+  briefing: Briefing,
+  appUrl: string,
+  renderToken: string,
+  slot: BriefingSlot = 'morning',
+): KakaoFeedTemplate {
+  const base = appUrl.replace(/\/$/, '');
+  const target = `${base}/today`;
+  const link = { web_url: target, mobile_web_url: target };
+  return {
+    object_type: 'feed',
+    content: {
+      title: `${briefing.title} · ${SLOT_LABEL[slot]}`,
+      description: briefing.headline,
+      image_url: `${base}/api/briefing/image?tk=${renderToken}`,
+      image_width: 800,
+      link,
+    },
+    buttons: [{ title: '오늘의 요약 열기', link }],
+  };
 }
 
 /** 요약 템플릿 (기본 2장 — 마지막 장에만 버튼) */
