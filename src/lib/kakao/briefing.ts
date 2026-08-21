@@ -450,18 +450,21 @@ export function briefingToImageTemplate(
   slot: BriefingSlot = 'morning',
 ): KakaoFeedTemplate {
   const base = appUrl.replace(/\/$/, '');
-  const target = `${base}/today`;
-  const link = { web_url: target, mobile_web_url: target };
+  const imageUrl = `${base}/api/briefing/image?tk=${renderToken}`;
+  const todayUrl = `${base}/today`;
   return {
     object_type: 'feed',
     content: {
       title: `${briefing.title} · ${SLOT_LABEL[slot]}`,
       description: briefing.headline,
-      image_url: `${base}/api/briefing/image?tk=${renderToken}`,
+      image_url: imageUrl,
       image_width: 800,
-      link,
+      // 카카오톡에서 이미지를 탭하면 "확대"가 아니라 이 링크가 열린다.
+      // 사용자 기대는 전문 확대이므로, 콘텐츠 탭 = 이미지 원본(브라우저에서
+      // 자유롭게 확대)으로 걸고 웹 페이지는 아래 버튼으로 분리한다.
+      link: { web_url: imageUrl, mobile_web_url: imageUrl },
     },
-    buttons: [{ title: '오늘의 요약 열기', link }],
+    buttons: [{ title: '오늘의 요약 열기', link: { web_url: todayUrl, mobile_web_url: todayUrl } }],
   };
 }
 
