@@ -251,8 +251,8 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
       {rangeError ? <p className="text-destructive mb-3 text-xs">{rangeError}</p> : null}
 
       {/* 지도가 화면을 지배하지 않게 2/5 로 줄인다. svg 는 폭 기준이라 비율은 유지된다 */}
-      <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-2">
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-1">
           <Tabs value={mapTab} onValueChange={setMapTab}>
             <TabsList>
               <TabsTrigger value="nation">전국</TabsTrigger>
@@ -318,7 +318,7 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
         </div>
 
         {/* 지도가 세로로 길어 스크롤해도 목록이 따라오도록 고정한다 */}
-        <div className="space-y-4 lg:sticky lg:top-20 lg:col-span-3 lg:self-start">
+        <div className="space-y-4 lg:sticky lg:top-20 lg:col-span-2 lg:self-start">
           {/* 동을 고르면 실제 지도(카카오맵) 위에 단지를 찍는다 */}
           {activeDong ? (
             <div className="rounded-lg border p-3">
