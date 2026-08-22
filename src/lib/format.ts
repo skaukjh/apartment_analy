@@ -37,16 +37,20 @@ export function formatPct(value: number, digits = 2): string {
 }
 
 /**
- * 전용면적 표기 → "24평(79.07㎡)"
+ * 전용면적 표기 → "전용 24평(79.07㎡)"
  *
  * 평을 앞에 둔다. 한국에서 집 크기를 먼저 가늠하는 단위가 평이고,
  * 화면·카카오톡·AI 프롬프트에서 표기가 제각각이면 같은 집인지 알아보기 어렵다.
  * 정확한 값은 괄호 안 ㎡ 이므로 둘 다 남긴다.
+ *
+ * "전용"을 반드시 붙인다 — 국토부 데이터는 전용면적뿐이라 공급평형(분양평형)과
+ * 다르다. "우성2 20평"이라고만 쓰면 공급 26평형 보유자가 자기 집이 아닌 줄 안다
+ * (실제로 그런 혼란이 있었다). 전용 64.8㎡ ≈ 전용 20평 = 공급 26평형.
  */
 export function formatArea(m2: number): string {
   if (!Number.isFinite(m2) || m2 <= 0) return '-';
   const pyeong = Math.round(m2 / 3.305785);
-  return `${pyeong}평(${m2.toFixed(m2 % 1 === 0 ? 0 : 2)}㎡)`;
+  return `전용 ${pyeong}평(${m2.toFixed(m2 % 1 === 0 ? 0 : 2)}㎡)`;
 }
 
 /** ㎡ → 평 */
