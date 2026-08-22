@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { loadConfig, saveConfig, isConfigEmpty } from '@/lib/store/config';
+import { loadConfig, loadConfigHistory, saveConfig, isConfigEmpty } from '@/lib/store/config';
 import { getSessionUser, requireApprovedUser, ANON_CONFIG_ID } from '@/lib/auth/server';
 import { errorResponse } from '@/lib/api-auth';
 import { featureFlags } from '@/lib/env';
@@ -13,9 +13,19 @@ export const dynamic = 'force-dynamic';
  * 어느 설정을 읽고 쓸지는 서버가 세션에서 정한다.
  * 클라이언트가 보낸 id 를 믿으면 남의 설정을 고칠 수 있으므로 받지 않는다.
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const user = await getSessionUser();
+
+    // 설정 히스토리 — 저장할 때마다 직전 저장본이 남는다 (카드 단위 복원용)
+    if (new URL(request.url).searchParams.get('action') === 'history') {
+      if (!user) {
+        return NextResponse.json({ ok: false, error: '로그인이 필요합니다.' }, { status: 401 });
+      }
+      const history = await loadConfigHistory(user.id);
+      return NextResponse.json({ ok: true, history });
+    }
+
     const config = await loadConfig(user?.id ?? ANON_CONFIG_ID);
     return NextResponse.json({
       ok: true,

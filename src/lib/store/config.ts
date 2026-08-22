@@ -176,6 +176,10 @@ export async function loadConfig(userId: string = CONFIG_ID): Promise<UserConfig
   return parsed.data as UserConfig;
 }
 
+const HISTORY_KIND = 'config-history';
+/** 사용자당 보관할 설정 히스토리 수 */
+const HISTORY_KEEP = 10;
+
 export async function saveConfig(input: unknown, userId: string = CONFIG_ID): Promise<UserConfig> {
   const parsed = userConfigSchema.parse(input);
   const config: UserConfig = { ...parsed, updatedAt: new Date().toISOString() } as UserConfig;
@@ -186,6 +190,11 @@ export async function saveConfig(input: unknown, userId: string = CONFIG_ID): Pr
     return config;
   }
 
+  /* 덮어쓰기 전에 지금 저장본을 히스토리로 남긴다.
+     설정을 잘못 입력하고 저장해 버렸을 때 아파트 카드 단위로
+     "이전 내역 불러오기"를 할 수 있게 하기 위함이다. 실패해도 저장은 막지 않는다. */
+  await snapshotConfigHistory(userId).catch(() => {});
+
   const { error } = await client
     .from('user_config')
     .upsert({ id: userId, data: config, updated_at: config.updatedAt });
@@ -193,6 +202,75 @@ export async function saveConfig(input: unknown, userId: string = CONFIG_ID): Pr
   if (error) throw new Error(`설정 저장 실패: ${error.message}`);
   memoryState().config = config;
   return config;
+}
+
+/** 현재 저장본을 dashboard_snapshot 에 히스토리로 복사하고, 오래된 것은 정리한다 */
+async function snapshotConfigHistory(userId: string): Promise<void> {
+  const client = getAdminClient();
+  if (!client) return;
+
+  const { data } = await client
+    .from('user_config')
+    .select('data, updated_at')
+    .eq('id', userId)
+    .maybeSingle();
+  if (!data?.data) return; // 첫 저장 — 남길 이전 버전이 없다
+
+  await client.from('dashboard_snapshot').insert({
+    captured_at: new Date().toISOString(),
+    payload: { kind: HISTORY_KIND, userId, savedAt: data.updated_at, config: data.data },
+  });
+
+  // HISTORY_KEEP 개를 넘는 오래된 히스토리는 지운다
+  const { data: nth } = await client
+    .from('dashboard_snapshot')
+    .select('captured_at')
+    .eq('payload->>kind', HISTORY_KIND)
+    .eq('payload->>userId', userId)
+    .order('captured_at', { ascending: false })
+    .range(HISTORY_KEEP - 1, HISTORY_KEEP - 1)
+    .maybeSingle();
+  if (nth?.captured_at) {
+    await client
+      .from('dashboard_snapshot')
+      .delete()
+      .lt('captured_at', nth.captured_at as string)
+      .eq('payload->>kind', HISTORY_KIND)
+      .eq('payload->>userId', userId);
+  }
+}
+
+/** 설정 히스토리 항목 — 언제 저장했고 어떤 내용이었는지 */
+export interface ConfigHistoryEntry {
+  savedAt: string;
+  config: UserConfig;
+}
+
+/** 최근 설정 히스토리 (최신순). 카드 단위 복원 UI 가 쓴다 */
+export async function loadConfigHistory(userId: string = CONFIG_ID): Promise<ConfigHistoryEntry[]> {
+  const client = getAdminClient();
+  if (!client) return [];
+
+  const { data, error } = await client
+    .from('dashboard_snapshot')
+    .select('payload, captured_at')
+    .eq('payload->>kind', HISTORY_KIND)
+    .eq('payload->>userId', userId)
+    .order('captured_at', { ascending: false })
+    .limit(HISTORY_KEEP);
+  if (error || !data) return [];
+
+  const out: ConfigHistoryEntry[] = [];
+  for (const row of data) {
+    const p = row.payload as { savedAt?: string; config?: unknown } | null;
+    const parsed = userConfigSchema.safeParse(p?.config);
+    if (!parsed.success) continue;
+    out.push({
+      savedAt: (p?.savedAt as string) ?? (row.captured_at as string),
+      config: parsed.data as UserConfig,
+    });
+  }
+  return out;
 }
 
 /**

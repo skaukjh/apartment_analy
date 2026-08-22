@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
+  History,
   Loader2,
   MessageCircle,
   Plus,
@@ -139,6 +140,12 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
   const [newRecipientLabel, setNewRecipientLabel] = useState('');
   /** 오늘 API 호출량 (소스 키 → 건수). null 이면 집계 테이블 미적용 */
   const [apiUsage, setApiUsage] = useState<Record<string, number> | null>(null);
+  /** 설정 히스토리 — 잘못 저장했을 때 카드 단위로 되돌리기 위한 이전 저장본들 */
+  const [history, setHistory] = useState<Array<{ savedAt: string; config: UserConfig }> | null>(
+    null,
+  );
+  const [historyOpenFor, setHistoryOpenFor] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const params = useSearchParams();
 
   // 소스 키 섹션에 "오늘 N건 사용"을 보여주기 위한 자체 집계 조회
@@ -333,6 +340,47 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
 
   const removeHolding = (id: string) =>
     patch({ holdings: config.holdings.filter((h) => h.id !== id) });
+
+  /** 카드의 이전 내역 패널 토글 — 처음 열 때 서버에서 히스토리를 받아온다 */
+  async function toggleHistory(cardId: string) {
+    if (historyOpenFor === cardId) {
+      setHistoryOpenFor(null);
+      return;
+    }
+    if (history === null) {
+      setHistoryLoading(true);
+      try {
+        const j = await fetch('/api/config?action=history').then((r) => r.json());
+        if (!j.ok) throw new Error(j.error ?? '이전 내역을 불러오지 못했습니다.');
+        setHistory(j.history ?? []);
+      } catch (e) {
+        toast.error((e as Error).message);
+        setHistoryLoading(false);
+        return;
+      }
+      setHistoryLoading(false);
+    }
+    setHistoryOpenFor(cardId);
+  }
+
+  /** 히스토리에서 이 카드의 서로 다른 버전만 뽑는다 (연속 중복 제거) */
+  function cardVersions<T extends { id: string }>(
+    pickList: (c: UserConfig) => T[],
+    cardId: string,
+  ): Array<{ savedAt: string; item: T }> {
+    if (!history) return [];
+    const out: Array<{ savedAt: string; item: T }> = [];
+    let prevJson = '';
+    for (const h of history) {
+      const item = pickList(h.config).find((x) => x.id === cardId);
+      if (!item) continue;
+      const json = JSON.stringify(item);
+      if (json === prevJson) continue;
+      prevJson = json;
+      out.push({ savedAt: h.savedAt, item });
+    }
+    return out;
+  }
 
   /** 섹션 전체 비우기 — 저장 버튼을 누르기 전까지는 서버에 반영되지 않는다 */
   const resetHoldings = () => {
@@ -663,20 +711,55 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                     lawdCd={h.lawdCd}
                     onPick={(pick) => applyHoldingPick(h.id, pick)}
                   />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => autoFill('holding', overwrite, h.id)}
-                    disabled={filling !== null}
-                  >
-                    {filling === `holding${h.id}` ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Wand2 className="size-4" />
-                    )}
-                    이 카드 자동 계산
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => autoFill('holding', overwrite, h.id)}
+                      disabled={filling !== null}
+                    >
+                      {filling === `holding${h.id}` ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Wand2 className="size-4" />
+                      )}
+                      이 카드 자동 계산
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void toggleHistory(h.id)}
+                      disabled={historyLoading}
+                    >
+                      {historyLoading && historyOpenFor !== h.id ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <History className="size-4" />
+                      )}
+                      이전 내역
+                    </Button>
+                  </div>
+                  {historyOpenFor === h.id ? (
+                    <HistoryList
+                      rows={cardVersions((c) => c.holdings, h.id).map(({ savedAt, item }) => ({
+                        savedAt,
+                        summary: `${item.complexName || '(이름 없음)'} ${item.areaM2}㎡ · 취득가 ${
+                          item.acquisitionPrice > 0 ? formatKrw(item.acquisitionPrice) : '미입력'
+                        } · 호가 ${item.manualPrice ? formatKrw(item.manualPrice) : '실거래 기준'} · 대출 ${
+                          item.loanBalance > 0 ? formatKrw(item.loanBalance) : '없음'
+                        }`,
+                        restore: () => {
+                          updateHolding(h.id, item);
+                          setHistoryOpenFor(null);
+                          toast.success(
+                            '이전 값으로 되돌렸습니다. 저장을 눌러야 서버에 반영됩니다.',
+                          );
+                        },
+                      }))}
+                    />
+                  ) : null}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <Field label="단지명">
@@ -827,8 +910,39 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                   subtitle={t.lawdCd ? `${t.sigungu} · ${t.lawdCd}` : '지역 미선택'}
                   onRemove={() => removeTarget(t.id)}
                 />
-                <div className="mb-3">
+                <div className="mb-3 space-y-2">
                   <ComplexSearch lawdCd={t.lawdCd} onPick={(pick) => applyTargetPick(t.id, pick)} />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void toggleHistory(t.id)}
+                    disabled={historyLoading}
+                  >
+                    {historyLoading && historyOpenFor !== t.id ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <History className="size-4" />
+                    )}
+                    이전 내역
+                  </Button>
+                  {historyOpenFor === t.id ? (
+                    <HistoryList
+                      rows={cardVersions((c) => c.targets, t.id).map(({ savedAt, item }) => ({
+                        savedAt,
+                        summary: `${item.complexName || '(이름 없음)'} ${item.areaM2}㎡ · 호가 ${
+                          item.manualPrice ? formatKrw(item.manualPrice) : '실거래 기준'
+                        } · 우선순위 ${item.priority}`,
+                        restore: () => {
+                          updateTarget(t.id, item);
+                          setHistoryOpenFor(null);
+                          toast.success(
+                            '이전 값으로 되돌렸습니다. 저장을 눌러야 서버에 반영됩니다.',
+                          );
+                        },
+                      }))}
+                    />
+                  ) : null}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <Field label="단지명">
@@ -1349,6 +1463,51 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * 카드의 이전 저장본 목록.
+ * 설정을 잘못 입력하고 저장했을 때, 전체가 아니라 이 아파트만 시점 단위로 되돌린다.
+ * 복원은 편집 상태에만 반영되며 저장을 눌러야 서버에 저장된다.
+ */
+function HistoryList({
+  rows,
+}: {
+  rows: Array<{ savedAt: string; summary: string; restore: () => void }>;
+}) {
+  if (rows.length === 0) {
+    return (
+      <p className="text-muted-foreground rounded-md border border-dashed p-2.5 text-[11px]">
+        이 아파트의 이전 저장본이 없습니다. 저장할 때마다 직전 값이 여기에 남습니다 (최근 10회).
+      </p>
+    );
+  }
+  return (
+    <ul className="space-y-1 rounded-md border p-2">
+      {rows.map((r, i) => (
+        <li
+          key={i}
+          className="flex flex-wrap items-center justify-between gap-2 rounded px-1.5 py-1 text-[11px]"
+        >
+          <span>
+            <span className="text-foreground font-medium">
+              {new Date(r.savedAt).toLocaleString('ko-KR', {
+                month: 'numeric',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              })}{' '}
+              저장본
+            </span>{' '}
+            <span className="text-muted-foreground">— {r.summary}</span>
+          </span>
+          <Button type="button" size="sm" variant="outline" onClick={r.restore}>
+            이 값으로 복원
+          </Button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
