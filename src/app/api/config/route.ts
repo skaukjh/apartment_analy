@@ -3,6 +3,7 @@ import { loadConfig, saveConfig, isConfigEmpty } from '@/lib/store/config';
 import { getSessionUser, requireApprovedUser, ANON_CONFIG_ID } from '@/lib/auth/server';
 import { errorResponse } from '@/lib/api-auth';
 import { featureFlags } from '@/lib/env';
+import { invalidateDashboardCache } from '@/lib/pipeline/dashboard-cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,8 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
     const config = await saveConfig(body, user.id);
+    // 설정이 바뀌었으니 이전 설정으로 조립된 대시보드 캐시는 버린다
+    await invalidateDashboardCache(user.id).catch(() => {});
     return NextResponse.json({
       ok: true,
       config,

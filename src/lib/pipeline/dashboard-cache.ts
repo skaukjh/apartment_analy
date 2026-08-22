@@ -56,6 +56,28 @@ export async function loadDashboardCache(userId: string): Promise<DashboardData 
   return p.data;
 }
 
+/**
+ * 설정이 바뀌면 캐시를 버린다.
+ *
+ * 저장 직후에도 다음 tick(최대 1시간)까지 갭·시세가 이전 설정 기준으로
+ * 표시되던 문제의 수정 — 목표 아파트 4곳을 등록했는데 홈에
+ * "등록된 아파트가 없습니다"가 떠 있었다. 캐시를 지우면 다음 페이지
+ * 로드가 새 설정으로 다시 조립한다 (첫 로드만 느리고 이후는 다시 캐시).
+ */
+export async function invalidateDashboardCache(userId: string): Promise<void> {
+  memory.delete(userId);
+
+  const client = getAdminClient();
+  if (!client) return;
+
+  const { error } = await client
+    .from('dashboard_snapshot')
+    .delete()
+    .eq('payload->>kind', KIND)
+    .eq('payload->>userId', userId);
+  if (error) console.error('[dashboard] 캐시 무효화 실패:', error.message);
+}
+
 export async function saveDashboardCache(userId: string, data: DashboardData): Promise<void> {
   memory.set(userId, { at: Date.now(), data });
 
