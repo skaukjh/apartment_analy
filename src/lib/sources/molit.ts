@@ -204,6 +204,8 @@ function parseItem(itemXml: string, fallbackSigungu: string): TradeRecord | null
     price,
     builtYear: Number(pickTag(itemXml, 'buildYear') ?? '0') || undefined,
     canceled: cdealType === 'O',
+    // 직거래만 표시해 저장 — 시세 계산에서 걸러낸다 (가족 간 저가 이전 왜곡 방지)
+    directDeal: pickTag(itemXml, 'dealingGbn') === '직거래' ? true : undefined,
   };
 }
 
@@ -366,7 +368,7 @@ export async function fetchTradesForMonths(
 export function aggregateMonthly(tradesByMonth: Record<string, TradeRecord[]>): RegionPricePoint[] {
   return Object.entries(tradesByMonth)
     .map(([month, trades]) => {
-      const valid = trades.filter((t) => t.areaM2 > 0 && t.price > 0);
+      const valid = trades.filter((t) => t.areaM2 > 0 && t.price > 0 && !t.directDeal);
       const perM2 = valid.map((t) => t.price / t.areaM2);
       return {
         month: dashYearMonth(month),
@@ -389,7 +391,7 @@ export function aggregateMonthlyByDong(
 
   for (const [month, trades] of Object.entries(tradesByMonth)) {
     for (const t of trades) {
-      if (!t.dong || t.areaM2 <= 0 || t.price <= 0) continue;
+      if (!t.dong || t.areaM2 <= 0 || t.price <= 0 || t.directDeal) continue;
       const dong = (byDong[t.dong] ??= {});
       const bucket = (dong[month] ??= { prices: [], count: 0 });
       bucket.prices.push(t.price / t.areaM2);

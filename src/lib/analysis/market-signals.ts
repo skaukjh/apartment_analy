@@ -45,7 +45,7 @@ export function findPriceExtremes(
 
   const groups = new Map<string, TradeRecord[]>();
   for (const t of trades) {
-    if (t.canceled || t.price <= 0) continue;
+    if (t.canceled || t.directDeal || t.price <= 0) continue;
     const key = unitKey(t);
     (groups.get(key) ?? groups.set(key, []).get(key)!).push(t);
   }
@@ -108,7 +108,7 @@ export function findPriceExtremes(
 export function newHighRatio(trades: TradeRecord[], cutoffDate: string): number {
   const groups = new Map<string, TradeRecord[]>();
   for (const t of trades) {
-    if (t.canceled) continue;
+    if (t.canceled || t.directDeal) continue;
     const key = unitKey(t);
     (groups.get(key) ?? groups.set(key, []).get(key)!).push(t);
   }

@@ -54,7 +54,8 @@ function quoteFromTrades(
   areaM2: number,
   manualPrice?: number,
 ): PriceQuote {
-  const matched = filterComplex(trades, complexName, areaM2);
+  // 직거래(가족 간 저가 이전 등)는 시세로 쓰지 않는다 — 실제 왜곡 사례가 있었다
+  const matched = filterComplex(trades, complexName, areaM2).filter((t) => !t.directDeal);
 
   if (matched.length === 0) {
     return manualPrice

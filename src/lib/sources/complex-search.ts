@@ -228,6 +228,8 @@ export async function searchComplexes(
   >();
 
   for (const t of trades) {
+    // 직거래는 시세 표본에서 제외 — 가족 간 저가 이전이 중앙값·최근가를 왜곡한다
+    if (t.directDeal) continue;
     if (!complexMatches(t.complexName, t.dong, query)) continue;
     const key = `${t.complexName}|${t.dong}`;
     let g = groups.get(key);

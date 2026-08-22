@@ -140,7 +140,7 @@ export async function GET(request: Request) {
     >();
 
     for (const t of trades) {
-      if (t.canceled || t.price <= 0 || t.areaM2 <= 0) continue;
+      if (t.canceled || t.directDeal || t.price <= 0 || t.areaM2 <= 0) continue;
       // 지도는 행정동(자양2동), 실거래는 법정동(자양동)이라 이름이 다르다
       if (dongFilter && !dongMatches(t.dong, dongFilter)) continue;
       const month = t.dealDate.slice(0, 7);
