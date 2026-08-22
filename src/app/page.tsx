@@ -9,41 +9,35 @@ import { Stat } from '@/components/ui-bits';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { GapSection } from '@/components/dashboard/gap-section';
-import { SpreadMap } from '@/components/dashboard/spread-map';
-import { CatalystSection } from '@/components/dashboard/catalyst-section';
-import { catalystCoverageRegions } from '@/lib/analysis/catalysts';
-import { SentimentSection } from '@/components/dashboard/sentiment-section';
-import { SentimentNoteCard } from '@/components/dashboard/sentiment-note-card';
-import { loadSentimentNote } from '@/lib/ai/sentiment-note';
-import { ExtremesSection } from '@/components/dashboard/extremes-section';
-import { MacroSection } from '@/components/dashboard/macro-section';
-import { ScheduleSection } from '@/components/dashboard/schedule-section';
-import { NewsSection } from '@/components/dashboard/news-section';
-import { SourceStatusSection } from '@/components/dashboard/source-status';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { AiAdvisor } from '@/components/dashboard/ai-advisor';
-import { CommunitySection, PressSection } from '@/components/dashboard/press-community';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function DashboardPage() {
+/**
+ * 홈 — 내 갈아타기.
+ *
+ * "내 보유·목표 아파트 기준으로 지금 어디까지 왔나"만 보여준다.
+ * 시장 전반은 /market, 정책·뉴스는 /policy 로 분리했다 —
+ * 한 페이지에 패널이 전부 몰려 있어 읽기 어렵다는 피드백에 따른 구조다.
+ */
+export default async function HomePage() {
   const sessionUser = await getSessionUser();
   const userId = sessionUser?.id ?? 'default';
   const data = await buildDashboardCached(userId);
   const { spread, primaryGap, newHighs, newLows } = summarizeDashboard(data);
   const empty = isConfigEmpty(data.config);
   const heat = HEAT_META[data.sentiment.heatLevel];
-  const sentimentNote = await loadSentimentNote().catch(() => null);
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">이사각</h1>
+          <h1 className="text-2xl font-bold tracking-tight">내 갈아타기</h1>
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-muted-foreground text-sm">
-              국토교통부 실거래가 · 한국은행 ECOS · 한국부동산원 · 네이버 뉴스 기반
+              보유 ↔ 목표 시세 갭과 실소요 자금 — 국토교통부 실거래가 기준
             </p>
             <AutoRefresh generatedAt={data.generatedAt} />
           </div>
@@ -91,7 +85,7 @@ export default async function DashboardPage() {
         </Alert>
       ) : null}
 
-      {/* KPI */}
+      {/* KPI — 시장 요약 수치는 여기서 한눈에, 상세는 시장 동향 페이지에서 */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Stat
           label="현재 시세 갭"
@@ -133,49 +127,13 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* ① 갭 + ② 비용 */}
+      {/* 갭 + 비용 — 이 페이지의 본론 */}
       <GapSection config={data.config} quotes={data.quotes} />
 
-      {/* ③ 확산 지도 */}
-      <SpreadMap rebound={data.rebound} kakaoJsKey={process.env.NEXT_PUBLIC_KAKAO_JS_KEY} />
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        {/* ⑥ 과열 */}
-        <SentimentSection sentiment={data.sentiment} />
-        <SentimentNoteCard note={sentimentNote} />
-        {/* ⑦ 신고가 */}
-        <ExtremesSection extremes={data.extremes} />
-      </div>
-
-      {/* AI 평가 · 상담 */}
-      {/* AI 상담·평가 — 관리자(운영자 키) 또는 개인 키(BYOK) 등록 회원에게만 */}
+      {/* AI 평가·상담 — 관리자(운영자 키) 또는 개인 키(BYOK) 등록 회원에게만 */}
       {resolveOpenAIKey(sessionUser, data.config.openaiApiKey).allowed ? (
         <AiAdvisor config={data.config} enabled />
       ) : null}
-
-      {/* ④ 호재 */}
-      <CatalystSection catalysts={data.catalysts} regions={catalystCoverageRegions(data.config)} />
-
-      {/* 공식 발표 · 커뮤니티 */}
-      <div className="grid gap-6 xl:grid-cols-2">
-        <PressSection press={data.press} />
-        <CommunitySection posts={data.community} />
-      </div>
-
-      {/* ⑧ 지수 + 브리핑 */}
-      <MacroSection macro={data.macro} />
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <ScheduleSection schedule={data.schedule} />
-        <NewsSection news={data.news} />
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        {/* 소스 상태는 운영 정보라 관리자에게만 보인다 */}
-        {sessionUser?.isAdmin ? (
-          <SourceStatusSection sources={data.sourceStatus} generatedAt={data.generatedAt} />
-        ) : null}
-      </div>
     </div>
   );
 }

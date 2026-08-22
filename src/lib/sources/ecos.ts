@@ -9,6 +9,7 @@ import { env } from '@/lib/env';
 import type { MacroIndicator, MacroSeriesPoint } from '@/lib/types';
 import { nowKst } from '@/lib/format';
 import { SOURCE_TTL } from '@/lib/refresh-policy';
+import { bumpApiUsage } from '@/lib/store/api-usage';
 
 const BASE = 'https://ecos.bok.or.kr/api/StatisticSearch';
 
@@ -105,6 +106,7 @@ export async function fetchEcosSeries(spec: EcosSpec, months = 60): Promise<Macr
   const [start, end] = periodRange(spec.cycle, months);
   const url = `${BASE}/${key}/json/kr/1/1000/${spec.statCode}/${spec.cycle}/${start}/${end}/${spec.itemCode}`;
 
+  bumpApiUsage('ecos');
   const res = await fetch(url, { next: { revalidate: SOURCE_TTL.ecos } });
   if (!res.ok) throw new Error(`ECOS HTTP ${res.status}`);
 
@@ -142,7 +144,13 @@ export async function fetchMacroIndicator(spec: EcosSpec): Promise<MacroIndicato
     latest: latest.value,
     latestPeriod: latest.period,
     change: prev ? latest.value - prev.value : 0,
-    yoy: yearAgo ? ((latest.value - yearAgo.value) / yearAgo.value) * 100 : undefined,
+    /* 금리처럼 값 자체가 %인 지표는 전년비를 %p "차이"로 준다.
+       비율로 계산하면 기준금리 2.5→2.75%가 "+10%"로 표시돼 오해를 부른다. */
+    yoy: yearAgo
+      ? spec.unit === '%'
+        ? latest.value - yearAgo.value
+        : ((latest.value - yearAgo.value) / yearAgo.value) * 100
+      : undefined,
     series,
     source: '한국은행 ECOS',
     sourceUrl: `https://ecos.bok.or.kr/#/Short/${spec.statCode}`,

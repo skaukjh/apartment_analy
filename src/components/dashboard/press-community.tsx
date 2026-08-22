@@ -46,8 +46,12 @@ export function PressSection({ press }: { press: NewsItem[] }) {
                 rel="noreferrer"
                 className="group flex items-start gap-2"
               >
-                <Badge variant="outline" className="mt-0.5 shrink-0 text-[10px]">
-                  {n.agency ?? '정부'}
+                {/* 정부 도메인 원문만 '공식', 언론 보도는 '보도'로 구분한다 */}
+                <Badge
+                  variant={n.official ? 'secondary' : 'outline'}
+                  className="mt-0.5 shrink-0 text-[10px]"
+                >
+                  {n.official ? '공식' : '보도'} · {n.agency ?? '정부'}
                 </Badge>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start gap-1.5">

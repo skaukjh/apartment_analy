@@ -27,6 +27,8 @@ interface OutlookResponse {
   gaps?: string[];
   model?: string;
   generatedAt?: string;
+  /** 마지막으로 새 자료를 점검한 시각 — 본문이 재사용돼도 매시간 갱신된다 */
+  refreshedAt?: string;
 }
 
 /** '8월 22일 14시' 형태 — 이 요약이 언제 기준인지 한눈에 */
@@ -175,6 +177,8 @@ export function AiOutlookPanel({
         <>
           <div className="space-y-1">{renderMarkdown(data.markdown)}</div>
 
+          <OutlookBasis data={data} />
+
           {data.gaps && data.gaps.length > 0 && (
             <p className="text-muted-foreground mt-4 text-xs">
               확보하지 못한 자료: {data.gaps.join(' · ')}
@@ -206,5 +210,35 @@ export function AiOutlookPanel({
         </>
       )}
     </SectionCard>
+  );
+}
+
+/**
+ * 생성 근거 표시.
+ *
+ * "들어갈 때마다 다시 만드는 것 아니냐"는 오해가 있어, 무엇을 읽고 만들었고
+ * 언제 다시 만드는지를 본문 아래에 명시한다. 실제로는 매시간 자료만 점검하고,
+ * 기준을 넘는 새 자료가 쌓였을 때만 재생성한다.
+ */
+function OutlookBasis({ data }: { data: OutlookResponse }) {
+  const counts: Record<OutlookSource['kind'], number> = { official: 0, news: 0, blog: 0, cafe: 0 };
+  for (const s of data.sources ?? []) counts[s.kind] += 1;
+  const parts = (Object.keys(counts) as OutlookSource['kind'][])
+    .filter((k) => counts[k] > 0)
+    .map((k) => `${KIND_LABEL[k]} ${counts[k]}건`);
+
+  return (
+    <div className="text-muted-foreground mt-4 space-y-1 border-t pt-3 text-[11px] leading-relaxed">
+      <p>
+        <span className="text-foreground font-medium">생성 근거</span> —{' '}
+        {parts.length > 0 ? parts.join(' · ') : '수집된 자료 없음'} + 실거래·지표 수치
+        {data.generatedAt ? ` (${formatGeneratedAt(data.generatedAt)} 생성)` : ''}
+      </p>
+      <p>
+        재생성 기준: 새 공식발표 1건 이상, 또는 새 기사 20건 이상, 또는 새 블로그·카페 글 20건 이상
+        쌓였을 때만 다시 생성합니다. 기준 미달이면 이전 요약을 그대로 둡니다
+        {data.refreshedAt ? ` — 마지막 자료 점검 ${formatGeneratedAt(data.refreshedAt)}` : ''}.
+      </p>
+    </div>
   );
 }

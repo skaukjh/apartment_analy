@@ -58,7 +58,7 @@ export function CatalystSection({ catalysts, regions }: Props) {
   if (regions.length === 0) {
     return (
       <SectionCard
-        title="④ 관심 지역 호재 · 악재"
+        title="관심 지역 호재 · 악재"
         description="관심 지역을 등록하면 해당 지역(보유·목표 아파트 지역 포함)에 걸린 교통·개발·공급 호재와 규제 악재를 추적합니다."
       >
         <EmptyHint>
@@ -73,7 +73,7 @@ export function CatalystSection({ catalysts, regions }: Props) {
 
   if (catalysts.length === 0) {
     return (
-      <SectionCard title="④ 관심 지역 호재 · 악재">
+      <SectionCard title="관심 지역 호재 · 악재">
         <EmptyHint>등록된 관심 지역에 매칭되는 주요 호재·악재가 없습니다.</EmptyHint>
       </SectionCard>
     );
@@ -85,7 +85,7 @@ export function CatalystSection({ catalysts, regions }: Props) {
 
   return (
     <SectionCard
-      title="④ 관심 지역 호재 · 악재"
+      title="관심 지역 호재 · 악재"
       description={`추적 지역(보유·목표 포함): ${coverage}. 진행 단계는 최신 뉴스 헤드라인에서 자동 추론하며, '미확인'은 최근 관련 보도가 없다는 뜻입니다.`}
       badge={
         <Badge variant="secondary">
@@ -122,6 +122,11 @@ export function CatalystSection({ catalysts, regions }: Props) {
                       >
                         {negative ? '악재' : '호재'}
                       </Badge>
+                      {c.scope === 'nationwide' ? (
+                        <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                          전국 공통
+                        </Badge>
+                      ) : null}
                     </div>
                     <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
                       <span>{meta.label}</span>
@@ -183,6 +188,11 @@ export function CatalystSection({ catalysts, regions }: Props) {
               {/* 근거 출처 — 공식 자료·뉴스, 최대 5개 */}
               {c.sourceLinks && c.sourceLinks.length > 0 ? (
                 <div className="mt-2.5 space-y-1 border-t pt-2">
+                  {c.newsScope === 'general' && !unconfirmed ? (
+                    <p className="text-muted-foreground text-[10px]">
+                      이 지역을 특정한 보도가 없어 전국 단위 보도를 표시합니다
+                    </p>
+                  ) : null}
                   {c.sourceLinks.slice(0, 5).map((l) => (
                     <a
                       key={l.url}

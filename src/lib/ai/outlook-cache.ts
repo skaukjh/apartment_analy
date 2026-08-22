@@ -28,8 +28,10 @@ interface CacheEnvelope {
 /** 서버리스 인스턴스가 살아 있는 동안 쓰는 1차 캐시 (사용자별) */
 const memoryCache = new Map<string, { at: number; outlook: MarketOutlook }>();
 
-function isFresh(generatedAt: string): boolean {
-  const t = Date.parse(generatedAt);
+/* 신선도는 "마지막 자료 점검 시각" 기준이다. 본문 생성 시각(generatedAt)으로 보면
+   기준 미달로 재사용 중인 요약이 1시간 만에 만료돼 페이지마다 재생성된다. */
+function isFresh(outlook: MarketOutlook): boolean {
+  const t = Date.parse(outlook.refreshedAt ?? outlook.generatedAt);
   return Number.isFinite(t) && Date.now() - t < OUTLOOK_TTL_MS;
 }
 
@@ -69,29 +71,31 @@ export async function loadCachedOutlook(userId = 'default'): Promise<MarketOutlo
   const client = getAdminClient();
   if (!client) return null;
 
+  /* kind·userId 를 SQL 에서 거른다. 예전엔 최근 20행을 받아 JS 로 걸렀는데,
+     대시보드 캐시·브리핑 표시 등 다른 kind 행이 한 시간에 20행을 넘으면
+     요약 행이 창 밖으로 밀려 캐시 미스 → 페이지마다 재생성되는 문제가 있었다. */
   const since = new Date(Date.now() - OUTLOOK_TTL_MS).toISOString();
   const { data, error } = await client
     .from('dashboard_snapshot')
     .select('payload')
     .gte('captured_at', since)
+    .eq('payload->>kind', KIND)
+    .eq('payload->>userId', userId)
     .order('captured_at', { ascending: false })
-    .limit(20);
+    .limit(1)
+    .maybeSingle();
 
   if (error || !data) return null;
 
-  for (const row of data) {
-    const payload = row.payload as CacheEnvelope | null;
-    if (payload?.kind !== KIND || !payload.outlook) continue;
-    if ((payload.userId ?? 'default') !== userId) continue;
-    if (!isFresh(payload.outlook.generatedAt)) continue;
-    memoryCache.set(userId, {
-      at: Date.parse(payload.outlook.generatedAt),
-      outlook: payload.outlook,
-    });
-    return payload.outlook;
-  }
+  const payload = data.payload as CacheEnvelope | null;
+  if (payload?.kind !== KIND || !payload.outlook) return null;
+  if (!isFresh(payload.outlook)) return null;
 
-  return null;
+  memoryCache.set(userId, {
+    at: Date.parse(payload.outlook.refreshedAt ?? payload.outlook.generatedAt),
+    outlook: payload.outlook,
+  });
+  return payload.outlook;
 }
 
 /** 새로 만든 요약을 캐시에 넣는다. 실패해도 본 기능을 막지 않는다. */
@@ -104,7 +108,7 @@ export async function saveOutlookCache(outlook: MarketOutlook, userId = 'default
   const envelope: CacheEnvelope = { kind: KIND, userId, outlook };
   const { error } = await client
     .from('dashboard_snapshot')
-    .insert({ captured_at: outlook.generatedAt, payload: envelope });
+    .insert({ captured_at: outlook.refreshedAt ?? outlook.generatedAt, payload: envelope });
 
   if (error) console.error('[ai] 요약 캐시 저장 실패:', error.message);
 }

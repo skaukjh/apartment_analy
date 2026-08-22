@@ -50,7 +50,15 @@ export interface MarketOutlook {
   /** 모델이 읽지 못한 것 */
   gaps: string[];
   model: string;
+  /** 본문을 실제로 생성한 시각 — 재생성 기준 미달로 재사용해도 바뀌지 않는다 */
   generatedAt: string;
+  /**
+   * 마지막으로 새 자료를 점검한 시각.
+   * 매시간 크론이 자료를 점검하고, 기준 미달이면 본문은 그대로 두고 이 값만 갱신한다.
+   * 캐시 신선도 판단은 이 값을 쓴다 — generatedAt 으로 판단하면 "내용이 그대로"일 때
+   * 캐시가 만료돼 페이지를 열 때마다 재생성되는 문제가 생긴다.
+   */
+  refreshedAt?: string;
 }
 
 interface NaverDocItem {
@@ -223,7 +231,9 @@ function renderNumbers(data: DashboardData): string {
   for (const m of data.macro ?? []) {
     lines.push(
       `- ${m.label}: ${m.latest?.toLocaleString('ko-KR') ?? '?'}${m.unit === '%' ? '%' : ''} (${m.latestPeriod ?? '?'}${
-        m.yoy !== undefined ? `, 전년비 ${m.yoy.toFixed(1)}%` : ''
+        m.yoy !== undefined
+          ? `, 전년비 ${m.yoy.toFixed(m.unit === '%' ? 2 : 1)}${m.unit === '%' ? '%p' : '%'}`
+          : ''
       })`,
     );
   }
@@ -457,5 +467,6 @@ ${gaps.length > 0 ? `[확보하지 못한 정보]\n${gaps.map((g) => `- ${g}`).j
     gaps,
     model: OPENAI_MODEL,
     generatedAt: new Date().toISOString(),
+    refreshedAt: new Date().toISOString(),
   };
 }

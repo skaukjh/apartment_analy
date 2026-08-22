@@ -69,6 +69,33 @@ export const householdSchema = z.object({
   otherDebtAnnualPayment: z.number().nonnegative().default(0),
 });
 
+/**
+ * 편집 중(저장 전) 설정용 느슨한 스키마 — 자동 채움 API 가 쓴다.
+ *
+ * 설정 화면에서 "추가"만 누른 빈 카드는 단지명·면적·지역이 비어 있는데,
+ * 저장용 스키마로 검증하면 400 이 나서 "등록 정보로 자동 설정"이 통째로 실패한다.
+ * 빈 카드는 계산할 것도 없으므로 통과시키고, 각 계산 함수가 알아서 건너뛴다.
+ */
+const draftLoose = {
+  complexName: z.string().default(''),
+  lawdCd: z.string().default(''),
+  areaM2: z.number().nonnegative().default(0),
+};
+
+export const draftConfigSchema = z.object({
+  holdings: z
+    .array(holdingSchema.extend({ ...draftLoose, acquiredAt: z.string().default('') }))
+    .default([]),
+  targets: z.array(targetSchema.extend(draftLoose)).default([]),
+  watchRegions: z.array(watchRegionSchema).default([]),
+  household: householdSchema.default(householdSchema.parse({})),
+  kakaoBriefingEnabled: z.boolean().default(true),
+  briefingHour: z.number().int().min(0).max(23).default(8),
+  briefingFormat: z.enum(['summary', 'full', 'image']).default('summary'),
+  openaiApiKey: z.string().trim().max(200).optional(),
+  updatedAt: z.string().default(() => new Date().toISOString()),
+});
+
 export const userConfigSchema = z.object({
   holdings: z.array(holdingSchema).default([]),
   targets: z.array(targetSchema).default([]),

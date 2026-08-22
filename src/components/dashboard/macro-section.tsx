@@ -83,7 +83,7 @@ export function MacroSection({ macro }: Props) {
   if (macro.length === 0) {
     return (
       <SectionCard
-        title="⑧ 주요 지수 · 분석 브리핑"
+        title="주요 지수 · 분석 브리핑"
         description="기준금리·물가지수·M2·주택담보대출금리 (한국은행 ECOS)"
       >
         <EmptyHint>
@@ -109,7 +109,7 @@ export function MacroSection({ macro }: Props) {
 
   return (
     <SectionCard
-      title="⑧ 주요 지수 · 분석 브리핑"
+      title="주요 지수 · 분석 브리핑"
       description="한국은행 ECOS 원본 시계열. 지표를 클릭하면 차트가 바뀝니다."
       badge={<Badge variant="secondary">{macro.length}개 지표</Badge>}
     >
@@ -135,7 +135,13 @@ export function MacroSection({ macro }: Props) {
               <span>{m.latestPeriod}</span>
               {m.yoy !== undefined ? (
                 <>
-                  YoY <Delta value={m.yoy} digits={1} />
+                  {/* 금리형(%) 지표의 전년비는 %p 차이 — 비율이 아니다 */}
+                  전년비{' '}
+                  <Delta
+                    value={m.yoy}
+                    digits={m.unit === '%' ? 2 : 1}
+                    suffix={m.unit === '%' ? 'p' : ''}
+                  />
                 </>
               ) : null}
             </div>

@@ -54,6 +54,11 @@ function eok(won: number): string {
   return `${(won / 1e8).toFixed(2)}억`;
 }
 
+/** 전용면적 → 평 (1평 = 3.3058㎡). 흔히 부르는 공급평형과는 다르다 */
+function pyeong(areaM2: number): string {
+  return `${(areaM2 / 3.3058).toFixed(1)}평`;
+}
+
 export function ComplexSearch({
   lawdCd,
   onPick,
@@ -170,6 +175,9 @@ export function ComplexSearch({
                         >
                           <span className="tabular">
                             {a.areaM2}㎡
+                            <span className="text-muted-foreground ml-1 text-xs">
+                              (전용 {pyeong(a.areaM2)})
+                            </span>
                             <span className="text-muted-foreground ml-2 text-xs">
                               표본 {a.tradeCount}건
                             </span>

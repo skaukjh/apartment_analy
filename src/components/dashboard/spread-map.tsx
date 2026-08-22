@@ -2,6 +2,16 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { Loader2, RotateCcw } from 'lucide-react';
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { Button } from '@/components/ui/button';
 import type { ReboundAnalysis } from '@/lib/types';
 import { METRO_TILES, SEOUL_TILES, SIDO_LIST, findSigungu } from '@/lib/regions';
@@ -98,9 +108,13 @@ function TileGrid({ tiles, byCode, onSelect, onOpen, selected }: TileProps) {
 /** YYYY-MM 형식 검사 */
 const MONTH_RE = /^\d{4}-\d{2}$/;
 
+/** 지역 순위 기본 범위 — 서울·인천·경기 */
+const CAPITAL_SIDOS = ['서울', '인천', '경기'];
+
 export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
   const [selected, setSelected] = useState<ReboundAnalysis | null>(null);
-  const [sidoFilter, setSidoFilter] = useState<string>('전국');
+  // 기본은 수도권만 — 전국 178곳을 다 보여주면 소수 거래 지방 지역이 순위를 도배한다
+  const [sidoFilter, setSidoFilter] = useState<string>('수도권');
   // 카토그램 탭에서 구를 클릭하면 전국 탭으로 넘어가 그 구의 동 단위를 보여준다.
   // KoreaMap 은 selected 가 바뀌면 스스로 그 시군구로 들어가므로 탭만 바꾸면 된다.
   const [mapTab, setMapTab] = useState('nation');
@@ -171,15 +185,16 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
   const byCode = useMemo(() => new Map(rebound.map((r) => [r.lawdCd, r])), [rebound]);
   const spread = useMemo(() => summarizeSpread(rebound), [rebound]);
 
-  const filtered = useMemo(
-    () => (sidoFilter === '전국' ? rebound : rebound.filter((r) => r.sido === sidoFilter)),
-    [rebound, sidoFilter],
-  );
+  const filtered = useMemo(() => {
+    if (sidoFilter === '전국') return rebound;
+    if (sidoFilter === '수도권') return rebound.filter((r) => CAPITAL_SIDOS.includes(r.sido));
+    return rebound.filter((r) => r.sido === sidoFilter);
+  }, [rebound, sidoFilter]);
 
   if (rebound.length === 0) {
     return (
       <SectionCard
-        title="③ 상승장 확산 지도"
+        title="상승장 확산 지도"
         description="2023년 1월을 100으로 둔 지역별 실거래 지수로 상승 물결의 진원지와 미반등 지역을 봅니다."
       >
         <EmptyHint>
@@ -204,7 +219,7 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
 
   return (
     <SectionCard
-      title="③ 상승장 확산 지도"
+      title="상승장 확산 지도"
       description={`${periodLabel} 실거래 지수 비교 (기준월 = 100). 붉을수록 많이 올랐고 푸를수록 많이 내렸으며, 농도가 변동 폭입니다.`}
       badge={<Badge variant="secondary">확산률 {spread.spreadRate.toFixed(0)}%</Badge>}
       action={
@@ -360,6 +375,18 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
                   value={`${selected.sampleSize.toLocaleString('ko-KR')}건`}
                 />
               </dl>
+              {selected.thinSample ? (
+                <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                  소수 거래 지역 (월 거래 30건 미만) — 신축 입주 등 소수의 고가 거래만으로 변동률이
+                  급등락하는 착시가 생길 수 있습니다.
+                </p>
+              ) : null}
+              {selected.volatileMix ? (
+                <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                  구성 편향 주의 — 이 지역은 고가 단지가 거래된 달과 아닌 달의 ㎡단가 차이가 커서
+                  (월 변동 중앙값 8% 이상) 지수 등락이 실제 시세보다 과장돼 보일 수 있습니다.
+                </p>
+              ) : null}
               {selected.baseShifted ? (
                 <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
                   {BASE_MONTH}에 거래 표본이 없어 {selected.baseMonth}을 기준으로 잡았습니다.
@@ -368,7 +395,7 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
               <p className="text-muted-foreground mt-2 text-[11px] leading-relaxed">
                 {STAGE_META[selected.stage].description}
               </p>
-              <Sparkline series={selected.series.map((p) => p.pricePerM2)} />
+              <IndexChart series={selected.series} baseMonth={selected.baseMonth} />
             </div>
           ) : (
             <div className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
@@ -386,7 +413,8 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
                 onChange={(e) => setSidoFilter(e.target.value)}
                 className="bg-background rounded-md border px-2 py-1 text-xs"
               >
-                <option value="전국">전국</option>
+                <option value="수도권">수도권</option>
+                <option value="전국">전국 전체</option>
                 {SIDO_LIST.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -425,6 +453,14 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
                     >
                       <span>
                         {r.regionName}
+                        {r.thinSample ? (
+                          <span
+                            className="text-muted-foreground ml-1 text-[10px]"
+                            title="월 거래 30건 미만 — 소수 거래로 변동률 착시가 생길 수 있습니다"
+                          >
+                            ⚠소수거래
+                          </span>
+                        ) : null}
                         {r.recent3mChange > 0 ? (
                           <span className="text-rise ml-1 text-[10px]" title="최근 3개월 상승 전환">
                             ↗{formatPct(r.recent3mChange, 1)}
@@ -576,9 +612,17 @@ function RankList({
           {r.thinSample ? (
             <span
               className="text-muted-foreground ml-1 text-[10px]"
-              title="월 거래 30건 미만 — 거래 구성(신축 입주 등)에 따라 변동률이 크게 흔들릴 수 있습니다"
+              title="월 거래 30건 미만 — 소수의 신축·고가 거래만으로 변동률이 급등락하는 착시가 생길 수 있습니다"
             >
-              ⚠표본적음
+              ⚠소수거래
+            </span>
+          ) : null}
+          {r.volatileMix ? (
+            <span
+              className="text-muted-foreground ml-1 text-[10px]"
+              title="월별 ㎡단가가 널뛰는 지역 — 고가 단지 거래 유무에 따라 지수 등락이 과장될 수 있습니다"
+            >
+              ⚠구성편향
             </span>
           ) : null}
         </span>
@@ -622,43 +666,60 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** 의존성 없는 초경량 스파크라인 */
-function Sparkline({ series }: { series: number[] }) {
+/**
+ * 선택 지역의 실거래 지수 추이 차트 (기준월 = 100).
+ * R-ONE 의 지역별 지수 그래프처럼, 월 축·값 툴팁이 있는 제대로 된 차트로 보여준다.
+ */
+function IndexChart({
+  series,
+  baseMonth,
+}: {
+  series: Array<{ month: string; pricePerM2: number }>;
+  baseMonth: string;
+}) {
   if (series.length < 2) return null;
-  const min = Math.min(...series);
-  const max = Math.max(...series);
-  const range = max - min || 1;
-  const w = 280;
-  const h = 48;
-  const points = series
-    .map((v, i) => {
-      const x = (i / (series.length - 1)) * w;
-      const y = h - ((v - min) / range) * (h - 6) - 3;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
-
-  const rising = series[series.length - 1] >= series[0];
+  const data = series.map((p) => ({ month: p.month.slice(2), index: p.pricePerM2 }));
+  const rising = series[series.length - 1].pricePerM2 >= 100;
 
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="mt-2 w-full" preserveAspectRatio="none">
-      <polyline
-        points={points}
-        fill="none"
-        stroke={rising ? 'var(--rise)' : 'var(--fall)'}
-        strokeWidth="1.5"
-        vectorEffect="non-scaling-stroke"
-      />
-      <line
-        x1="0"
-        y1={h - ((100 - min) / range) * (h - 6) - 3}
-        x2={w}
-        y2={h - ((100 - min) / range) * (h - 6) - 3}
-        stroke="var(--border)"
-        strokeDasharray="3 3"
-        strokeWidth="1"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
+    <div className="mt-2 h-36 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 6, right: 6, left: -18, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+          <XAxis
+            dataKey="month"
+            tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }}
+            tickLine={false}
+            axisLine={false}
+            interval="preserveStartEnd"
+            minTickGap={28}
+          />
+          <YAxis
+            domain={['auto', 'auto']}
+            tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }}
+            tickLine={false}
+            axisLine={false}
+            width={40}
+          />
+          <RechartsTooltip
+            formatter={(v) => [`${v}`, `지수 (${baseMonth}=100)`]}
+            contentStyle={{
+              background: 'var(--background)',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              fontSize: 11,
+            }}
+          />
+          <ReferenceLine y={100} stroke="var(--border)" strokeDasharray="3 3" />
+          <Line
+            type="monotone"
+            dataKey="index"
+            stroke={rising ? 'var(--rise)' : 'var(--fall)'}
+            strokeWidth={1.8}
+            dot={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   );
 }

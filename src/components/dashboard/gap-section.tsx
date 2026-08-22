@@ -124,7 +124,7 @@ export function GapSection({ config, quotes }: Props) {
   if (pairs.length === 0) {
     return (
       <SectionCard
-        title="① 보유 ↔ 목표 시세 갭"
+        title="보유 ↔ 목표 시세 갭"
         description="보유 아파트와 목표 아파트를 등록하면 실거래 기준 갭과 세후 실소요 자금을 계산합니다."
       >
         <EmptyHint>
@@ -139,7 +139,7 @@ export function GapSection({ config, quotes }: Props) {
 
   return (
     <SectionCard
-      title="① 보유 ↔ 목표 시세 갭"
+      title="보유 ↔ 목표 시세 갭"
       description={
         <>
           갭은 단순 시세 차이이고,{' '}

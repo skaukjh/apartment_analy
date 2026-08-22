@@ -28,6 +28,7 @@
 import { env } from '@/lib/env';
 import { getAdminClient } from '@/lib/store/supabase';
 import { memoryState, type KakaoTokenRecord } from '@/lib/store/memory';
+import { bumpApiUsage } from '@/lib/store/api-usage';
 
 const AUTH_HOST = 'https://kauth.kakao.com';
 const API_HOST = 'https://kapi.kakao.com';
@@ -334,6 +335,7 @@ export type KakaoTemplate = KakaoTextTemplate | KakaoFeedTemplate;
 async function sendMemoAs(recipient: KakaoRecipient, template: KakaoTemplate): Promise<void> {
   const accessToken = await ensureAccessToken(recipient);
 
+  bumpApiUsage('kakao');
   const res = await fetch(`${API_HOST}/v2/api/talk/memo/default/send`, {
     method: 'POST',
     headers: {

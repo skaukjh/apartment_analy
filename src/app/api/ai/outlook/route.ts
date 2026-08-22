@@ -4,7 +4,7 @@ import { buildMarketOutlook } from '@/lib/ai/market-outlook';
 import { loadCachedOutlook, saveOutlookCache, OUTLOOK_TTL_MS } from '@/lib/ai/outlook-cache';
 import { hasOpenAI } from '@/lib/ai/client';
 import { errorResponse } from '@/lib/api-auth';
-import { configIdForRequest, getSessionUser, resolveOpenAIKey } from '@/lib/auth/server';
+import { ANON_CONFIG_ID, getSessionUser, resolveOpenAIKey } from '@/lib/auth/server';
 import { loadConfig } from '@/lib/store/config';
 
 export const dynamic = 'force-dynamic';
@@ -30,20 +30,11 @@ export async function GET(request: Request) {
     }
 
     const force = new URL(request.url).searchParams.get('refresh') === '1';
-    const userId = await configIdForRequest();
     const user = await getSessionUser();
-    // 생성 비용 귀속: 관리자는 운영자 키, 회원은 자기 키(BYOK). 없으면 캐시 열람만.
-    const cfg = await loadConfig(userId);
-    const ai = resolveOpenAIKey(user, cfg.openaiApiKey);
-    const canGenerate = ai.allowed;
+    const userId = user?.id ?? ANON_CONFIG_ID;
 
-    if (force && !canGenerate) {
-      return NextResponse.json(
-        { ok: false, error: ai.reason ?? '요약 재생성 권한이 없습니다.' },
-        { status: user ? 403 : 401 },
-      );
-    }
-
+    /* 캐시 적중이 대부분이므로 캐시부터 본다.
+       키 확인(loadConfig)까지 마치고 캐시를 보면 적중일 때도 DB 왕복이 하나 더 붙는다. */
     if (!force) {
       const cached = await loadCachedOutlook(userId);
       if (cached) {
@@ -54,10 +45,26 @@ export async function GET(request: Request) {
           // 다음 갱신까지 남은 시간 (초)
           expiresInSec: Math.max(
             0,
-            Math.round((OUTLOOK_TTL_MS - (Date.now() - Date.parse(cached.generatedAt))) / 1000),
+            Math.round(
+              (OUTLOOK_TTL_MS -
+                (Date.now() - Date.parse(cached.refreshedAt ?? cached.generatedAt))) /
+                1000,
+            ),
           ),
         });
       }
+    }
+
+    // 생성 비용 귀속: 관리자는 운영자 키, 회원은 자기 키(BYOK). 없으면 캐시 열람만.
+    const cfg = await loadConfig(userId);
+    const ai = resolveOpenAIKey(user, cfg.openaiApiKey);
+    const canGenerate = ai.allowed;
+
+    if (force && !canGenerate) {
+      return NextResponse.json(
+        { ok: false, error: ai.reason ?? '요약 재생성 권한이 없습니다.' },
+        { status: user ? 403 : 401 },
+      );
     }
 
     if (!canGenerate) {

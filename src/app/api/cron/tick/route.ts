@@ -13,6 +13,12 @@ import { loadLatestOutlook, saveOutlookCache } from '@/lib/ai/outlook-cache';
 import { saveDashboardCache } from '@/lib/pipeline/dashboard-cache';
 import { refreshSentimentNote } from '@/lib/ai/sentiment-note';
 import { markBriefingSent, wasBriefingSent } from '@/lib/store/briefing-mark';
+import { listAdminUserIds } from '@/lib/auth/server';
+import {
+  buildPolicyDigest,
+  loadLatestPolicyDigest,
+  savePolicyDigest,
+} from '@/lib/ai/policy-digest';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -77,14 +83,16 @@ export async function GET(request: Request) {
        호출 횟수가 시간당 1회로 고정돼 비용이 예측 가능해진다. */
     let outlookCached = 0;
     {
-      for (const uid of userIds) {
+      /* 관리자 uid 는 개인 키 없이 운영자 키를 쓴다. 여기서 빼먹으면 관리자가
+         페이지를 열 때마다 캐시 미스로 20~40초 생성이 돈다 — 실제로 그랬다. */
+      const adminIds = await listAdminUserIds().catch(() => new Set<string>());
+      for (const uid of [...new Set([...userIds, ...adminIds])]) {
         try {
-          /* 키 귀속: 레거시(default)는 운영자 키, 회원은 자기 키(BYOK).
+          /* 키 귀속: 레거시(default)·관리자는 운영자 키, 회원은 자기 키(BYOK).
              회원 키가 없으면 그 사용자 요약은 만들지 않는다 — 비용이 남에게
-             전가되지 않게. (관리자 계정의 uid 도 회원 행이지만 isAdmin 판정은
-             세션에서만 가능하므로, 여기서는 default=운영자 키 규칙만 쓴다) */
-          const cfgKey = uid === 'default' ? undefined : (await loadConfig(uid)).openaiApiKey;
-          const useEnvKey = uid === 'default';
+             전가되지 않게. */
+          const useEnvKey = uid === 'default' || adminIds.has(uid);
+          const cfgKey = useEnvKey ? undefined : (await loadConfig(uid)).openaiApiKey;
           if (!useEnvKey && !cfgKey?.trim()) continue;
           if (useEnvKey && !hasOpenAI()) continue;
 
@@ -107,12 +115,30 @@ export async function GET(request: Request) {
             await saveOutlookCache(outlook, uid);
             outlookCached += 1;
           } else if (prev) {
-            // 내용은 그대로 두고 시각만 갱신해 캐시 신선도를 유지한다
-            await saveOutlookCache({ ...prev, generatedAt: new Date().toISOString() }, uid);
+            /* 내용은 그대로 두고 "자료 점검 시각"만 갱신해 캐시 신선도를 유지한다.
+               generatedAt 까지 덮어쓰면 매시간 새로 생성한 것처럼 보인다 —
+               실제로는 "새 자료 부족으로 이전 요약 유지"인데도. */
+            await saveOutlookCache({ ...prev, refreshedAt: new Date().toISOString() }, uid);
           }
         } catch (e) {
           console.error('[tick] AI 요약 생성 실패:', uid.slice(0, 8), (e as Error).message);
         }
+      }
+    }
+
+    /* 1-3) 최신 부동산 정책 요약 — 전역 1건. 정책은 사용자별로 다르지 않다.
+       새 자료가 기준에 못 미치면 이전 본문을 그대로 두고 점검 시각만 갱신한다. */
+    if (hasOpenAI()) {
+      try {
+        const prev = await loadLatestPolicyDigest();
+        const digest = await buildPolicyDigest({
+          skipIfPromptHash: prev?.promptHash,
+          previousSourceUrls: prev?.sources?.map((s) => s.url),
+        });
+        if (digest) await savePolicyDigest(digest);
+        else if (prev) await savePolicyDigest({ ...prev, refreshedAt: new Date().toISOString() });
+      } catch (e) {
+        console.error('[tick] 정책 요약 생성 실패:', (e as Error).message);
       }
     }
 

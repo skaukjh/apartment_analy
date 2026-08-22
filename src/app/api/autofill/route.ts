@@ -8,8 +8,9 @@ import {
   currentMortgageRate,
   isRegulated,
 } from '@/lib/analysis/auto-fill';
-import { userConfigSchema } from '@/lib/store/config';
-import type { UserConfig } from '@/lib/types';
+import { draftConfigSchema } from '@/lib/store/config';
+import { findTradeNearDate } from '@/lib/sources/complex-search';
+import type { TradeRecord, UserConfig } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -25,7 +26,8 @@ export const maxDuration = 120;
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const config = userConfigSchema.parse(body?.config) as UserConfig;
+    // 편집 중 설정에는 빈 카드가 섞여 있을 수 있어 느슨한 스키마로 받는다
+    const config = draftConfigSchema.parse(body?.config) as UserConfig;
     const overwrite = Boolean(body?.overwrite);
     const scope = (body?.scope ?? 'all') as 'all' | 'holding' | 'target' | 'household';
     const targetId = body?.id as string | undefined;
@@ -34,11 +36,28 @@ export async function POST(request: Request) {
     // 대출 금리 자동 입력에 ECOS 가 필요하므로 라이브 호출을 유지한다)
     const data = await buildDashboard();
 
+    /* 취득일 인근 실거래 — 취득가액 자동 채움용.
+       본인의 매수 거래 자체가 국토부에 신고돼 있으므로, 취득일과 가장 가까운
+       그 단지·면적 계약을 찾으면 취득가액을 채울 수 있다. */
+    const acquisitionTrades: Record<string, TradeRecord> = {};
+    if (scope === 'all' || scope === 'holding') {
+      for (const h of config.holdings) {
+        if (targetId && h.id !== targetId) continue;
+        if (!h.acquiredAt || !h.complexName || !/^\d{5}$/.test(h.lawdCd)) continue;
+        if (!overwrite && h.acquisitionPrice > 0) continue;
+        const t = await findTradeNearDate(h.lawdCd, h.complexName, h.areaM2, h.acquiredAt).catch(
+          () => null,
+        );
+        if (t) acquisitionTrades[h.id] = t;
+      }
+    }
+
     // 편집 중인 설정 기준으로 시세를 다시 매핑 — 아직 저장 전이라 id 가 다를 수 있다
     const ctx = {
       quotes: data.quotes,
       macro: data.macro,
       ownedHouseCount: config.holdings.length,
+      acquisitionTrades,
     };
 
     const next: UserConfig = structuredClone(config);

@@ -233,10 +233,12 @@ export async function GET(request: Request) {
 
     complexes.sort((a, b) => b.sampleSize - a.sampleSize);
 
-    /* 지도 표시용 좌표 — 거래가 많은 상위 단지만 지오코딩 (API 호출량 억제) */
+    /* 지도 표시용 좌표 — 거래가 많은 상위 단지만 지오코딩 (API 호출량 억제).
+       20개로 뒀더니 자양3동처럼 단지 49개인 동에서 절반 넘게 마커가 빠졌다.
+       60개면 웬만한 동은 전부 커버되고, 좌표는 메모리에 캐시돼 재방문이 싸다. */
     if (wantGeocode) {
       const region = findSigungu(lawd);
-      const top = complexes.slice(0, 20);
+      const top = complexes.slice(0, 60);
       await Promise.all(
         top.map(async (c) => {
           const coord = await geocodeComplex(c.name, region?.name ?? '', c.dong, c.jibun).catch(

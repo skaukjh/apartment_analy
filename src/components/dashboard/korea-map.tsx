@@ -744,6 +744,13 @@ export function KoreaMap({
                   const change = shapeChange(sg);
                   const isSelected = activeCode !== null && sg.codes.includes(activeCode);
                   const dimmed = level.kind === 'sigungu' && !isSelected;
+                  // 기여한 지역이 전부 소수 거래(월 30건 미만)면 변동률에 착시 경고를 단다
+                  const thin =
+                    change !== null &&
+                    sg.codes.every((code) => {
+                      const a = byCode.get(code);
+                      return !a || a.stage === 'insufficient-data' || a.thinSample;
+                    });
                   return (
                     <path
                       key={sg.key}
@@ -760,8 +767,8 @@ export function KoreaMap({
                     >
                       <title>
                         {sg.name}
-                        {change !== null ? ` · ${formatPct(change, 1)}` : ' · 표본부족'} — 클릭해 동
-                        단위 보기
+                        {change !== null ? ` · ${formatPct(change, 1)}` : ' · 표본부족'}
+                        {thin ? ' · 소수 거래, 착시 발생 가능' : ''} — 클릭해 동 단위 보기
                       </title>
                     </path>
                   );
@@ -793,7 +800,9 @@ export function KoreaMap({
                     <title>
                       {d.name}
                       {has
-                        ? ` · ${stat.baseMonth} 대비 ${formatPct(stat.changeSinceBase, 1)} · 표본 ${stat.sampleSize}건`
+                        ? ` · ${stat.baseMonth} 대비 ${formatPct(stat.changeSinceBase, 1)} · 표본 ${stat.sampleSize}건${
+                            stat.sampleSize < 30 ? ' (소수 거래, 착시 발생 가능)' : ''
+                          }`
                         : ' · 거래 표본 부족'}
                       {' — 클릭해 단지 보기'}
                     </title>

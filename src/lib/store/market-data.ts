@@ -232,6 +232,7 @@ export async function saveTradeCache(
   const client = getAdminClient();
   if (!client) {
     memoryState().tradeCache.set(`${lawdCd}|${yyyymm}`, trades);
+    memoryTradeCacheSavedAt.set(`${lawdCd}|${yyyymm}`, Date.now());
     return;
   }
 
@@ -243,6 +244,60 @@ export async function saveTradeCache(
     );
   if (error) throw new Error(`trade_cache 저장 실패: ${error.message}`);
   memoryState().tradeCache.set(`${lawdCd}|${yyyymm}`, trades);
+}
+
+/** 월별 캐시 행 — "어느 달이 비어 있는지"까지 알아야 할 때 쓴다 */
+export interface TradeCacheRow {
+  /** YYYYMM */
+  month: string;
+  /** 마지막 저장 시각 (ISO) */
+  updatedAt: string;
+  trades: TradeRecord[];
+}
+
+/** 메모리 모드에서 월별 저장 시각을 기억한다 (Supabase 는 updated_at 컬럼 사용) */
+const memoryTradeCacheSavedAt = new Map<string, number>();
+
+/**
+ * 한 지역의 월별 캐시를 행 단위로 돌려준다.
+ *
+ * loadTradeCache 는 "캐시가 있냐 없냐"만 알 수 있어, 최근 두 달만 저장된
+ * 지역에서 나머지 달이 통째로 빠져 있어도 구분하지 못했다.
+ * 검색이 "빠진 달만 받아오기" 판단을 하려면 달별 존재 여부와 저장 시각이 필요하다.
+ */
+export async function loadTradeCacheRows(
+  lawdCd: string,
+  fromMonth: string,
+): Promise<TradeCacheRow[]> {
+  const client = getAdminClient();
+  if (!client) {
+    const out: TradeCacheRow[] = [];
+    for (const [key, trades] of memoryState().tradeCache) {
+      const [code, month] = key.split('|');
+      if (code !== lawdCd || month < fromMonth) continue;
+      out.push({
+        month,
+        updatedAt: new Date(memoryTradeCacheSavedAt.get(key) ?? Date.now()).toISOString(),
+        trades,
+      });
+    }
+    return out.sort((a, b) => a.month.localeCompare(b.month));
+  }
+
+  const { data, error } = await client
+    .from('trade_cache')
+    .select('month, payload, updated_at')
+    .eq('lawd_cd', lawdCd)
+    .gte('month', fromMonth)
+    .order('month', { ascending: true });
+
+  if (error) throw new Error(`trade_cache 조회 실패: ${error.message}`);
+
+  return (data ?? []).map((row) => ({
+    month: row.month as string,
+    updatedAt: (row.updated_at as string) ?? new Date(0).toISOString(),
+    trades: (row.payload as TradeRecord[]) ?? [],
+  }));
 }
 
 export async function loadTradeCache(

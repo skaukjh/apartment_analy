@@ -14,6 +14,7 @@
 import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
 import { env } from '@/lib/env';
+import { getAdminClient } from '@/lib/store/supabase';
 
 /** 로그인하지 않은 요청이 쓰는 레거시 설정 id (기존 단일 사용자 시절의 행) */
 export const ANON_CONFIG_ID = 'default';
@@ -61,6 +62,28 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     isAdmin || (data.user.app_metadata as Record<string, unknown> | null)?.approved === true;
 
   return { id: data.user.id, email, approved, isAdmin };
+}
+
+/**
+ * ADMIN_EMAILS 계정들의 uid.
+ *
+ * cron 처럼 세션이 없는 곳에서 "이 uid 가 관리자인가"를 판단할 때 쓴다.
+ * 관리자는 개인 키 없이 운영자 키를 쓰므로, 요약 선생성 대상에서 빠지면
+ * 페이지를 열 때마다 캐시 미스 → 20~40초 생성이 도는 문제가 생긴다.
+ */
+export async function listAdminUserIds(): Promise<Set<string>> {
+  if (env.adminEmails.length === 0) return new Set();
+  const admin = getAdminClient();
+  if (!admin) return new Set();
+
+  const { data, error } = await admin.auth.admin.listUsers({ perPage: 200 });
+  if (error || !data) return new Set();
+
+  return new Set(
+    data.users
+      .filter((u) => u.email && env.adminEmails.includes(u.email.toLowerCase()))
+      .map((u) => u.id),
+  );
 }
 
 /** 승인된 사용자만 통과. 아니면 이유를 담은 에러 정보를 돌려준다. */

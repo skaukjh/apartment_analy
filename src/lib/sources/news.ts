@@ -11,6 +11,7 @@
 import { env } from '@/lib/env';
 import type { NewsItem, WatchRegion } from '@/lib/types';
 import { SOURCE_TTL } from '@/lib/refresh-policy';
+import { bumpApiUsage } from '@/lib/store/api-usage';
 
 interface NaverNewsItem {
   title: string;
@@ -38,6 +39,7 @@ export async function naverSearchRaw<T>(
   const url =
     `https://openapi.naver.com/v1/search/${endpoint}.json` +
     `?query=${encodeURIComponent(query)}&display=${display}&sort=${sort}`;
+  bumpApiUsage('naver');
   const res = await fetch(url, {
     headers: { 'X-Naver-Client-Id': id, 'X-Naver-Client-Secret': secret },
     next: { revalidate: SOURCE_TTL.news },

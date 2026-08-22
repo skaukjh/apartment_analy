@@ -198,6 +198,11 @@ export interface ReboundAnalysis {
    * 쉽게 휘둘린다. 순위에서 이 표시가 붙은 지역은 걸러 읽어야 한다.
    */
   thinSample: boolean;
+  /**
+   * 월별 ㎡단가가 널뛰는 지역 — 거래 구성(고가 단지가 거래된 달인지)에 따라
+   * 지수 변동이 과장될 수 있다 (예: 종로구 942만~1513만원/㎡).
+   */
+  volatileMix: boolean;
 }
 
 /** 법정동 단위 반등 요약 (지도 드릴다운용) */
@@ -348,6 +353,10 @@ export interface CatalystStatus {
   matchedRegions?: string[];
   /** 근거 출처 링크 — 공식 자료·뉴스, 최대 5개 */
   sourceLinks?: Array<{ title: string; url: string }>;
+  /** 특정 지역에 걸린 항목인지, 전국 공통 규제인지 */
+  scope?: 'region' | 'nationwide';
+  /** 첨부된 뉴스가 해당 지역을 언급하는지 — 'general' 이면 전국 일반 보도만 있음 */
+  newsScope?: 'region' | 'general';
 }
 
 /** 주요 일정 (요구사항 8) */

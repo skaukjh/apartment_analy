@@ -15,6 +15,7 @@
 import { env } from '@/lib/env';
 import type { MacroSeriesPoint } from '@/lib/types';
 import { SOURCE_TTL } from '@/lib/refresh-policy';
+import { bumpApiUsage } from '@/lib/store/api-usage';
 
 const BASE = 'https://www.reb.or.kr/r-one/openapi/SttsApiTblData.do';
 
@@ -78,6 +79,7 @@ export async function fetchRebSeries(spec: RebSpec, pSize = 1000): Promise<RebSe
     `${BASE}?KEY=${encodeURIComponent(key)}&Type=json&pIndex=1&pSize=${pSize}` +
     `&STATBL_ID=${spec.statblId}&DTACYCLE_CD=${spec.cycle}`;
 
+  bumpApiUsage('reb');
   const res = await fetch(url, { next: { revalidate: SOURCE_TTL.reb } });
   if (!res.ok) throw new Error(`R-ONE HTTP ${res.status}`);
 

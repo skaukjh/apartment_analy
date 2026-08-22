@@ -8,6 +8,7 @@ import {
   Loader2,
   MessageCircle,
   Plus,
+  RotateCcw,
   Save,
   Send,
   Unplug,
@@ -136,7 +137,28 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
   const [fillReport, setFillReport] = useState<FillReport | null>(null);
   const [recipients, setRecipients] = useState<KakaoRecipientView[]>(kakao.recipients);
   const [newRecipientLabel, setNewRecipientLabel] = useState('');
+  /** 오늘 API 호출량 (소스 키 → 건수). null 이면 집계 테이블 미적용 */
+  const [apiUsage, setApiUsage] = useState<Record<string, number> | null>(null);
   const params = useSearchParams();
+
+  // 소스 키 섹션에 "오늘 N건 사용"을 보여주기 위한 자체 집계 조회
+  useEffect(() => {
+    const id = setTimeout(() => {
+      void fetch('/api/usage')
+        .then((r) => r.json())
+        .then((j) => {
+          if (j?.ok && j.available) {
+            const map: Record<string, number> = {};
+            for (const row of j.usage as Array<{ source: string; count: number }>) {
+              map[row.source] = row.count;
+            }
+            setApiUsage(map);
+          }
+        })
+        .catch(() => {});
+    }, 0);
+    return () => clearTimeout(id);
+  }, []);
 
   // 카카오 콜백 결과 토스트
   useEffect(() => {
@@ -170,13 +192,15 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
     scope: 'all' | 'holding' | 'target' | 'household',
     overwrite: boolean,
     id?: string,
+    /** setConfig 직후에는 config 클로저가 낡아 있으므로, 방금 만든 설정을 직접 넘긴다 */
+    cfgOverride?: UserConfig,
   ) {
     setFilling(scope + (id ?? ''));
     try {
       const res = await fetch('/api/autofill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config, overwrite, scope, id }),
+        body: JSON.stringify({ config: cfgOverride ?? config, overwrite, scope, id }),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? '자동 계산 실패');
@@ -310,31 +334,64 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
   const removeHolding = (id: string) =>
     patch({ holdings: config.holdings.filter((h) => h.id !== id) });
 
+  /** 섹션 전체 비우기 — 저장 버튼을 누르기 전까지는 서버에 반영되지 않는다 */
+  const resetHoldings = () => {
+    if (!window.confirm(`보유 아파트 ${config.holdings.length}건의 입력을 모두 지울까요?`)) return;
+    patch({ holdings: [] });
+    toast.info('보유 아파트 입력을 비웠습니다. 저장을 눌러야 반영됩니다.');
+  };
+
+  const resetTargets = () => {
+    if (!window.confirm(`목표 아파트 ${config.targets.length}건의 입력을 모두 지울까요?`)) return;
+    patch({ targets: [] });
+    toast.info('목표 아파트 입력을 비웠습니다. 저장을 눌러야 반영됩니다.');
+  };
+
   /**
    * 단지 검색 결과로 입력값을 채운다.
    * 채우는 시세는 실거래 중앙값이다 (호가 아님). 사용자가 이어서 손볼 수 있게 둔다.
    */
   const applyHoldingPick = (id: string, pick: ComplexPick) => {
-    updateHolding(id, {
-      complexName: pick.complexName,
-      dong: pick.dong,
-      areaM2: pick.areaM2,
-      builtYear: pick.builtYear,
-      manualPrice: pick.price,
-    });
+    const next: UserConfig = {
+      ...config,
+      holdings: config.holdings.map((h) =>
+        h.id === id
+          ? {
+              ...h,
+              complexName: pick.complexName,
+              dong: pick.dong,
+              areaM2: pick.areaM2,
+              builtYear: pick.builtYear,
+              manualPrice: pick.price,
+            }
+          : h,
+      ),
+    };
+    setConfig(next);
     toast.success(
       `${pick.complexName} ${pick.areaM2}㎡ — 실거래 중앙값 ${formatKrw(pick.price)}으로 채웠습니다 (표본 ${pick.tradeCount}건, 최근 ${pick.latestDealDate})`,
     );
+    // 취득일이 이미 입력돼 있으면 취득가액·실거주 개월·금리까지 이어서 자동 계산한다
+    void autoFill('holding', false, id, next);
   };
 
   const applyTargetPick = (id: string, pick: ComplexPick) => {
-    updateTarget(id, {
-      complexName: pick.complexName,
-      dong: pick.dong,
-      areaM2: pick.areaM2,
-      builtYear: pick.builtYear,
-      manualPrice: pick.price,
-    });
+    const next: UserConfig = {
+      ...config,
+      targets: config.targets.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              complexName: pick.complexName,
+              dong: pick.dong,
+              areaM2: pick.areaM2,
+              builtYear: pick.builtYear,
+              manualPrice: pick.price,
+            }
+          : t,
+      ),
+    };
+    setConfig(next);
     toast.success(
       `${pick.complexName} ${pick.areaM2}㎡ — 실거래 중앙값 ${formatKrw(pick.price)}으로 채웠습니다 (표본 ${pick.tradeCount}건, 최근 ${pick.latestDealDate})`,
     );
@@ -579,6 +636,14 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
             <Button size="sm" variant="outline" onClick={addHolding}>
               <Plus className="size-4" /> 추가
             </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={resetHoldings}
+              disabled={config.holdings.length === 0}
+            >
+              <RotateCcw className="size-4" /> 전체 초기화
+            </Button>
           </div>
         }
       >
@@ -593,11 +658,25 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                   subtitle={h.lawdCd ? `${h.sigungu} · ${h.lawdCd}` : '지역 미선택'}
                   onRemove={() => removeHolding(h.id)}
                 />
-                <div className="mb-3">
+                <div className="mb-3 space-y-2">
                   <ComplexSearch
                     lawdCd={h.lawdCd}
                     onPick={(pick) => applyHoldingPick(h.id, pick)}
                   />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => autoFill('holding', overwrite, h.id)}
+                    disabled={filling !== null}
+                  >
+                    {filling === `holding${h.id}` ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Wand2 className="size-4" />
+                    )}
+                    이 카드 자동 계산
+                  </Button>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <Field label="단지명">
@@ -725,6 +804,14 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
             </Button>
             <Button size="sm" variant="outline" onClick={addTarget}>
               <Plus className="size-4" /> 추가
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={resetTargets}
+              disabled={config.targets.length === 0}
+            >
+              <RotateCcw className="size-4" /> 전체 초기화
             </Button>
           </div>
         }
@@ -1189,36 +1276,47 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
             label="국토교통부 실거래가"
             env="DATA_GO_KR_SERVICE_KEY"
             url="https://www.data.go.kr/data/15126469/openapi.do"
+            quota="일 10,000건 (개발계정) · 매일 자정(KST) 초기화"
+            usedToday={apiUsage?.molit}
           />
           <KeyRow
             ok={flags.ecos}
             label="한국은행 ECOS"
             env="ECOS_API_KEY"
             url="https://ecos.bok.or.kr/api/#/AuthKeyApply"
+            quota="일 10,000건 · 매일 자정 초기화"
+            usedToday={apiUsage?.ecos}
           />
           <KeyRow
             ok={flags.reb}
             label="한국부동산원 R-ONE"
             env="REB_API_KEY"
             url="https://www.reb.or.kr/r-one/portal/openapi/openApiIntro.do"
+            quota="일일 트래픽 제한 — R-ONE 마이페이지에서 확인"
+            usedToday={apiUsage?.reb}
           />
           <KeyRow
             ok={flags.naver}
             label="네이버 뉴스 검색"
             env="NAVER_CLIENT_ID / SECRET"
             url="https://developers.naver.com/apps/#/register"
+            quota="일 25,000건 · 매일 자정 초기화 (초과 시 HTTP 429)"
+            usedToday={apiUsage?.naver}
           />
           <KeyRow
             ok={flags.kakao}
             label="카카오 메시지"
             env="KAKAO_REST_API_KEY"
             url="https://developers.kakao.com"
+            quota="쿼터는 개발자센터 앱 대시보드에서 확인"
+            usedToday={apiUsage?.kakao}
           />
           <KeyRow
             ok={flags.supabase}
             label="Supabase (설정·캐시 저장)"
             env="SUPABASE_SERVICE_ROLE_KEY"
             url="https://supabase.com/dashboard"
+            quota="무료 플랜 500MB·월 5GB 전송 — 대시보드 Usage 에서 확인"
           />
         </div>
 
@@ -1276,7 +1374,23 @@ function ToggleRow({
   );
 }
 
-function KeyRow({ ok, label, env, url }: { ok: boolean; label: string; env: string; url: string }) {
+function KeyRow({
+  ok,
+  label,
+  env,
+  url,
+  quota,
+  usedToday,
+}: {
+  ok: boolean;
+  label: string;
+  env: string;
+  url: string;
+  /** 일일 쿼터·초기화 안내 — API 가 "남은 횟수"를 응답에 주지 않아 문서 기준 한도를 표기한다 */
+  quota?: string;
+  /** 오늘 우리가 보낸 호출 수 (자체 집계 근사치, 캐시 응답 포함) */
+  usedToday?: number;
+}) {
   return (
     <a
       href={url}
@@ -1287,6 +1401,14 @@ function KeyRow({ ok, label, env, url }: { ok: boolean; label: string; env: stri
       <div>
         <div className="text-sm font-medium">{label}</div>
         <code className="text-muted-foreground text-[11px]">{env}</code>
+        {quota ? (
+          <p className="text-muted-foreground mt-0.5 text-[11px]">
+            {quota}
+            {usedToday !== undefined
+              ? ` · 오늘 ${usedToday.toLocaleString('ko-KR')}건 사용 (캐시 포함 근사치)`
+              : ''}
+          </p>
+        ) : null}
       </div>
       <Badge variant={ok ? 'secondary' : 'outline'}>{ok ? '설정됨' : '없음'}</Badge>
     </a>

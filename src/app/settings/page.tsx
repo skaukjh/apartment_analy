@@ -5,6 +5,8 @@ import { isConfigEmpty, loadConfig } from '@/lib/store/config';
 import { getConnectionStatus } from '@/lib/kakao/client';
 import { getSessionUser, ANON_CONFIG_ID } from '@/lib/auth/server';
 import { featureFlags } from '@/lib/env';
+import { loadDashboardCache } from '@/lib/pipeline/dashboard-cache';
+import { SourceStatusSection } from '@/components/dashboard/source-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +31,7 @@ export default async function SettingsPage() {
     );
   }
 
-  const [config, kakao, legacy] = await Promise.all([
+  const [config, kakao, legacy, dashboardCache] = await Promise.all([
     loadConfig(user.id),
     getConnectionStatus(user.id).catch(() => ({
       connected: false,
@@ -37,6 +39,8 @@ export default async function SettingsPage() {
       recipients: [],
     })),
     loadConfig(ANON_CONFIG_ID),
+    // 관리자용 소스 상태 표시 — 새로 조립하지 않고 캐시에 있는 것만 쓴다
+    user.isAdmin ? loadDashboardCache(user.id).catch(() => null) : Promise.resolve(null),
   ]);
 
   // 내 설정이 비어 있고 레거시 공용 설정이 남아 있으면 가져오기 버튼을 보여준다
@@ -59,6 +63,15 @@ export default async function SettingsPage() {
           kakao: featureFlags.hasKakao,
         }}
       />
+      {/* 소스 상태는 운영 정보라 관리자에게만 — 대시보드 분할 때 설정으로 옮겼다 */}
+      {user.isAdmin && dashboardCache ? (
+        <div className="mx-auto max-w-5xl px-4 pb-24">
+          <SourceStatusSection
+            sources={dashboardCache.sourceStatus}
+            generatedAt={dashboardCache.generatedAt}
+          />
+        </div>
+      ) : null}
     </Suspense>
   );
 }

@@ -275,7 +275,8 @@ export function buildCatalysts(options: BuildCatalystOptions): CatalystStatus[] 
   const results: CatalystStatus[] = [];
 
   for (const seed of CATALYST_SEEDS) {
-    const hitCodes = seed.affects.includes('*')
+    const nationwide = seed.affects.includes('*');
+    const hitCodes = nationwide
       ? regions.map((r) => r.lawdCd)
       : seed.affects.filter((c) => regionCodes.has(c));
     if (hitCodes.length === 0) continue;
@@ -284,14 +285,28 @@ export function buildCatalysts(options: BuildCatalystOptions): CatalystStatus[] 
       .filter((n) => matchesCatalyst(n, seed))
       .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
 
-    const inferred = inferStage(related.slice(0, 8).map((n) => `${n.title} ${n.summary}`));
+    /* 지역이 실제로 언급된 기사를 우선한다.
+       "대출 규제" 같은 전국 이슈에 전국 일반론 기사만 줄줄이 붙어
+       "내 지역 악재"로서는 도움이 안 된다는 피드백이 있었다 —
+       지역 언급 기사가 있으면 그것만 쓰고, 없을 때만 일반 보도로 넓힌다. */
+    const matchedRegionList = regions.filter((r) => hitCodes.includes(r.lawdCd));
+    const shortNames = matchedRegionList
+      .map((r) => (r.sigungu || r.name).replace(/(특별시|광역시|특별자치시|시|군|구)$/, ''))
+      .filter((s) => s.length >= 2);
+    const regional = related.filter((n) => {
+      const text = `${n.title} ${n.summary}`;
+      return shortNames.some((name) => text.includes(name));
+    });
+    const chosen = regional.length > 0 ? regional : related;
+
+    const inferred = inferStage(chosen.slice(0, 8).map((n) => `${n.title} ${n.summary}`));
     const region = regions.find((r) => hitCodes.includes(r.lawdCd));
 
     // 출처 링크 — 공식 출처 1 + 최신 관련 뉴스로 채워 최대 5개 (URL 중복 제거)
     const sourceLinks: Array<{ title: string; url: string }> = [
       { title: '공식 출처', url: seed.sourceUrl },
     ];
-    for (const n of related) {
+    for (const n of chosen) {
       if (sourceLinks.length >= 5) break;
       if (sourceLinks.some((l) => l.url === n.url)) continue;
       sourceLinks.push({ title: n.title, url: n.url });
@@ -304,12 +319,14 @@ export function buildCatalysts(options: BuildCatalystOptions): CatalystStatus[] 
       category: seed.category,
       stage: inferred?.stage ?? '계획수립',
       progress: inferred?.progress ?? 0,
-      lastUpdate: related[0]?.publishedAt ?? '미확인',
+      lastUpdate: chosen[0]?.publishedAt ?? '미확인',
       impact: seed.impact,
-      sourceUrl: related[0]?.url ?? seed.sourceUrl,
+      sourceUrl: chosen[0]?.url ?? seed.sourceUrl,
       polarity: seed.polarity ?? 'positive',
-      matchedRegions: regions.filter((r) => hitCodes.includes(r.lawdCd)).map((r) => r.name),
+      matchedRegions: matchedRegionList.map((r) => r.name),
       sourceLinks,
+      scope: nationwide ? 'nationwide' : 'region',
+      newsScope: regional.length > 0 ? 'region' : 'general',
       expectedAt: undefined,
     });
   }
@@ -326,8 +343,13 @@ export function buildCatalysts(options: BuildCatalystOptions): CatalystStatus[] 
   }
 
   const impactRank = { high: 0, medium: 1, low: 2 } as const;
+  // 지역에 특정된 항목이 전국 공통 규제보다 먼저 온다 — 사용자에게 유의미한 순서
+  const scopeRank = (c: CatalystStatus) => (c.scope === 'nationwide' ? 1 : 0);
   return results.sort(
-    (a, b) => impactRank[a.impact] - impactRank[b.impact] || b.progress - a.progress,
+    (a, b) =>
+      scopeRank(a) - scopeRank(b) ||
+      impactRank[a.impact] - impactRank[b.impact] ||
+      b.progress - a.progress,
   );
 }
 

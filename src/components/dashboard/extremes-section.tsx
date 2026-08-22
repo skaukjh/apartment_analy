@@ -24,7 +24,7 @@ export function ExtremesSection({ extremes }: { extremes: PriceExtreme[] }) {
   if (extremes.length === 0) {
     return (
       <SectionCard
-        title="⑦ 신고가 · 신저가"
+        title="신고가 · 신저가"
         description="보유·목표·관심 지역의 최근 2개월 거래 중 직전 최고가/최저가를 갱신한 건입니다."
       >
         <EmptyHint>
@@ -36,7 +36,7 @@ export function ExtremesSection({ extremes }: { extremes: PriceExtreme[] }) {
 
   return (
     <SectionCard
-      title="⑦ 신고가 · 신저가"
+      title="신고가 · 신저가"
       description="단지 + 5㎡ 면적 버킷 단위로 과거 전체 이력과 비교합니다. 해제(취소) 거래는 제외했습니다."
       badge={
         <Badge variant="secondary">

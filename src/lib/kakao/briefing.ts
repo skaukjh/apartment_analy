@@ -125,7 +125,8 @@ export function buildBriefing(data: DashboardData): Briefing {
       heading: '📊 주요 지표',
       lines: data.macro.map(
         (m) =>
-          `${m.label.split(' (')[0]}: ${m.latest.toLocaleString('ko-KR')}${m.unit === '%' ? '%' : ''} (${m.latestPeriod}${m.yoy !== undefined ? `, YoY ${formatPct(m.yoy, 1)}` : ''})`,
+          // 금리형(%) 지표의 전년비는 %p 차이로 표기한다 (비율로 쓰면 +10% 같은 오해가 생긴다)
+          `${m.label.split(' (')[0]}: ${m.latest.toLocaleString('ko-KR')}${m.unit === '%' ? '%' : ''} (${m.latestPeriod}${m.yoy !== undefined ? `, 전년비 ${formatPct(m.yoy, m.unit === '%' ? 2 : 1)}${m.unit === '%' ? 'p' : ''}` : ''})`,
       ),
     });
   }

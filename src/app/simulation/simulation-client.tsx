@@ -162,7 +162,7 @@ export function SimulationClient({ config, quotes }: Props) {
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 px-4 py-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">⑤ 하락장 갈아타기 시뮬레이션</h1>
+        <h1 className="text-2xl font-bold tracking-tight">하락장 갈아타기 시뮬레이션</h1>
         <p className="text-muted-foreground text-sm">
           하락장에서는 상급지의 절대 낙폭이 커서 갭이 줄어듭니다. 다만 세금·중개보수 같은 마찰비용은
           거의 그대로여서, 갭 축소분이 마찰비용을 넘어서는 지점부터 갈아타기가 실질적으로

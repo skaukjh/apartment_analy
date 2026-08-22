@@ -12,6 +12,7 @@
 
 import type { MacroIndicator, MacroSeriesPoint } from '@/lib/types';
 import { SOURCE_TTL } from '@/lib/refresh-policy';
+import { bumpApiUsage } from '@/lib/store/api-usage';
 
 function apiKey(): string | undefined {
   const v = process.env.KOSIS_API_KEY?.trim();
@@ -51,6 +52,7 @@ export async function fetchNetMigration(): Promise<MacroIndicator> {
   if (!key) throw new Error('KOSIS_API_KEY 가 설정되지 않았습니다.');
 
   const url = process.env.KOSIS_URL_NET_MIGRATION?.trim() || defaultUrl(key);
+  bumpApiUsage('kosis');
   const res = await fetch(url, { next: { revalidate: SOURCE_TTL.ecos } });
   if (!res.ok) throw new Error(`KOSIS HTTP ${res.status}`);
 

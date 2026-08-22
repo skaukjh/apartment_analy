@@ -11,7 +11,14 @@
  *  - 조정대상지역: 아래 목록 (정부 지정 변경 시 설정에서 직접 수정)
  */
 
-import type { Holding, MacroIndicator, PriceQuote, TargetApartment, UserConfig } from '@/lib/types';
+import type {
+  Holding,
+  MacroIndicator,
+  PriceQuote,
+  TargetApartment,
+  TradeRecord,
+  UserConfig,
+} from '@/lib/types';
 import { calcAcquisitionTax } from '@/lib/tax/acquisition';
 import { calcTransactionCost } from '@/lib/tax/transaction-costs';
 import { monthsBetween, todayKst } from '@/lib/format';
@@ -42,6 +49,11 @@ export interface AutoFillContext {
   macro: MacroIndicator[];
   /** 현재 세대가 보유한 주택 수 (취득세율 판정) */
   ownedHouseCount: number;
+  /**
+   * 보유 아파트 id → 취득일 인근의 그 단지·면적 실거래.
+   * 사용자의 매수 거래 자체가 국토부에 신고돼 있으므로 취득가액을 채울 수 있다.
+   */
+  acquisitionTrades?: Record<string, TradeRecord>;
 }
 
 /** 자동으로 채운 항목 하나 */
@@ -95,12 +107,29 @@ export function autoFillHolding(
   const overwrite = options.overwrite ?? false;
   const isEmpty = (v: number | undefined) => v === undefined || v === 0;
 
+  // 0) 취득가액 — 취득일과 가장 가까운 그 단지·면적 실거래.
+  //    본인의 매수 계약 자체가 신고돼 있을 가능성이 높다 (계약일·잔금일 차이는 감안).
+  const acqTrade = ctx.acquisitionTrades?.[holding.id];
+  let acquisitionPrice = holding.acquisitionPrice;
+  if (acqTrade && (overwrite || isEmpty(holding.acquisitionPrice))) {
+    acquisitionPrice = acqTrade.price;
+    values.acquisitionPrice = acqTrade.price;
+    filled.push({
+      field: 'acquisitionPrice',
+      label: '취득가액',
+      value: acqTrade.price,
+      basis: `취득일(${holding.acquiredAt})과 가장 가까운 ${holding.complexName} ${acqTrade.areaM2}㎡ 실거래 (계약 ${acqTrade.dealDate}). 본인 계약이 아닐 수 있으니 실제 취득가액과 다르면 수정하세요.`,
+    });
+  } else if (isEmpty(holding.acquisitionPrice) && holding.acquiredAt) {
+    skipped.push('취득일 인근의 해당 단지·면적 실거래를 찾지 못해 취득가액은 채우지 못했습니다.');
+  }
+
   // 1) 취득 부대비용 = 취득 당시 취득세 + 중개보수 + 법무·등기비
-  if (holding.acquisitionPrice > 0 && holding.areaM2 > 0) {
+  if (acquisitionPrice > 0 && holding.areaM2 > 0) {
     if (overwrite || isEmpty(holding.acquisitionCost)) {
       // 취득 시점에는 그 집이 첫 집이었다고 보고 표준세율로 계산한다
       const tax = calcAcquisitionTax({
-        price: holding.acquisitionPrice,
+        price: acquisitionPrice,
         areaM2: holding.areaM2,
         houseCountAfter: 1,
         isRegulated: isRegulated(holding.lawdCd),
@@ -108,7 +137,7 @@ export function autoFillHolding(
         firstTimeBuyer: false,
       });
       const cost = calcTransactionCost({
-        price: holding.acquisitionPrice,
+        price: acquisitionPrice,
         side: 'buy',
         withMortgage: true,
       });

@@ -19,6 +19,7 @@ import type { RegionPricePoint, TradeRecord } from '@/lib/types';
 import { dashYearMonth, median } from '@/lib/format';
 import { findSigungu } from '@/lib/regions';
 import { SOURCE_TTL } from '@/lib/refresh-policy';
+import { bumpApiUsage } from '@/lib/store/api-usage';
 
 /** 기술문서 기준 현행 경로를 먼저, 개편 전 경로를 나중에 시도한다 */
 const ENDPOINTS: string[] = (() => {
@@ -241,6 +242,7 @@ async function fetchFromEndpoint(
     for (let attempt = 0; ; attempt += 1) {
       await acquireSlot();
 
+      bumpApiUsage('molit');
       const res = await fetch(
         url,
         attempt === 0

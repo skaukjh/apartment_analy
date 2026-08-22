@@ -43,8 +43,25 @@ export interface Coord {
   matched: string;
 }
 
+/* 단지 좌표는 변하지 않는다 — 인스턴스가 사는 동안은 다시 묻지 않는다.
+   동을 오갈 때마다 같은 단지 20~60개를 재지오코딩해 지도 갱신이 느리던 문제 완화. */
+const coordCache = new Map<string, Coord | null>();
+
 /** 단지명·지역으로 좌표를 찾는다 (주소 검색 → 키워드 검색 순) */
 export async function geocodeComplex(
+  complexName: string,
+  sigungu: string,
+  dong?: string,
+  jibun?: string,
+): Promise<Coord | null> {
+  const cacheKey = `${sigungu}|${dong ?? ''}|${complexName}|${jibun ?? ''}`;
+  if (coordCache.has(cacheKey)) return coordCache.get(cacheKey) ?? null;
+  const result = await geocodeComplexUncached(complexName, sigungu, dong, jibun);
+  coordCache.set(cacheKey, result);
+  return result;
+}
+
+async function geocodeComplexUncached(
   complexName: string,
   sigungu: string,
   dong?: string,

@@ -59,6 +59,26 @@ export const OFFICIAL_LINKS: Array<{ name: string; url: string; note: string }> 
 /* 1) 뉴스 표적 수집                                                    */
 /* ------------------------------------------------------------------ */
 
+/**
+ * 공식 발표로 인정할 도메인.
+ *
+ * "국토교통부"가 제목에 있다고 공식 발표가 아니다 — 그건 언론 보도다.
+ * 실제로 일반 경제지 기사가 [공식발표]로 표시되던 문제가 있었다.
+ * 정부(.go.kr)와 지정 공공기관 도메인에서 나온 글만 공식으로 표시한다.
+ */
+const OFFICIAL_HOSTS = ['bok.or.kr', 'reb.or.kr', 'fss.or.kr', 'lh.or.kr', 'applyhome.co.kr'];
+
+export function isOfficialUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return (
+      host.endsWith('.go.kr') || OFFICIAL_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** 발표 주체별 검색어 — 부처명이 제목/요약에 실제로 등장해야 채택한다 */
 const AGENCY_QUERIES: Array<{ agency: string; query: string }> = [
   { agency: '국토교통부', query: '국토교통부 부동산 발표' },
@@ -73,9 +93,17 @@ export async function fetchOfficialNews(): Promise<{ items: NewsItem[]; errors: 
   const results = await Promise.allSettled(
     AGENCY_QUERIES.map(async ({ agency, query }) => {
       const items = await searchNews(query, 8);
-      return items
-        .filter((n) => n.title.includes(agency) || n.summary.includes(agency))
-        .map((n) => ({ ...n, official: true, agency, category: 'policy' as const }));
+      return (
+        items
+          .filter((n) => n.title.includes(agency) || n.summary.includes(agency))
+          // 언론 보도는 official 이 아니다 — 정부·공공기관 도메인 원문만 공식으로 표시
+          .map((n) => ({
+            ...n,
+            official: isOfficialUrl(n.url),
+            agency,
+            category: 'policy' as const,
+          }))
+      );
     }),
   );
 

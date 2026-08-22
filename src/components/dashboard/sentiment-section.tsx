@@ -143,7 +143,7 @@ export function SentimentSection({ sentiment }: { sentiment: MarketSentiment }) 
 
   return (
     <SectionCard
-      title="⑥ 과열 지표 · 매수심리"
+      title="과열 지표 · 매수심리"
       description="매매수급지수·신고가 비중·거래량·가격 모멘텀을 가중 합성한 종합 과열 점수입니다. 각 수치에 마우스를 올리면 해석과 추세를 볼 수 있습니다."
       badge={<Badge style={{ backgroundColor: meta.color, color: 'white' }}>{meta.label}</Badge>}
     >

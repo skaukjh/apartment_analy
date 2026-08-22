@@ -83,6 +83,7 @@ export function analyzeRebound(
     latestMonth: rawSeries[rawSeries.length - 1]?.month ?? baseMonth,
     baseShifted: false,
     thinSample: true,
+    volatileMix: false,
   };
 
   if (filtered.length < 6) return empty;
@@ -121,6 +122,14 @@ export function analyzeRebound(
 
   const thinSample = medianOf(filtered.map((p) => p.count)) < 30;
 
+  /* 월별 중앙값 단가의 전월 대비 변동률(절대값) 중앙값이 8% 이상이면 "구성 편향" 지역.
+     종로처럼 고가 단지(경희궁자이 등)가 거래된 달과 아닌 달의 단가가 널뛰는 곳은
+     지수 등락이 실제 시세보다 과장돼 보인다 — 평활로도 다 못 잡아 표시로 알린다. */
+  const monthlyMoves = filtered
+    .slice(1)
+    .map((p, i) => Math.abs(p.pricePerM2 / filtered[i].pricePerM2 - 1) * 100);
+  const volatileMix = monthlyMoves.length >= 6 && medianOf(monthlyMoves) >= 8;
+
   // 저점 이후 경과 개월 — 최근에 저점을 찍었다면 아직 반등 초입
   const monthsSinceTrough = values.length - 1 - troughIdx;
 
@@ -146,6 +155,7 @@ export function analyzeRebound(
     recent3mChange: Math.round(recent3mChange * 100) / 100,
     stage,
     thinSample,
+    volatileMix,
     sampleSize: filtered.reduce((s, p) => s + p.count, 0),
     series: indexed,
     baseMonth: actualBaseMonth,
