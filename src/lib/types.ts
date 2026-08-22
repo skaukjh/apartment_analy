@@ -239,7 +239,13 @@ export interface MacroIndicator {
     | 'mortgage-rate'
     | 'jeonse-index'
     | 'housing-index'
-    | 'net-migration';
+    | 'net-migration'
+    // R-ONE 월간 공표 통계
+    | 'reb-apt-sale-index'
+    | 'reb-apt-jeonse-index'
+    | 'reb-apt-rt-index'
+    | 'reb-unsold'
+    | 'reb-consumer-sentiment';
   label: string;
   unit: string;
   latest: number;

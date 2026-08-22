@@ -30,6 +30,7 @@ import {
 import { buildCatalysts, catalystCoverageRegions } from '@/lib/analysis/catalysts';
 import { buildSchedule } from '@/lib/analysis/schedule';
 import { fetchAllMacro } from '@/lib/sources/ecos';
+import { fetchRebMonthlyMacro } from '@/lib/sources/reb';
 import { fetchMarketNews, fetchRegionNews } from '@/lib/sources/news';
 import { fetchRebBundle } from '@/lib/sources/reb';
 import { filterComplex } from '@/lib/sources/molit';
@@ -386,6 +387,27 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
       url: 'https://ecos.bok.or.kr',
       status: featureFlags.hasEcos ? 'stale' : 'missing-key',
       message: featureFlags.hasEcos ? '라이브 호출 생략' : 'ECOS_API_KEY 미설정',
+    });
+  }
+
+  /* --- 6-2) 부동산원 R-ONE 월간 공표 통계 --- */
+  // 매매·전세가격지수(동향조사), 공동주택 실거래가격지수, 미분양, 소비심리 —
+  // 실거래 원본과 다른 공식 조사 지표라 시장을 교차 검증하는 데 쓴다.
+  if (!options.skipLive && featureFlags.hasReb) {
+    const reb = await fetchRebMonthlyMacro().catch((e) => ({
+      indicators: [] as MacroIndicator[],
+      errors: [(e as Error).message],
+    }));
+    macro.push(...reb.indicators);
+    sourceStatus.push({
+      name: '한국부동산원 R-ONE (월간 공표 통계)',
+      url: 'https://www.reb.or.kr/r-one/',
+      status: reb.errors.length === 0 ? 'ok' : reb.indicators.length > 0 ? 'stale' : 'error',
+      message:
+        reb.errors.length > 0
+          ? reb.errors.join(' / ')
+          : '매매·전세지수, 실거래지수, 미분양, 소비심리 수집',
+      fetchedAt: generatedAt,
     });
   }
 
