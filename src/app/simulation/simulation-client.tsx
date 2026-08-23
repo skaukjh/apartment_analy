@@ -144,9 +144,6 @@ export function SimulationClient({ config, quotes }: Props) {
       }),
     };
   }, [target, buyPrice, defaultBuy, config.household, newLoanRate]);
-  const matrix = useMemo(() => (base ? runScenarioMatrix(base) : []), [base]);
-  const breakEven = useMemo(() => (base ? breakEvenDrop(base) : null), [base]);
-
   /* 보유 2년 미만이면 "2년 채우고 팔 때"를 같은 가격 가정으로 함께 계산한다.
      단기세율 60%와 비과세의 차이가 수억이라, 지금 vs 기다림이 실질 의사결정이다.
      이미 2년 이상이면 null — 화면에 나오지 않는다. */
@@ -159,6 +156,27 @@ export function SimulationClient({ config, quotes }: Props) {
     if (todayKst() >= dateStr) return null;
     return { date: dateStr, result: simulateSwitch({ ...base, soldAt: dateStr }) };
   }, [base, holding]);
+
+  /* 시나리오 표·차트의 매도 시점 — 2년 미만 보유자만 전환 버튼이 보인다 */
+  const [sellTiming, setSellTiming] = useState<'now' | 'twoYear'>('now');
+  const effectiveBase = useMemo(
+    () => (base && twoYear && sellTiming === 'twoYear' ? { ...base, soldAt: twoYear.date } : base),
+    [base, twoYear, sellTiming],
+  );
+  const matrix = useMemo(
+    () => (effectiveBase ? runScenarioMatrix(effectiveBase) : []),
+    [effectiveBase],
+  );
+  const breakEven = useMemo(
+    () => (effectiveBase ? breakEvenDrop(effectiveBase) : null),
+    [effectiveBase],
+  );
+  const timingBadge =
+    twoYear && sellTiming === 'twoYear' ? (
+      <Badge className="bg-emerald-500/15 font-normal text-emerald-700 dark:text-emerald-400">
+        2년 도달({twoYear.date}) 후 매도 기준
+      </Badge>
+    ) : undefined;
 
   if (!holding || !target) {
     return (
@@ -558,10 +576,32 @@ export function SimulationClient({ config, quotes }: Props) {
         </Alert>
       ) : null}
 
+      {/* 시나리오 매도 시점 전환 — 2년 미만 보유자만 */}
+      {twoYear ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground text-xs">아래 시나리오의 매도 시점:</span>
+          <Button
+            size="sm"
+            variant={sellTiming === 'now' ? 'default' : 'outline'}
+            onClick={() => setSellTiming('now')}
+          >
+            지금 매도 (단기세율 60%)
+          </Button>
+          <Button
+            size="sm"
+            variant={sellTiming === 'twoYear' ? 'default' : 'outline'}
+            onClick={() => setSellTiming('twoYear')}
+          >
+            2년 도달 후 매도 ({twoYear.date} · 비과세)
+          </Button>
+        </div>
+      ) : null}
+
       {/* 시나리오 차트 */}
       <SectionCard
         title="시나리오별 갭 · 실소요 자금"
         description="막대는 억원 단위입니다. 회색은 시세 갭, 색상은 세금·비용 포함 실제로 더 필요한 현금입니다."
+        badge={timingBadge}
       >
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
@@ -617,7 +657,8 @@ export function SimulationClient({ config, quotes }: Props) {
       {/* 상세 테이블 */}
       <SectionCard
         title="시나리오 상세"
-        description="양도세는 보유 아파트 매도 시, 취득세는 목표 아파트 매수 시 기준입니다. 실소요 자금 아래의 대출은 해당 시나리오 매수가 기준 한도(LTV·DSR·정책 총액 중 최소) 안에서 충당 가능한 금액, 현금은 그 나머지입니다."
+        description="양도세는 보유 아파트 매도 시, 취득세는 목표 아파트 매수 시 기준입니다. 실소요 자금 아래의 대출은 해당 시나리오 매수가 기준 한도(LTV·DSR·정책 총액 중 최소) 안에서 충당 가능한 금액, 내 돈은 그 나머지입니다."
+        badge={timingBadge}
       >
         <div className="thin-scrollbar overflow-x-auto">
           <Table>
