@@ -14,6 +14,7 @@ import {
   formatKrw,
   formatPct,
   formatShortDate,
+  supplyPyeong,
   nowKst,
   todayKst,
 } from '@/lib/format';
@@ -45,14 +46,15 @@ export function buildBriefing(data: DashboardData): Briefing {
     const lines = [
       `보유 ${primaryGap.holdingName}: ${formatKrw(primaryGap.holdingPrice, { compact: true })}`,
       `목표 ${primaryGap.targetName}: ${formatKrw(primaryGap.targetPrice, { compact: true })}`,
-      `시세 갭: ${formatKrw(primaryGap.gap, { compact: true })} (${primaryGap.ratio.toFixed(2)}배)`,
+      `시세 갭: ${formatKrw(primaryGap.gap, { compact: true })} (보유 대비 ${primaryGap.ratio.toFixed(2)}배)`,
       `세금·중개비 반영 실소요: ${formatKrw(primaryGap.realCashNeeded, { compact: true })}`,
     ];
     if (data.gaps.length > 1) {
+      /* 차순위 후보도 배율을 함께 — 갭 금액만으로는 상급지 체감이 안 온다 */
+      const others = data.gaps.slice(1);
+      const min = others.reduce((a, b) => (a.gap <= b.gap ? a : b));
       lines.push(
-        `그 외 후보 ${data.gaps.length - 1}건 · 최소 갭 ${formatEok(
-          Math.min(...data.gaps.slice(1).map((g) => g.gap)),
-        )}`,
+        `그 외 후보 ${others.length}건 · 최소 갭 ${formatEok(min.gap)} (보유 대비 ${min.ratio.toFixed(2)}배)`,
       );
     }
     sections.push({ heading: '🏠 갈아타기 갭', lines });
@@ -222,16 +224,25 @@ export function briefingToKakaoGapTemplate(appUrl: string, data: DashboardData):
   const kst = nowKst();
   const head = `[${kst.getMonth() + 1}/${kst.getDate()}(${WEEKDAYS[kst.getDay()]}) 내 갈아타기]`;
 
+  /* 200자 안에서는 면적 표기를 줄인다. 화면에 쓰는 전체 표기
+     "공급 약 26평형(전용 64.80㎡·19.6평)"는 한 줄에 30자를 먹어,
+     그대로 쓰면 2순위 후보 줄이 길이 초과로 잘려나간다. */
+  const label = (id: string, fallback: string) => {
+    const apt =
+      data.config.holdings.find((h) => h.id === id) ?? data.config.targets.find((t) => t.id === id);
+    return apt ? `${apt.complexName} 공급 약 ${supplyPyeong(apt.areaM2)}평형` : fallback;
+  };
+
   const lines: string[] = [];
   if (primaryGap) {
     lines.push(
-      `🏠 보유 ${primaryGap.holdingName} ${formatKrw(primaryGap.holdingPrice, { compact: true })}`,
+      `🏠 보유 ${label(primaryGap.holdingId, primaryGap.holdingName)} ${formatKrw(primaryGap.holdingPrice, { compact: true })}`,
     );
     lines.push(
-      `🎯 목표 ${primaryGap.targetName} ${formatKrw(primaryGap.targetPrice, { compact: true })}`,
+      `🎯 목표 ${label(primaryGap.targetId, primaryGap.targetName)} ${formatKrw(primaryGap.targetPrice, { compact: true })}`,
     );
     lines.push(
-      `📐 갭 ${formatEok(primaryGap.gap)} (${primaryGap.ratio.toFixed(2)}배) · 실소요 ${formatEok(primaryGap.realCashNeeded)}`,
+      `📐 갭 ${formatEok(primaryGap.gap)} (보유 대비 ${primaryGap.ratio.toFixed(2)}배) · 실소요 ${formatEok(primaryGap.realCashNeeded)}`,
     );
     if (primaryGap.gapDelta !== undefined) {
       lines.push(
@@ -239,7 +250,10 @@ export function briefingToKakaoGapTemplate(appUrl: string, data: DashboardData):
       );
     }
     if (data.gaps.length > 1) {
-      lines.push(`2순위 ${data.gaps[1].targetName} 갭 ${formatEok(data.gaps[1].gap)}`);
+      const second = data.gaps[1];
+      lines.push(
+        `2순위 ${label(second.targetId, second.targetName)} 갭 ${formatEok(second.gap)}(${second.ratio.toFixed(2)}배)`,
+      );
     }
   } else {
     lines.push('보유·목표 아파트가 등록되지 않았습니다. 설정에서 먼저 입력해 주세요.');

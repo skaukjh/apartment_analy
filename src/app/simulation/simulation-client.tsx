@@ -283,6 +283,9 @@ export function SimulationClient({ config, quotes }: Props) {
                         {tradePriceOf(quotes[t.id]) > 0
                           ? ` · ${formatEok(tradePriceOf(quotes[t.id]))}`
                           : ''}
+                        {tradePriceOf(quotes[t.id]) > 0 && defaultSell > 0
+                          ? ` · 보유 대비 ${(tradePriceOf(quotes[t.id]) / defaultSell).toFixed(2)}배`
+                          : ''}
                       </span>
                     </span>
                   </SelectItem>
@@ -293,6 +296,12 @@ export function SimulationClient({ config, quotes }: Props) {
               {formatArea(target.areaM2)}
               {complexSpecLine(target) ? ` · ${complexSpecLine(target)}` : ''}
             </p>
+            {/* 보유 대비 배율 — 매수·매도 예상가를 바꾸면 함께 움직인다 */}
+            {(sellPrice || defaultSell) > 0 ? (
+              <p className="text-primary tabular mt-0.5 text-[11px] font-medium">
+                보유 대비 {((buyPrice || defaultBuy) / (sellPrice || defaultSell)).toFixed(2)}배
+              </p>
+            ) : null}
           </Field>
 
           <Field label="매도 예상가">
@@ -325,7 +334,7 @@ export function SimulationClient({ config, quotes }: Props) {
           <Stat
             label="현재 시세 갭"
             value={formatKrw(baseline.priceGap, { compact: true })}
-            sub={`${(baseline.buyPrice / baseline.sellPrice).toFixed(2)}배`}
+            sub={`보유 대비 ${(baseline.buyPrice / baseline.sellPrice).toFixed(2)}배`}
             tone="rise"
           />
           {/* 모바일에는 호버가 없어 클릭(탭)으로 여는 팝오버를 쓴다 */}
@@ -682,7 +691,7 @@ export function SimulationClient({ config, quotes }: Props) {
                 <TableHead className="min-w-40">시나리오</TableHead>
                 <TableHead className="text-right">매도가</TableHead>
                 <TableHead className="text-right">매수가</TableHead>
-                <TableHead className="text-right">갭</TableHead>
+                <TableHead className="text-right">갭 · 배율</TableHead>
                 <TableHead className="text-right">양도세</TableHead>
                 <TableHead className="text-right">취득세</TableHead>
                 <TableHead className="text-right">마찰비용 계</TableHead>
@@ -726,6 +735,12 @@ export function SimulationClient({ config, quotes }: Props) {
                     </TableCell>
                     <TableCell className="tabular text-right">
                       {formatEok(m.result.priceGap)}
+                      {/* 시나리오마다 배율이 어떻게 줄고 느는지가 갈아타기 판단의 핵심이다 */}
+                      <div className="text-muted-foreground text-[10px]">
+                        {m.result.sellPrice > 0
+                          ? `${(m.result.buyPrice / m.result.sellPrice).toFixed(2)}배`
+                          : '-'}
+                      </div>
                     </TableCell>
                     <TableCell className="tabular text-fall text-right">
                       {m.result.capitalGainsTax.exempt

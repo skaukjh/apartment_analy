@@ -293,6 +293,10 @@ export function GapSection({ config, quotes }: Props) {
                   <span className="text-muted-foreground text-xs">
                     {formatArea(p.target.areaM2)}
                   </span>
+                  {/* 보유 대비 몇 배인지 — 갭 금액만으로는 체감이 안 돼 배율을 함께 둔다 */}
+                  <Badge variant="secondary" className="tabular text-[10px]">
+                    보유 대비 {p.ratio.toFixed(2)}배
+                  </Badge>
                   {p.target.priority === 1 ? (
                     <Badge variant="default" className="text-[10px]">
                       1순위
@@ -329,6 +333,9 @@ export function GapSection({ config, quotes }: Props) {
                   <div>
                     <div className="text-muted-foreground text-xs">목표 시세</div>
                     <div className="tabular font-semibold">{formatKrw(p.targetPrice)}</div>
+                    <div className="text-primary tabular text-[11px] font-medium">
+                      보유 대비 {p.ratio.toFixed(2)}배
+                    </div>
                     <div className="text-muted-foreground text-[11px]">
                       {basisLabel(tq?.basis ?? 'unknown')}
                       {tq?.changeRate !== undefined ? (
@@ -348,7 +355,9 @@ export function GapSection({ config, quotes }: Props) {
                   <div>
                     <div className="text-muted-foreground text-xs">시세 갭</div>
                     <div className="tabular text-rise font-semibold">{formatKrw(p.gap)}</div>
-                    <div className="text-muted-foreground text-[11px]">{p.ratio.toFixed(2)}배</div>
+                    <div className="text-muted-foreground text-[11px]">
+                      보유 대비 {p.ratio.toFixed(2)}배
+                    </div>
                   </div>
                   <div>
                     <div className="text-muted-foreground text-xs">세후 실소요 자금</div>
