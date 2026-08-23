@@ -11,34 +11,79 @@
  *  - 토지거래허가구역: 실거주 목적만 매수 가능 (2년 실거주 의무), 갭투자 불가
  */
 
-export const REGULATION_AS_OF = '2025년 기준';
+export const REGULATION_AS_OF = '10·15 대책(2025) 반영, 2026-08 확인';
 
 export type RegulationKind = 'adjusted' | 'speculation' | 'land-permit';
 
-/** 조정대상지역 (시군구 단위) */
-export const ADJUSTED_AREAS = new Set<string>([
-  '11650', // 서초구
-  '11680', // 강남구
-  '11710', // 송파구
-  '11170', // 용산구
-]);
-
-/** 투기과열지구 (시군구 단위) */
-export const SPECULATION_AREAS = new Set<string>(['11650', '11680', '11710', '11170']);
-
 /**
- * 토지거래허가구역 (시군구 단위로 단순화).
- * 실제로는 구 안의 특정 동·단지만 지정되는 경우가 많아, 여기서는 "일부 구역 포함"으로 본다.
+ * 10·15 부동산 대책 (2025-10-15 발표) 기준:
+ *  - 조정대상지역·투기과열지구: 서울 전 지역 + 경기 12곳 (2025-10-16 발효)
+ *  - 토지거래허가구역: 서울 전 지역 + 경기 12곳의 아파트 (2025-10-20 발효)
+ *
+ * 이전에는 강남3구·용산만 들어 있어 광진구가 "비규제"로 표시되던 오류가 있었다.
  */
-export const LAND_PERMIT_AREAS = new Set<string>([
-  '11650', // 서초 (일부)
-  '11680', // 강남 (일부)
-  '11710', // 송파 (일부)
-  '11170', // 용산 (일부)
-  '11560', // 영등포 여의도 (일부)
-  '11470', // 양천 목동 (일부)
-  '11200', // 성동 (일부)
+const GYEONGGI_12 = new Set<string>([
+  '41290', // 과천시
+  '41210', // 광명시
+  '41135', // 성남 분당구
+  '41131', // 성남 수정구
+  '41133', // 성남 중원구
+  '41117', // 수원 영통구
+  '41111', // 수원 장안구
+  '41115', // 수원 팔달구
+  '41173', // 안양 동안구
+  '41465', // 용인 수지구
+  '41430', // 의왕시
+  '41450', // 하남시
 ]);
+
+/** 서울 시군구 여부 (법정동코드 11로 시작) */
+function isSeoulGu(lawdCd: string): boolean {
+  return /^11\d{3}$/.test(lawdCd);
+}
+
+/** 조정대상지역 여부 — 서울 전역 + 경기 12곳 */
+function isAdjusted(lawdCd: string): boolean {
+  return isSeoulGu(lawdCd) || GYEONGGI_12.has(lawdCd);
+}
+
+/** 하위 호환 — Set 을 직접 참조하던 코드용. 서울 25개 구 + 경기 12곳 */
+export const ADJUSTED_AREAS = new Set<string>([
+  ...[
+    '11110',
+    '11140',
+    '11170',
+    '11200',
+    '11215',
+    '11230',
+    '11260',
+    '11290',
+    '11305',
+    '11320',
+    '11350',
+    '11380',
+    '11410',
+    '11440',
+    '11470',
+    '11500',
+    '11530',
+    '11545',
+    '11560',
+    '11590',
+    '11620',
+    '11650',
+    '11680',
+    '11710',
+    '11740',
+  ],
+  ...GYEONGGI_12,
+]);
+
+/** 투기과열지구 — 10·15 대책으로 조정대상지역과 동일 범위 */
+export const SPECULATION_AREAS = ADJUSTED_AREAS;
+
+/** 토지거래허가구역 — 아파트 대상, 조정대상지역과 동일 범위 */
+export const LAND_PERMIT_AREAS = ADJUSTED_AREAS;
 
 export interface RegulationStatus {
   lawdCd: string;
@@ -59,9 +104,9 @@ export function isMetro(lawdCd: string): boolean {
 }
 
 export function regulationOf(lawdCd: string): RegulationStatus {
-  const adjusted = ADJUSTED_AREAS.has(lawdCd);
-  const speculation = SPECULATION_AREAS.has(lawdCd);
-  const landPermit = LAND_PERMIT_AREAS.has(lawdCd);
+  const adjusted = isAdjusted(lawdCd);
+  const speculation = adjusted;
+  const landPermit = adjusted;
   const metro = isMetro(lawdCd);
 
   const badges: string[] = [];
@@ -98,5 +143,5 @@ export function regulationOf(lawdCd: string): RegulationStatus {
 
 /** 기존 auto-fill 과의 호환 — 조정대상지역 여부 */
 export function isRegulatedArea(lawdCd: string): boolean {
-  return ADJUSTED_AREAS.has(lawdCd);
+  return isAdjusted(lawdCd);
 }
