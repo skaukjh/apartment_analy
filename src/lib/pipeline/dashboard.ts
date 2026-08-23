@@ -53,9 +53,18 @@ function quoteFromTrades(
   complexName: string,
   areaM2: number,
   manualPrice?: number,
+  dong?: string,
 ): PriceQuote {
   // 직거래(가족 간 저가 이전 등)는 시세로 쓰지 않는다 — 실제 왜곡 사례가 있었다
-  const matched = filterComplex(trades, complexName, areaM2).filter((t) => !t.directDeal);
+  const byName = filterComplex(trades, complexName, areaM2).filter((t) => !t.directDeal);
+
+  /* 같은 시군구 안에 같은 이름의 다른 단지가 있으면 법정동으로 더 좁힌다.
+     성동구에는 "현대"가 10곳인데 마장동 현대와 옥수동 현대가 둘 다 전용 84.9㎡라,
+     동을 구분하지 않으면 13.6억(마장동) 거래가 21.0억(옥수동) 시세에 섞인다.
+     이름 매칭이 양방향 부분일치라 이름만으로는 분리할 수 없다.
+     동이 비어 있거나 그 동에 거래가 없으면(표기 차이·오입력) 이름 매칭 결과를 그대로 쓴다. */
+  const byDong = dong ? byName.filter((t) => t.dong === dong) : [];
+  const matched = byDong.length > 0 ? byDong : byName;
 
   if (matched.length === 0) {
     return manualPrice
@@ -275,6 +284,7 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
       h.complexName,
       h.areaM2,
       h.manualPrice,
+      h.dong,
     );
   }
   for (const t of config.targets) {
@@ -283,6 +293,7 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
       t.complexName,
       t.areaM2,
       t.manualPrice,
+      t.dong,
     );
   }
 
