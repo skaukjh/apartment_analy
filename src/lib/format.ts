@@ -91,6 +91,23 @@ export function toPyeong(m2: number): number {
   return m2 / 3.305785;
 }
 
+/**
+ * 단지 개요 한 줄 — "1,234세대 · 용적률 178% · 대지지분 12.3평(40.66㎡)".
+ * 입력된 항목만 보여주고, 하나도 없으면 null (줄 자체를 그리지 않게).
+ */
+export function complexSpecLine(ref: {
+  totalHouseholds?: number;
+  floorAreaRatio?: number;
+  landShareM2?: number;
+}): string | null {
+  const parts: string[] = [];
+  if (ref.totalHouseholds) parts.push(`${ref.totalHouseholds.toLocaleString('ko-KR')}세대`);
+  if (ref.floorAreaRatio) parts.push(`용적률 ${ref.floorAreaRatio}%`);
+  if (ref.landShareM2)
+    parts.push(`대지지분 ${toPyeong(ref.landShareM2).toFixed(1)}평(${ref.landShareM2}㎡)`);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
 /** 국민주택규모(85㎡) 초과 여부 — 농특세 부과 기준 */
 export function isOver85(m2: number): boolean {
   return m2 > 85;

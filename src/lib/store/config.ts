@@ -25,6 +25,9 @@ const apartmentRefSchema = z.object({
   areaM2: z.number().positive('전용면적을 입력하세요'),
   floor: z.number().optional(),
   builtYear: z.number().optional(),
+  totalHouseholds: z.number().positive().optional(),
+  floorAreaRatio: z.number().positive().optional(),
+  landShareM2: z.number().positive().optional(),
 });
 
 export const holdingSchema = apartmentRefSchema.extend({

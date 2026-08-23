@@ -23,7 +23,14 @@ import {
   runScenarioMatrix,
   simulateSwitch,
 } from '@/lib/analysis/switch-simulation';
-import { formatArea, formatEok, formatKrw, formatPct, todayKst } from '@/lib/format';
+import {
+  complexSpecLine,
+  formatArea,
+  formatEok,
+  formatKrw,
+  formatPct,
+  todayKst,
+} from '@/lib/format';
 import { calcLoanLimit } from '@/lib/tax/loan-limit';
 import { REGULATION_AS_OF, regulationOf } from '@/lib/analysis/regulation';
 import { SectionCard, EmptyHint, Stat } from '@/components/ui-bits';
@@ -243,6 +250,10 @@ export function SimulationClient({ config, quotes }: Props) {
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-muted-foreground mt-1 text-[11px]">
+              {formatArea(holding.areaM2)}
+              {complexSpecLine(holding) ? ` · ${complexSpecLine(holding)}` : ''}
+            </p>
           </Field>
 
           <Field label="목표 아파트">
@@ -278,6 +289,10 @@ export function SimulationClient({ config, quotes }: Props) {
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-muted-foreground mt-1 text-[11px]">
+              {formatArea(target.areaM2)}
+              {complexSpecLine(target) ? ` · ${complexSpecLine(target)}` : ''}
+            </p>
           </Field>
 
           <Field label="매도 예상가">

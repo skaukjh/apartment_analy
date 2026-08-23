@@ -27,8 +27,17 @@ interface DigestResponse {
   sources?: DigestSource[];
   generatedAt?: string;
   refreshedAt?: string;
-  /** 규제지역 지정·해제 발표 감지 — 앱 규제 테이블 확인 필요 신호 */
+  /** 규제지역 지정·해제 발표 감지 — 앱 규제 테이블 확인 필요 신호 (구버전 캐시) */
   regulationAlert?: { title: string; url: string; publishedAt?: string };
+  /** 코드 기준(대출 한도·세율·규제지역) 갱신 필요 신호 — 규칙별 최대 1건 */
+  updateAlerts?: Array<{
+    id: string;
+    ruleLabel: string;
+    codeBasis: string;
+    title: string;
+    url: string;
+    official: boolean;
+  }>;
 }
 
 function formatAt(iso: string): string {
@@ -141,7 +150,30 @@ export function PolicyDigestPanel({ canRefresh = false }: { canRefresh?: boolean
 
       {data?.ok && data.markdown && (
         <>
-          {data.regulationAlert ? (
+          {data.updateAlerts && data.updateAlerts.length > 0 ? (
+            <div className="mb-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+              <span className="font-semibold text-amber-700 dark:text-amber-400">
+                ⚠️ 정책 변경 발표 감지
+              </span>{' '}
+              — 이 앱의 계산 기준과 다를 수 있습니다. 세금·대출 판정에 영향이 있으니 확인하세요.
+              <ul className="mt-1.5 space-y-1">
+                {data.updateAlerts.map((a) => (
+                  <li key={a.id} className="text-xs">
+                    <span className="font-medium">{a.ruleLabel}</span>
+                    <span className="text-muted-foreground"> (앱 기준: {a.codeBasis})</span> —{' '}
+                    <a
+                      href={a.url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="underline underline-offset-2"
+                    >
+                      [{a.official ? '공식발표' : '기사'}] {a.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : data.regulationAlert ? (
             <div className="mb-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
               <span className="font-semibold text-amber-700 dark:text-amber-400">
                 ⚠️ 규제지역 변경 발표 감지

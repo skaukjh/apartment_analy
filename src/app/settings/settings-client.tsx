@@ -23,6 +23,7 @@ import type { SigunguInfo } from '@/lib/regions';
 import { SectionCard, EmptyHint } from '@/components/ui-bits';
 import { Field, ItemHeader, MoneyInput, RegionPicker } from '@/components/form-bits';
 import { ComplexSearch, type ComplexPick } from '@/components/settings/complex-search';
+import { PolicyAlertBanner } from '@/components/settings/policy-alert-banner';
 import { AreaTypeSelect } from '@/components/settings/area-type-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -575,6 +576,9 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
         </div>
       </div>
 
+      {/* 정책 변경 감지 — API 가 관리자에게만 경고를 준다 (일반 회원은 빈 목록) */}
+      {account.isAdmin ? <PolicyAlertBanner /> : null}
+
       {account.isAdmin ? <AdminApprovalPanel /> : null}
 
       {account.canImportLegacy ? (
@@ -908,6 +912,40 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                       onChange={(v) => updateHolding(h.id, { leaseDeposit: v })}
                     />
                   </Field>
+                  <Field label="총 세대수" hint="선택 — 갈아타기·시뮬레이션 카드에 표기">
+                    <Input
+                      type="number"
+                      value={h.totalHouseholds ?? ''}
+                      className="tabular"
+                      onChange={(e) =>
+                        updateHolding(h.id, {
+                          totalHouseholds: Number(e.target.value) || undefined,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="용적률 (%)" hint="선택 — 재건축 사업성 참고">
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={h.floorAreaRatio ?? ''}
+                      className="tabular"
+                      onChange={(e) =>
+                        updateHolding(h.id, { floorAreaRatio: Number(e.target.value) || undefined })
+                      }
+                    />
+                  </Field>
+                  <Field label="대지지분 (㎡)" hint="선택 — 등기부 대지권 면적 기준 권장">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={h.landShareM2 ?? ''}
+                      className="tabular"
+                      onChange={(e) =>
+                        updateHolding(h.id, { landShareM2: Number(e.target.value) || undefined })
+                      }
+                    />
+                  </Field>
                 </div>
               </div>
             ))}
@@ -1050,6 +1088,38 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                       value={t.memo ?? ''}
                       placeholder="예: 한강뷰 로열동 우선"
                       onChange={(e) => updateTarget(t.id, { memo: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="총 세대수" hint="선택 — 갈아타기·시뮬레이션 카드에 표기">
+                    <Input
+                      type="number"
+                      value={t.totalHouseholds ?? ''}
+                      className="tabular"
+                      onChange={(e) =>
+                        updateTarget(t.id, { totalHouseholds: Number(e.target.value) || undefined })
+                      }
+                    />
+                  </Field>
+                  <Field label="용적률 (%)" hint="선택 — 재건축 사업성 참고">
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={t.floorAreaRatio ?? ''}
+                      className="tabular"
+                      onChange={(e) =>
+                        updateTarget(t.id, { floorAreaRatio: Number(e.target.value) || undefined })
+                      }
+                    />
+                  </Field>
+                  <Field label="대지지분 (㎡)" hint="선택 — 등기부 대지권 면적 기준 권장">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={t.landShareM2 ?? ''}
+                      className="tabular"
+                      onChange={(e) =>
+                        updateTarget(t.id, { landShareM2: Number(e.target.value) || undefined })
+                      }
                     />
                   </Field>
                 </div>
@@ -1418,14 +1488,14 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
 
             <ToggleRow
               label="카카오로 일일 브리핑 발송"
-              hint="텔레그램과 별개로 켜고 끕니다. Vercel Cron 이 매일 정해진 시각에 호출합니다"
+              hint="하루 1번, 아래 시각에 '내 갈아타기' 요약만 보냅니다. 시장 전반 브리핑 전문은 텔레그램이 담당합니다"
               checked={config.kakaoBriefingEnabled}
               onChange={(v) => patch({ kakaoBriefingEnabled: v })}
             />
 
             <Field
-              label="발송 희망 시각 (KST)"
-              hint="실제 발송 시각은 vercel.json 의 cron schedule 을 함께 수정해야 반영됩니다"
+              label="발송 시각 (KST)"
+              hint="이 시각 이후 첫 실행에서 발송됩니다 (기본 08시). 스케줄러가 밀려도 놓친 발송은 자동으로 따라잡습니다"
             >
               <Input
                 type="number"

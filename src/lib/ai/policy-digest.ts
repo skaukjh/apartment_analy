@@ -12,12 +12,34 @@
 
 import { createHash } from 'node:crypto';
 import { REGULATION_AS_OF } from '@/lib/analysis/regulation';
+import { POLICY_RULES } from '@/lib/analysis/policy-basis';
 import { getOpenAI, hasOpenAI, OPENAI_MODEL, SYSTEM_PROMPT } from '@/lib/ai/client';
 import { fetchOfficialPress } from '@/lib/sources/gov';
 import { searchNews } from '@/lib/sources/news';
 import { getAdminClient } from '@/lib/store/supabase';
 import type { NewsItem } from '@/lib/types';
 import type { OutlookSource, TokenUsage } from '@/lib/ai/market-outlook';
+
+/**
+ * 코드에 하드코딩된 정책 규칙(대출 한도·세율·규제지역)을 갱신해야 할 수 있다는 신호.
+ * 자동으로 코드를 바꾸지는 않는다 — 관리자가 발표를 확인하고 반영한다.
+ */
+export interface PolicyUpdateAlert {
+  /** POLICY_RULES 의 key */
+  ruleKey: string;
+  ruleLabel: string;
+  /** 코드에 반영된 기준 (대책명·일자) */
+  codeBasis: string;
+  /** 규칙이 구현된 파일 */
+  file: string;
+  /** 감지된 발표·기사 */
+  title: string;
+  url: string;
+  publishedAt?: string;
+  official: boolean;
+  /** 확인(숨김) 처리용 안정 식별자 — ruleKey+url 해시 */
+  id: string;
+}
 
 export interface PolicyDigest {
   /** 마크다운 본문 */
@@ -35,8 +57,11 @@ export interface PolicyDigest {
    * 앱의 규제 테이블(regulation.ts)은 수동 관리라, 정부 발표가 감지되면
    * "테이블이 낡았을 수 있다"는 경고를 화면에 띄우는 용도다.
    * 자동으로 테이블을 바꾸지는 않는다 — 오탐으로 세금 계산이 틀어지는 게 더 위험하다.
+   * @deprecated updateAlerts 로 일반화됨 — 이전 캐시 호환용으로만 남긴다.
    */
   regulationAlert?: { title: string; url: string; publishedAt?: string };
+  /** 코드 기준(대출 한도·세율·규제지역) 갱신 필요 신호 — 규칙별 최대 1건 */
+  updateAlerts?: PolicyUpdateAlert[];
 }
 
 const KIND = 'policy-digest';
@@ -141,14 +166,35 @@ export async function buildPolicyDigest(
   const articles = sources.filter((s) => s.kind === 'news').slice(0, 18);
   const selected = [...official, ...articles];
 
-  /* 규제지역 변경 발표 감지 — 공식 발표(정부 도메인) 중 지정·해제 키워드.
-     기사만 있으면 오보 가능성이 있어 공식 발표를 우선하고, 없으면 기사도 본다. */
-  const REG_RE = /(조정대상지역|투기과열지구|토지거래허가)[^.]{0,40}(지정|해제|확대|축소|추가)/;
-  const alertSource =
-    official.find((s) => REG_RE.test(`${s.title} ${s.summary}`)) ??
-    articles.find((s) => REG_RE.test(`${s.title} ${s.summary}`));
-  const regulationAlert = alertSource
-    ? { title: alertSource.title, url: alertSource.url, publishedAt: alertSource.publishedAt }
+  /* 코드 기준 갱신 필요 신호 — POLICY_RULES 의 규칙별 키워드가 발표에 걸리면
+     "코드에 박힌 기준이 낡았을 수 있다"는 관리자 경고를 만든다.
+     기본은 공식 발표(정부 도메인)만 본다 — 기사는 오탐이 많다. 예외는 규칙이
+     includeNews 를 켠 경우(규제지역 지정·해제처럼 세금 판정에 직결되는 것). */
+  const updateAlerts: PolicyUpdateAlert[] = [];
+  for (const rule of POLICY_RULES) {
+    const hit =
+      official.find((s) => rule.pattern.test(`${s.title} ${s.summary}`)) ??
+      (rule.includeNews
+        ? articles.find((s) => rule.pattern.test(`${s.title} ${s.summary}`))
+        : undefined);
+    if (!hit) continue;
+    updateAlerts.push({
+      ruleKey: rule.key,
+      ruleLabel: rule.label,
+      codeBasis: rule.asOf,
+      file: rule.file,
+      title: hit.title,
+      url: hit.url,
+      publishedAt: hit.publishedAt,
+      official: hit.kind === 'official',
+      id: createHash('sha256').update(`${rule.key}|${hit.url}`).digest('hex').slice(0, 16),
+    });
+  }
+
+  // 이전 캐시·패널 호환 — 규제지역 신호는 기존 필드에도 채워 둔다
+  const regAlert = updateAlerts.find((a) => a.ruleKey === 'regulated-zones');
+  const regulationAlert = regAlert
+    ? { title: regAlert.title, url: regAlert.url, publishedAt: regAlert.publishedAt }
     : undefined;
 
   const renderList = (list: OutlookSource[]) =>
@@ -163,7 +209,8 @@ export async function buildPolicyDigest(
      잘 안 나와서 "확보되지 않았다"로 비던 마지막 섹션의 근거로 공급한다. */
   const currentRules = `[현행 기준 — 이 앱의 계산 모듈이 쓰는 값, ${REGULATION_AS_OF}]
 - 규제지역: 서울 전 지역 + 경기 15곳(과천·광명·성남 수정/중원/분당·수원 장안/팔달/영통·안양 동안·용인 수지/기흥·의왕·하남·구리·화성 동탄) — 조정대상지역·투기과열지구·토지거래허가구역(아파트) 동시 지정
-- LTV: 규제지역 50%(생애최초 80%), 비규제 70% · DSR 40%(스트레스 DSR 시행 중) · 수도권 주담대 총액 한도 6억
+- LTV: 규제지역 50%(생애최초 80%), 비규제 70% · DSR 40%(스트레스 DSR 시행 중)
+- 주담대 총액 한도: 규제지역은 주택가격 15억 이하 6억 / 15~25억 4억 / 25억 초과 2억(10.15 대책), 비규제 수도권 일괄 6억
 - 취득세: 1주택 1~3%(6억 이하 1%, 9억 초과 3%) + 지방교육세, 85㎡ 이하 농특세 면제 · 조정대상지역 2주택 8%·3주택 12%
 - 양도세: 1세대1주택 12억까지 비과세(2년 보유, 조정대상지역 취득분은 2년 거주 필요), 보유 1년 미만 70%·2년 미만 60% 단기세율(지방소득세 10% 별도), 다주택 중과는 한시 배제 중
 - 토지거래허가구역 아파트: 실거주 목적만 허가(2년 실거주 의무) — 전세 낀 갭투자 불가`;
@@ -226,6 +273,7 @@ ${renderList(selected)}
   return {
     markdown,
     regulationAlert,
+    updateAlerts,
     promptHash,
     usage: res.usage
       ? {

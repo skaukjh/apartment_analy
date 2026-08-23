@@ -22,6 +22,12 @@ export interface ApartmentRef {
   floor?: number;
   /** 준공연도 (선택) */
   builtYear?: number;
+  /** 총 세대수 (선택) */
+  totalHouseholds?: number;
+  /** 용적률 % (선택) — 재건축 사업성 참고 */
+  floorAreaRatio?: number;
+  /** 세대당 대지지분 (㎡, 선택) — 등기부 대지권 기준 입력 권장 */
+  landShareM2?: number;
 }
 
 /** 보유 아파트 */
