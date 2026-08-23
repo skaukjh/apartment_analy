@@ -44,7 +44,16 @@ jobs:
           fi
 
           # 시크릿이 로그에 남지 않도록 URL 은 출력하지 않는다
-          CODE=$(curl -s -o response.json -w '%{http_code}' --max-time 290 "$URL")
+          CURL_EXIT=0
+          CODE=$(curl -s -o response.json -w '%{http_code}' --max-time 290 "$URL") || CURL_EXIT=$?
+
+          # 응답을 못 받아도 서버 작업은 계속되고, 못 보낸 슬롯은 다음 tick 이 따라잡는다.
+          # (실거래 갱신이 겹치는 시간대엔 290초를 넘길 수 있다) — 실패로 처리하지 않는다.
+          if [ "$CURL_EXIT" -ne 0 ]; then
+            echo "::warning::tick 응답 대기가 끊겼습니다 (curl exit $CURL_EXIT). 서버 처리는 계속되며 다음 tick 이 미발송분을 따라잡습니다."
+            exit 0
+          fi
+
           echo "HTTP $CODE"
           cat response.json
           # 5xx 만 실패로 본다 (발송 시각이 아니면 200 + sent:false 가 정상)

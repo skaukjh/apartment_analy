@@ -380,22 +380,23 @@ export function GapSection({ config, quotes }: Props) {
                           : `보유 현금으로 실행 가능 (여유 ${formatKrw(config.household.cashAssets - p.grossByCash, { compact: true })})`}
                       </div>
                     ) : null}
+                    {/* "가격 차이는 5억인데 왜 10억이 필요하냐"가 가장 많이 나온 질문이다.
+                        세 덩어리로 쪼개 보여주면 그 자리에서 납득된다.
+                        대출 감소분 = 기존 대출을 갚는데 새로 그만큼 못 빌려서 생기는 몫. */}
                     <div className="text-muted-foreground text-[11px]">
-                      + 은행 대출 {formatKrw(p.grossByLoan, { compact: true })}
+                      = 가격 차이 {formatKrw(p.gap, { compact: true })} + 세금·수수료{' '}
+                      {formatKrw(p.friction, { compact: true })}
+                      {p.holding.loanBalance + p.holding.leaseDeposit - p.grossByLoan > 0
+                        ? ` + 대출 줄어든 몫 ${formatKrw(p.holding.loanBalance + p.holding.leaseDeposit - p.grossByLoan, { compact: true })}`
+                        : ''}
+                    </div>
+                    <div className="text-muted-foreground text-[11px]">
+                      은행 대출 {formatKrw(p.grossByLoan, { compact: true })}
                       <span className="text-muted-foreground/70">
                         {' '}
                         (한도 {formatKrw(p.loanLimit, { compact: true })})
                       </span>{' '}
-                      = 조달 {formatKrw(p.grossNeed, { compact: true })}
-                    </div>
-                    {/* 실소요(순 기준)는 참고값으로 내린다 — 조달총액과 기준이 달라
-                        나란히 크게 두면 산수가 안 맞아 보인다는 피드백이 있었다. */}
-                    <div className="text-muted-foreground text-[11px]">
-                      세후 실소요 {formatKrw(p.realCashNeeded, { compact: true })}
-                      {p.holding.loanBalance + p.holding.leaseDeposit > 0
-                        ? ` + 기존 부채 상환 ${formatKrw(p.holding.loanBalance + p.holding.leaseDeposit, { compact: true })}`
-                        : ''}{' '}
-                      ·{' '}
+                      포함 총 {formatKrw(p.grossNeed, { compact: true })} 필요 ·{' '}
                       <strong className="text-primary font-semibold">
                         {open ? '접기' : '클릭해 상세'}
                       </strong>

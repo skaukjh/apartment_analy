@@ -57,10 +57,15 @@ export async function GET(request: Request) {
     const dateKst = `${kst.getFullYear()}-${String(kst.getMonth() + 1).padStart(2, '0')}-${String(kst.getDate()).padStart(2, '0')}`;
     const slot = forced ?? latestPassedSlot(hour);
 
-    /* 1) 최근 실거래 갱신 — 12시간에 1번(05·17시 KST)만.
+    /* 1) 최근 실거래 갱신 — 12시간에 1번(03·15시 KST)만.
        실거래는 하루 두 번이면 충분하다 (신고 기한 30일, 당일 체결 즉시 반영도 아님).
        뉴스·AI 요약은 아래에서 매시간 그대로 돈다.
-       대상 = 핵심 지역군(서울 전역+경기 남부) ∪ 사용자 설정 지역. */
+       대상 = 핵심 지역군(서울 전역+경기 남부) ∪ 사용자 설정 지역.
+
+       ── 왜 발송 슬롯(05·11·18·22시)을 피하는가 ────────────────────
+       예전엔 05시에 갱신과 아침 발송이 겹쳐, 갱신(최대 180초) + AI 요약 +
+       정책 요약 + 발송이 한 번에 돌면서 290초를 넘겨 GitHub Actions 가
+       타임아웃으로 실패했다. 갱신은 발송 두 시간 전에 끝내 둔다. */
     const userIds = await listConfigUserIds();
     const codeSet = new Set<string>(CORE_WATCH_REGIONS);
     const cfgByUser = new Map<string, Awaited<ReturnType<typeof loadConfig>>>();
@@ -71,7 +76,7 @@ export async function GET(request: Request) {
     }
 
     const isTradeRefreshHour =
-      hour === 5 || hour === 17 || url.searchParams.get('refreshTrades') === '1';
+      hour === 3 || hour === 15 || url.searchParams.get('refreshTrades') === '1';
     const refresh = isTradeRefreshHour
       ? await refreshRecent([...codeSet], 2, {
           budgetMs: 180_000,
