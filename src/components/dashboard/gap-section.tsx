@@ -57,6 +57,9 @@ export function GapSection({ config, quotes }: Props) {
       gap: number;
       ratio: number;
       cgt: ReturnType<typeof calcCapitalGainsTax>;
+      /** 2년 보유를 채우고 팔 때의 양도세 (이미 2년 이상이면 null) */
+      cgt2y: ReturnType<typeof calcCapitalGainsTax> | null;
+      twoYearDate: string;
       acq: ReturnType<typeof calcAcquisitionTaxFor>;
       sellCost: ReturnType<typeof calcTransactionCost>;
       buyCost: ReturnType<typeof calcTransactionCost>;
@@ -100,6 +103,32 @@ export function GapSection({ config, quotes }: Props) {
         const netFromSale = holdingPrice - cgt.total - sellCost.total;
         const realCashNeeded = targetPrice + acq.total + buyCost.total - netFromSale;
 
+        /* 보유 2년 미만이면 "2년 채우고 팔면 얼마나 달라지는지"를 함께 계산한다.
+           단기양도세 60%와 1세대1주택 비과세의 차이가 수억이라, 지금 파는 것과
+           기다렸다 파는 것의 비교가 실질적인 의사결정 정보다. 매도가는 현재가 유지 가정. */
+        let cgt2y: ReturnType<typeof calcCapitalGainsTax> | null = null;
+        let twoYearDate = '';
+        if (holding.acquiredAt) {
+          const d = new Date(holding.acquiredAt);
+          d.setFullYear(d.getFullYear() + 2);
+          d.setDate(d.getDate() + 1);
+          twoYearDate = d.toISOString().slice(0, 10);
+          if (todayKst() < twoYearDate) {
+            cgt2y = calcCapitalGainsTax({
+              salePrice: holdingPrice,
+              acquisitionPrice: holding.acquisitionPrice,
+              expenses: holding.acquisitionCost + holding.capitalExpenditure + sellCost.brokerFee,
+              acquiredAt: holding.acquiredAt,
+              soldAt: twoYearDate,
+              residenceMonths: holding.residenceMonths,
+              isOneHouseExempt: config.household.ownedHouseCount <= 1,
+              multiHouseSurcharge: false,
+              isRegulated: config.household.holdingIsRegulated,
+              usedBasicDeduction: 0,
+            });
+          }
+        }
+
         out.push({
           key: `${holding.id}-${target.id}`,
           holding,
@@ -109,6 +138,8 @@ export function GapSection({ config, quotes }: Props) {
           gap: targetPrice - holdingPrice,
           ratio: targetPrice / holdingPrice,
           cgt,
+          cgt2y,
+          twoYearDate,
           acq,
           sellCost,
           buyCost,
@@ -263,6 +294,29 @@ export function GapSection({ config, quotes }: Props) {
                           ...p.cgt.notes.slice(0, 2),
                         ]}
                       />
+                      {p.cgt2y ? (
+                        <div className="mt-2 rounded-md border border-emerald-500/40 bg-emerald-500/5 p-2.5 text-[11px] leading-relaxed">
+                          <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                            🕐 2년 보유 도달({p.twoYearDate}) 후 매도 시
+                          </span>
+                          <div className="mt-1">
+                            양도세{' '}
+                            <span className="tabular font-medium">{formatKrw(p.cgt2y.total)}</span>
+                            {p.cgt2y.exempt ? ' (1세대1주택 비과세, 12억 초과분만 과세)' : ''} —
+                            지금 매도 대비{' '}
+                            <span className="tabular font-semibold text-emerald-700 dark:text-emerald-400">
+                              {formatKrw(p.cgt.total - p.cgt2y.total)} 절감
+                            </span>
+                            , 실소요{' '}
+                            <span className="tabular font-medium">
+                              {formatKrw(p.realCashNeeded - (p.cgt.total - p.cgt2y.total))}
+                            </span>
+                          </div>
+                          <div className="text-muted-foreground mt-0.5">
+                            매도가가 지금과 같다고 가정한 비교입니다.
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
 
                     {/* 매수 측 */}
@@ -296,6 +350,11 @@ export function GapSection({ config, quotes }: Props) {
                       <div className="tabular text-fall font-semibold">{formatKrw(p.friction)}</div>
                       <div className="text-muted-foreground text-[11px]">
                         매수가의 {formatPct((p.friction / p.targetPrice) * 100, 2)}
+                      </div>
+                      {/* 매수 측만 보고 합이 안 맞다고 느끼기 쉬워 구성을 명시한다 */}
+                      <div className="text-muted-foreground mt-1 text-[11px]">
+                        = 양도세 {formatKrw(p.cgt.total)} + 매도비용 {formatKrw(p.sellCost.total)} +
+                        취득세 {formatKrw(p.acq.total)} + 매수비용 {formatKrw(p.buyCost.total)}
                       </div>
                     </div>
                     <div className="bg-background rounded-md border px-3 py-2">
