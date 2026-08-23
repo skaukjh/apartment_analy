@@ -248,24 +248,42 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
   tradeWindowStart.setMonth(tradeWindowStart.getMonth() - 24);
   const tradeFromMonth = `${tradeWindowStart.getFullYear()}${String(tradeWindowStart.getMonth() + 1).padStart(2, '0')}`;
 
-  let userTrades: TradeRecord[] = [];
-  try {
-    userTrades = await loadTradeCache(userCodes, tradeFromMonth);
-  } catch (e) {
-    sourceStatus.push({
-      name: '실거래 원본 캐시',
-      url: '#',
-      status: 'error',
-      message: (e as Error).message,
-    });
+  /* 시세 매칭은 반드시 그 아파트의 시군구 캐시 안에서만 한다.
+     전 지역을 합쳐 이름으로 찾으면 성동구 "옥수삼성"에 수서동·오금동의
+     "삼성"아파트 거래가 섞여 시세가 25.7억으로 뛰는 실제 사고가 있었다
+     (느슨한 이름 매칭이 "삼성" ⊂ "옥수삼성"을 허용하기 때문). */
+  const tradesByRegion = new Map<string, TradeRecord[]>();
+  for (const code of userCodes) {
+    try {
+      tradesByRegion.set(code, await loadTradeCache([code], tradeFromMonth));
+    } catch (e) {
+      tradesByRegion.set(code, []);
+      sourceStatus.push({
+        name: `실거래 원본 캐시 (${code})`,
+        url: '#',
+        status: 'error',
+        message: (e as Error).message,
+      });
+    }
   }
+  const userTrades: TradeRecord[] = [...tradesByRegion.values()].flat();
 
   const quotes: Record<string, PriceQuote> = {};
   for (const h of config.holdings) {
-    quotes[h.id] = quoteFromTrades(userTrades, h.complexName, h.areaM2, h.manualPrice);
+    quotes[h.id] = quoteFromTrades(
+      tradesByRegion.get(h.lawdCd) ?? [],
+      h.complexName,
+      h.areaM2,
+      h.manualPrice,
+    );
   }
   for (const t of config.targets) {
-    quotes[t.id] = quoteFromTrades(userTrades, t.complexName, t.areaM2, t.manualPrice);
+    quotes[t.id] = quoteFromTrades(
+      tradesByRegion.get(t.lawdCd) ?? [],
+      t.complexName,
+      t.areaM2,
+      t.manualPrice,
+    );
   }
 
   const gaps = buildGaps(config, quotes);
