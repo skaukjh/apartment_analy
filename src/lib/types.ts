@@ -523,6 +523,8 @@ export interface SwitchSimulationInput {
   targetOver85: boolean;
   /** 보유 아파트 전용면적 85㎡ 초과 여부 */
   holdingOver85: boolean;
+  /** 매도 시점 (YYYY-MM-DD). 생략하면 오늘 — "2년 채우고 팔면" 비교용 */
+  soldAt?: string;
 }
 
 export interface SwitchSimulationResult {

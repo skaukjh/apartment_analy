@@ -23,7 +23,7 @@ import {
   runScenarioMatrix,
   simulateSwitch,
 } from '@/lib/analysis/switch-simulation';
-import { formatArea, formatEok, formatKrw, formatPct } from '@/lib/format';
+import { formatArea, formatEok, formatKrw, formatPct, todayKst } from '@/lib/format';
 import { calcLoanLimit } from '@/lib/tax/loan-limit';
 import { REGULATION_AS_OF, regulationOf } from '@/lib/analysis/regulation';
 import { SectionCard, EmptyHint, Stat } from '@/components/ui-bits';
@@ -146,6 +146,19 @@ export function SimulationClient({ config, quotes }: Props) {
   }, [target, buyPrice, defaultBuy, config.household, newLoanRate]);
   const matrix = useMemo(() => (base ? runScenarioMatrix(base) : []), [base]);
   const breakEven = useMemo(() => (base ? breakEvenDrop(base) : null), [base]);
+
+  /* 보유 2년 미만이면 "2년 채우고 팔 때"를 같은 가격 가정으로 함께 계산한다.
+     단기세율 60%와 비과세의 차이가 수억이라, 지금 vs 기다림이 실질 의사결정이다.
+     이미 2년 이상이면 null — 화면에 나오지 않는다. */
+  const twoYear = useMemo(() => {
+    if (!base || !holding?.acquiredAt) return null;
+    const d = new Date(holding.acquiredAt);
+    d.setFullYear(d.getFullYear() + 2);
+    d.setDate(d.getDate() + 1);
+    const dateStr = d.toISOString().slice(0, 10);
+    if (todayKst() >= dateStr) return null;
+    return { date: dateStr, result: simulateSwitch({ ...base, soldAt: dateStr }) };
+  }, [base, holding]);
 
   if (!holding || !target) {
     return (
@@ -303,6 +316,70 @@ export function SimulationClient({ config, quotes }: Props) {
           />
         </div>
       ) : null}
+
+      {/* 보유 2년 미만일 때만 — 2년 채우고 팔면 얼마나 달라지는가 */}
+      {baseline && twoYear
+        ? (() => {
+            const r2 = twoYear.result;
+            const saving = baseline.capitalGainsTax.total - r2.capitalGainsTax.total;
+            const need2 = Math.max(0, r2.totalNeeded - r2.netFromSale);
+            const byLoan2 = loanLimit ? Math.min(loanLimit.result.limit, need2) : 0;
+            return (
+              <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4">
+                <div className="mb-2 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                  🕐 2년 보유 도달({twoYear.date}) 후 매도 시 — 매도·매수가 동일 가정
+                </div>
+                <div className="grid gap-3 text-sm sm:grid-cols-4">
+                  <div>
+                    <div className="text-muted-foreground text-xs">양도세</div>
+                    <div className="tabular font-semibold">
+                      {r2.capitalGainsTax.exempt || r2.capitalGainsTax.total === 0
+                        ? '비과세'
+                        : formatKrw(r2.capitalGainsTax.total, { compact: true })}
+                    </div>
+                    <div className="text-xs text-emerald-700 dark:text-emerald-400">
+                      지금보다 −{formatKrw(saving, { compact: true })}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground text-xs">총 마찰비용</div>
+                    <div className="tabular font-semibold">
+                      {formatKrw(r2.totalFriction, { compact: true })}
+                    </div>
+                    <div className="text-muted-foreground text-xs">
+                      현재 {formatKrw(baseline.totalFriction, { compact: true })}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground text-xs">실소요 자금</div>
+                    <div className="tabular font-semibold">
+                      {formatKrw(need2, { compact: true })}
+                    </div>
+                    <div className="text-muted-foreground text-xs">
+                      현재{' '}
+                      {formatKrw(Math.max(0, baseline.totalNeeded - baseline.netFromSale), {
+                        compact: true,
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground text-xs">내 돈 (한도 대출 시)</div>
+                    <div className="tabular font-semibold">
+                      {formatKrw(Math.max(0, need2 - byLoan2), { compact: true })}
+                    </div>
+                    <div className="text-muted-foreground text-xs">
+                      대출 {formatKrw(byLoan2, { compact: true })}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-muted-foreground mt-2 text-[11px] leading-relaxed">
+                  1세대1주택 비과세(12억 초과분만 과세)·장기보유특별공제가 적용된 값입니다. 그 사이
+                  시세가 움직이면 결과가 달라지므로 위의 시나리오 표와 함께 보세요.
+                </p>
+              </div>
+            );
+          })()
+        : null}
 
       {/* 대출 한도 · 규제 */}
       {loanLimit ? (

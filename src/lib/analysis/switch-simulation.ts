@@ -31,7 +31,7 @@ export function simulateSwitch(
     acquisitionPrice: holding.acquisitionPrice,
     expenses: holding.acquisitionCost + holding.capitalExpenditure,
     acquiredAt: holding.acquiredAt,
-    soldAt: todayKst(),
+    soldAt: input.soldAt ?? todayKst(),
     residenceMonths: holding.residenceMonths,
     isOneHouseExempt: isOneHouse,
     multiHouseSurcharge:
