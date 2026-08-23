@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { recentBriefings, runBriefing } from '@/lib/pipeline/briefing-service';
-import { errorResponse } from '@/lib/api-auth';
+import { authorizeCron, errorResponse } from '@/lib/api-auth';
 import { configIdForRequest, getSessionUser } from '@/lib/auth/server';
 
 export const dynamic = 'force-dynamic';
@@ -29,13 +29,28 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}));
+
+    /* 운영자 수동 발송용 사용자 지정 — CRON_SECRET 인증을 통과할 때만 허용.
+       세션 없이(CLI 등) 특정 회원 설정으로 발송해야 할 때 쓴다. */
+    let overrideUserId: string | undefined;
+    if (typeof body?.userId === 'string' && body.userId) {
+      const denied = authorizeCron(request);
+      if (denied) return denied;
+      overrideUserId = body.userId;
+    }
     const result = await runBriefing({
       dryRun: Boolean(body?.dryRun),
       force: Boolean(body?.force),
       recipientIds: Array.isArray(body?.recipientIds) ? body.recipientIds : undefined,
       // 시간대별 문구를 미리 확인할 때 쓴다 (morning | noon | evening | night)
       slot: body?.slot,
-      userId: await configIdForRequest(),
+      // 특정 채널만 보낼 때 (예: ["kakao"]) — 생략하면 켜진 채널 모두
+      channels: Array.isArray(body?.channels)
+        ? (body.channels.filter((c: unknown) => c === 'kakao' || c === 'telegram') as Array<
+            'kakao' | 'telegram'
+          >)
+        : undefined,
+      userId: overrideUserId ?? (await configIdForRequest()),
     });
     return NextResponse.json(result, { status: result.ok ? 200 : 502 });
   } catch (e) {

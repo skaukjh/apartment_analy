@@ -63,8 +63,10 @@ export async function GET(request: Request) {
        대상 = 핵심 지역군(서울 전역+경기 남부) ∪ 사용자 설정 지역. */
     const userIds = await listConfigUserIds();
     const codeSet = new Set<string>(CORE_WATCH_REGIONS);
+    const cfgByUser = new Map<string, Awaited<ReturnType<typeof loadConfig>>>();
     for (const uid of userIds) {
       const cfg = await loadConfig(uid);
+      cfgByUser.set(uid, cfg);
       analysisTargets(cfg).forEach((c) => codeSet.add(c));
     }
 
@@ -160,33 +162,58 @@ export async function GET(request: Request) {
     }
 
     /* 사용자마다 자기 설정으로 만든 브리핑을 자기 수신자에게 보낸다.
-       (날짜, 슬롯, 사용자)별 발송 표시로 중복을 막는다 — cron 이 한 시간에
-       두 번 오든, 다음 시간에 따라잡든 같은 슬롯은 한 번만 나간다. */
+       채널별 발송 주기가 다르다:
+        - 텔레그램: 슬롯(05·11·18·22시) 4회, 브리핑 전문
+        - 카카오  : 하루 1회(발송 시각 설정, 기본 08시), "내 갈아타기" 요약만
+       (날짜, 슬롯|kakao-daily, 사용자)별 발송 표시로 중복을 막는다 — cron 이
+       한 시간에 두 번 오든, 다음 시간에 따라잡든 같은 회차는 한 번만 나간다. */
+    const KAKAO_MARK = 'kakao-daily';
     const perUser: Array<{ userId: string; ok: boolean; sent: boolean; error?: string }> = [];
     let firstPreview: string | undefined;
 
     for (const uid of userIds) {
       try {
-        // 강제 슬롯(테스트)은 표시를 무시하고 보낸다
-        if (!forced && (await wasBriefingSent(dateKst, slot, uid))) {
+        const kakaoHour = cfgByUser.get(uid)?.briefingHour ?? 8;
+        // 강제 슬롯(테스트)은 표시를 무시하고 두 채널 모두 보낸다
+        const wantTelegram = forced ? true : !(await wasBriefingSent(dateKst, slot, uid));
+        const wantKakao = forced
+          ? true
+          : hour >= kakaoHour && !(await wasBriefingSent(dateKst, KAKAO_MARK, uid));
+
+        if (!wantTelegram && !wantKakao) {
           perUser.push({ userId: uid, ok: true, sent: false, error: '이미 발송됨' });
           continue;
         }
 
-        const result = await runBriefing({ slot, userId: uid });
+        const channels: Array<'kakao' | 'telegram'> = [
+          ...(wantKakao ? (['kakao'] as const) : []),
+          ...(wantTelegram ? (['telegram'] as const) : []),
+        ];
+
+        const result = await runBriefing({ slot, userId: uid, channels });
         const sent = result.ok && !result.skippedReason;
         perUser.push({ userId: uid, ok: result.ok, sent });
         firstPreview ??= result.chunks[0]?.slice(0, 300);
 
-        if (sent) await markBriefingSent(dateKst, slot, uid);
-        // 설정에서 브리핑을 꺼둔 사용자도 표시해 매시간 재시도하지 않는다
-        if (result.skippedReason) await markBriefingSent(dateKst, slot, uid);
+        /* 채널별로 각각 표시 — 한쪽 실패가 다른 쪽 중복 발송으로 번지지 않게.
+           빈 배열의 every()는 true 이므로, 설정에서 꺼진 채널(리포트 없음)과
+           브리핑 전체가 꺼진 사용자(skippedReason)도 표시돼 매시간 재시도하지 않는다. */
+        const reports = result.reports ?? [];
+        const tgOk = reports.filter((r) => r.recipient === '텔레그램').every((r) => r.ok);
+        const kkOk = reports.filter((r) => r.recipient !== '텔레그램').every((r) => r.ok);
+        if (wantTelegram && (result.skippedReason || tgOk)) {
+          await markBriefingSent(dateKst, slot, uid);
+        }
+        if (wantKakao && (result.skippedReason || kkOk)) {
+          await markBriefingSent(dateKst, KAKAO_MARK, uid);
+        }
       } catch (e) {
         // 수신자가 없는 사용자는 broadcast 가 던진다 — 다음 실행에서 재시도해도
         // 같은 결과이므로 표시해 두고 넘어간다
         perUser.push({ userId: uid, ok: false, sent: false, error: (e as Error).message });
         if (/발송 대상이 없습니다/.test((e as Error).message)) {
           await markBriefingSent(dateKst, slot, uid);
+          await markBriefingSent(dateKst, KAKAO_MARK, uid);
         }
       }
     }

@@ -6,11 +6,9 @@
 import { buildDashboard } from '@/lib/pipeline/dashboard';
 import {
   buildBriefing,
-  briefingToKakaoTemplates,
-  briefingToSingleTemplate,
+  briefingToKakaoGapTemplate,
   type BriefingSlot,
   briefingToText,
-  previewChunks,
 } from '@/lib/kakao/briefing';
 import { broadcast, type SendReport } from '@/lib/kakao/client';
 import { hasTelegram, sendTelegramText } from '@/lib/telegram/client';
@@ -109,6 +107,12 @@ export async function runBriefing(
     slot?: BriefingSlot;
     /** 어느 사용자의 설정·수신자로 보낼지. 생략하면 레거시 'default' */
     userId?: string;
+    /**
+     * 이번 실행에서 시도할 채널. 생략하면 둘 다.
+     * 카카오(하루 1회, 갈아타기 요약)와 텔레그램(하루 4회, 전문)의
+     * 발송 주기가 달라 cron 이 채널을 골라 호출한다.
+     */
+    channels?: Array<'kakao' | 'telegram'>;
   } = {},
 ): Promise<BriefingRunResult> {
   const dryRun = options.dryRun ?? false;
@@ -122,15 +126,9 @@ export async function runBriefing(
   const diffLines = prevSnap ? buildBriefingDiff(data, prevSnap.snap) : [];
 
   const text = briefingToText(briefing);
-  // 'image' 는 요약(텍스트 2건)으로 통합됐다 — 본문 1건 + 링크 포함 마무리 1건.
-  const rawFormat = data.config.briefingFormat ?? 'summary';
-  const format = rawFormat === 'image' ? 'summary' : rawFormat;
-  const chunks =
-    format === 'full'
-      ? previewChunks(briefing)
-      : briefingToSingleTemplate(briefing, env.appUrl, data, options.slot).map(
-          (t) => ('text' in t ? t.text : '') ?? '',
-        );
+  /* 카카오는 "내 갈아타기" 요약 1장만 보낸다 — 시장 전반 전문은 텔레그램 담당 */
+  const kakaoTemplates = briefingToKakaoGapTemplate(env.appUrl, data);
+  const chunks = kakaoTemplates.map((t) => ('text' in t ? t.text : '') ?? '');
 
   const base: Omit<BriefingRunResult, 'ok'> = {
     dryRun,
@@ -147,9 +145,13 @@ export async function runBriefing(
   /* 발송 채널 결정 — 카카오와 텔레그램은 독립적으로 켜고 끈다.
      force(수동 발송)도 꺼진 채널은 건드리지 않는다 — 사용자가 카카오를
      종료했는데 수동 발송이 카카오로 다시 나가는 사고를 막기 위함이다. */
-  const kakaoOn = data.config.kakaoBriefingEnabled;
+  const channels = options.channels ?? ['kakao', 'telegram'];
+  const kakaoOn = channels.includes('kakao') && data.config.kakaoBriefingEnabled;
   const telegramOn =
-    hasTelegram() && Boolean(data.config.telegramChatId) && data.config.telegramEnabled;
+    channels.includes('telegram') &&
+    hasTelegram() &&
+    Boolean(data.config.telegramChatId) &&
+    data.config.telegramEnabled;
 
   if (!kakaoOn && !telegramOn) {
     await logBriefing('skipped', '카카오·텔레그램 브리핑이 모두 꺼져 있습니다.');
@@ -170,30 +172,14 @@ export async function runBriefing(
     const unchanged = lastHash !== null && lastHash === contentHash;
 
     const todayUrl = `${env.appUrl.replace(/\/$/, '')}/today`;
-    let templates;
-    if (unchanged) {
-      const link = { web_url: todayUrl, mobile_web_url: todayUrl };
-      templates = [
-        {
-          object_type: 'text' as const,
-          text: `[${briefing.title}]
-직전 브리핑과 내용이 동일합니다 (변동 없음).`,
-          link,
-          button_title: '오늘의 요약 열기',
-        },
-      ];
-    } else if (format === 'full') {
-      templates = briefingToKakaoTemplates(briefing, env.appUrl);
-    } else {
-      templates = briefingToSingleTemplate(briefing, env.appUrl, data, options.slot);
-    }
 
     const reports: SendReport[] = [];
 
     if (kakaoOn) {
+      /* 카카오는 하루 1번뿐이라 "변동 없음"이어도 갈아타기 요약을 그대로 보낸다 */
       try {
         reports.push(
-          ...(await broadcast(templates, {
+          ...(await broadcast(kakaoTemplates, {
             recipientIds: options.recipientIds,
             userId: options.userId ?? 'default',
           })),
@@ -238,17 +224,23 @@ export async function runBriefing(
       failed.length > 0 ? summary : undefined,
     );
 
-    // 발송 성공 시에만 본문 해시 갱신 — 다음 슬롯의 "변동 없음" 판정 기준
-    if (failed.length === 0) await saveLastBriefingHash(uid, contentHash);
+    /* 발송 성공 시에만 본문 해시 갱신 — 다음 슬롯의 "변동 없음" 판정 기준.
+       해시는 텔레그램 전문 재발송 방지용이므로, 카카오만 나간 실행(오전 카카오
+       단독 발송)이 갱신하면 텔레그램이 변경 내용을 못 받은 채 "변동 없음"이 된다. */
+    if (telegramOn && failed.length === 0) await saveLastBriefingHash(uid, contentHash);
 
-    // 갭 변화 추적용 스냅샷
-    await saveSnapshot({
-      userId: uid,
-      generatedAt: data.generatedAt,
-      gaps: data.gaps,
-      sentiment: data.sentiment,
-      quotes: data.quotes,
-    });
+    /* 갭 변화 추적용 스냅샷 — 변경 분석(텔레그램 2번째 메시지)의 비교 기준이므로
+       카카오 단독 발송에서는 남기지 않는다. 기준이 앞서가면 텔레그램이
+       보고하지 못한 변화가 "이미 본 것"으로 묻힌다. */
+    if (telegramOn) {
+      await saveSnapshot({
+        userId: uid,
+        generatedAt: data.generatedAt,
+        gaps: data.gaps,
+        sentiment: data.sentiment,
+        quotes: data.quotes,
+      });
+    }
 
     return {
       ok: failed.length === 0,
