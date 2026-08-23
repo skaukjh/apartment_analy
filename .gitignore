@@ -44,3 +44,6 @@ next-env.d.ts
 
 # 경계 원본(전처리 입력) — public/geo 산출물만 커밋
 scripts/*.json
+
+# 압축 원본 — 풀어놓은 폴더만 커밋한다
+docs/**/*.zip
