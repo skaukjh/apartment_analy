@@ -13,7 +13,9 @@ import {
   previewChunks,
 } from '@/lib/kakao/briefing';
 import { broadcast, type SendReport } from '@/lib/kakao/client';
+import { hasTelegram, sendTelegramText } from '@/lib/telegram/client';
 import { saveSnapshot } from '@/lib/store/market-data';
+import { buildBriefingDiff, loadPreviousBriefingSnapshot } from '@/lib/analysis/briefing-diff';
 import { getAdminClient } from '@/lib/store/supabase';
 import { env } from '@/lib/env';
 import { loadLastBriefingHash, saveLastBriefingHash } from '@/lib/store/briefing-mark';
@@ -62,6 +64,17 @@ export async function runBriefing(
 
   const data = await buildDashboard({ userId: options.userId });
   const briefing = buildBriefing(data);
+
+  /* 지난 브리핑 대비 변화 — 있으면 맨 앞 섹션으로 넣는다.
+     text 계산 전에 넣어야 해시·본문에 함께 반영된다. */
+  const prevSnap = await loadPreviousBriefingSnapshot().catch(() => null);
+  if (prevSnap) {
+    const diff = buildBriefingDiff(data, prevSnap.snap);
+    if (diff.length > 0) {
+      briefing.sections.unshift({ heading: '🔄 지난 브리핑 대비', lines: diff.slice(0, 6) });
+    }
+  }
+
   const text = briefingToText(briefing);
   // 'image' 는 요약(텍스트 2건)으로 통합됐다 — 본문 1건 + 링크 포함 마무리 1건.
   const rawFormat = data.config.briefingFormat ?? 'summary';
@@ -85,9 +98,17 @@ export async function runBriefing(
     return { ok: true, ...base };
   }
 
-  if (!data.config.kakaoBriefingEnabled && !options.force) {
-    await logBriefing('skipped', '설정에서 카카오 브리핑이 꺼져 있습니다.');
-    return { ok: true, ...base, skippedReason: '설정에서 카카오 브리핑이 비활성화되어 있습니다.' };
+  /* 발송 채널 결정 — 카카오와 텔레그램은 독립적으로 켜고 끈다.
+     force(수동 발송)는 꺼져 있어도 설정된 채널 전부에 보낸다. */
+  const kakaoOn = data.config.kakaoBriefingEnabled || Boolean(options.force);
+  const telegramOn =
+    hasTelegram() &&
+    Boolean(data.config.telegramChatId) &&
+    (data.config.telegramEnabled || Boolean(options.force));
+
+  if (!kakaoOn && !telegramOn) {
+    await logBriefing('skipped', '카카오·텔레그램 브리핑이 모두 꺼져 있습니다.');
+    return { ok: true, ...base, skippedReason: '설정에서 브리핑 발송이 비활성화되어 있습니다.' };
   }
 
   try {
@@ -99,10 +120,10 @@ export async function runBriefing(
     const lastHash = await loadLastBriefingHash(uid);
     const unchanged = lastHash !== null && lastHash === contentHash;
 
+    const todayUrl = `${env.appUrl.replace(/\/$/, '')}/today`;
     let templates;
     if (unchanged) {
-      const target = `${env.appUrl.replace(/\/$/, '')}/today`;
-      const link = { web_url: target, mobile_web_url: target };
+      const link = { web_url: todayUrl, mobile_web_url: todayUrl };
       templates = [
         {
           object_type: 'text' as const,
@@ -117,10 +138,34 @@ export async function runBriefing(
     } else {
       templates = briefingToSingleTemplate(briefing, env.appUrl, data, options.slot);
     }
-    const reports = await broadcast(templates, {
-      recipientIds: options.recipientIds,
-      userId: options.userId ?? 'default',
-    });
+
+    const reports: SendReport[] = [];
+
+    if (kakaoOn) {
+      try {
+        reports.push(
+          ...(await broadcast(templates, {
+            recipientIds: options.recipientIds,
+            userId: options.userId ?? 'default',
+          })),
+        );
+      } catch (e) {
+        // 수신자가 없는 등 카카오 쪽 실패가 텔레그램 발송을 막지 않게 한다
+        reports.push({ recipient: '카카오', ok: false, error: (e as Error).message });
+      }
+    }
+
+    if (telegramOn) {
+      const tgText = unchanged
+        ? `[${briefing.title}]\n직전 브리핑과 내용이 동일합니다 (변동 없음).\n${todayUrl}`
+        : `${chunks.join('\n\n')}\n\n${todayUrl}`;
+      try {
+        await sendTelegramText(data.config.telegramChatId as string, tgText);
+        reports.push({ recipient: '텔레그램', ok: true });
+      } catch (e) {
+        reports.push({ recipient: '텔레그램', ok: false, error: (e as Error).message });
+      }
+    }
 
     const failed = reports.filter((r) => !r.ok);
     const summary = reports

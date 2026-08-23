@@ -48,6 +48,10 @@ export const env = {
   get kakaoRedirectUri() {
     return get('KAKAO_REDIRECT_URI');
   },
+  /** 텔레그램 봇 토큰 (@BotFather 발급) — 브리핑을 그룹/개인 대화로 발송 */
+  get telegramBotToken() {
+    return get('TELEGRAM_BOT_TOKEN');
+  },
   /** Vercel Cron 인증용 시크릿 */
   get cronSecret() {
     return get('CRON_SECRET');
@@ -92,5 +96,8 @@ export const featureFlags = {
   },
   get hasKakao() {
     return Boolean(env.kakaoRestKey);
+  },
+  get hasTelegram() {
+    return Boolean(env.telegramBotToken);
   },
 };

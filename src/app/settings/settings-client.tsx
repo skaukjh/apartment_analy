@@ -16,6 +16,7 @@ import {
   Wand2,
 } from 'lucide-react';
 import { formatArea, formatKrw } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { REGULATION_AS_OF, regulationOf } from '@/lib/analysis/regulation';
 import type { Holding, TargetApartment, UserConfig, WatchRegion } from '@/lib/types';
 import type { SigunguInfo } from '@/lib/regions';
@@ -45,7 +46,7 @@ interface Props {
   kakao: { connected: boolean; reason?: string; recipients: KakaoRecipientView[] };
   /** 로그인 계정 정보 (설정은 로그인해야 진입 가능) */
   account: { email: string; canImportLegacy: boolean; isAdmin: boolean };
-  flags: Record<'supabase' | 'molit' | 'ecos' | 'reb' | 'naver' | 'kakao', boolean>;
+  flags: Record<'supabase' | 'molit' | 'ecos' | 'reb' | 'naver' | 'kakao' | 'telegram', boolean>;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -281,6 +282,53 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
       toast.error((e as Error).message);
     } finally {
       setSending(false);
+    }
+  }
+
+  /* ---------------- 텔레그램 ---------------- */
+  const [tgDetecting, setTgDetecting] = useState(false);
+  const [tgTesting, setTgTesting] = useState(false);
+  const [tgChats, setTgChats] = useState<Array<{ chatId: string; title: string; type: string }>>(
+    [],
+  );
+  const [tgBot, setTgBot] = useState<{ username?: string }>({});
+
+  async function detectTelegram() {
+    setTgDetecting(true);
+    try {
+      const res = await fetch('/api/telegram/detect');
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error ?? '감지 실패');
+      setTgChats(json.chats ?? []);
+      setTgBot(json.bot ?? {});
+      if ((json.chats ?? []).length === 0) {
+        toast.info(
+          '감지된 대화가 없습니다. 봇에게 아무 메시지나 보내거나 그룹에 초대한 뒤 다시 시도하세요.',
+          { duration: 8000 },
+        );
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setTgDetecting(false);
+    }
+  }
+
+  async function testTelegram() {
+    setTgTesting(true);
+    try {
+      const res = await fetch('/api/telegram/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId: config.telegramChatId }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error ?? '테스트 발송 실패');
+      toast.success('텔레그램으로 테스트 메시지를 보냈습니다. 방을 확인하세요.');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setTgTesting(false);
     }
   }
 
@@ -1379,6 +1427,115 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
         )}
       </SectionCard>
 
+      {/* 텔레그램 브리핑 */}
+      <SectionCard
+        title={
+          <>
+            <Send className="size-4" /> 텔레그램 브리핑
+          </>
+        }
+        description="봇을 그룹에 초대하면 가족과 함께 받을 수 있습니다. 카카오와 별개로 켜고 끕니다."
+        badge={
+          config.telegramEnabled && config.telegramChatId ? (
+            <Badge variant="secondary">연결됨</Badge>
+          ) : (
+            <Badge variant="outline">미연결</Badge>
+          )
+        }
+      >
+        {!flags.telegram ? (
+          <Alert>
+            <AlertTitle>TELEGRAM_BOT_TOKEN 미설정</AlertTitle>
+            <AlertDescription className="text-[11px] leading-relaxed">
+              텔레그램에서 <strong>@BotFather</strong> 에게 <code>/newbot</code> 을 보내 봇을 만들면
+              토큰이 발급됩니다. 그 토큰을 Vercel 환경변수 <code>TELEGRAM_BOT_TOKEN</code> 에 추가한
+              뒤 이 화면을 새로고침하세요. 무료이고 검수·사업자 등록이 필요 없습니다.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <div className="space-y-4">
+            <Alert>
+              <AlertTitle>연결 방법</AlertTitle>
+              <AlertDescription className="text-[11px] leading-relaxed">
+                ① 브리핑을 받을 <strong>그룹 방에 봇을 초대</strong>하거나(가족 공유), 봇과{' '}
+                <strong>1:1 대화를 시작</strong>하세요
+                {tgBot.username ? ` (@${tgBot.username})` : ''}. ② 그 방에서 아무 메시지나 한 번
+                보내세요. ③ 아래 [대화 감지]를 누르면 방이 나타납니다 — 선택 후{' '}
+                <strong>저장</strong>하면 완료.
+              </AlertDescription>
+            </Alert>
+
+            <div className="flex flex-wrap items-end gap-2">
+              <Field label="chat_id" hint="대화 감지로 자동 입력됩니다" className="w-52">
+                <Input
+                  value={config.telegramChatId ?? ''}
+                  placeholder="-100123456789"
+                  className="tabular"
+                  onChange={(e) => patch({ telegramChatId: e.target.value.trim() || undefined })}
+                />
+              </Field>
+              <Button size="sm" variant="outline" onClick={detectTelegram} disabled={tgDetecting}>
+                {tgDetecting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Plus className="size-4" />
+                )}
+                대화 감지
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={testTelegram}
+                disabled={tgTesting || !config.telegramChatId}
+              >
+                {tgTesting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Send className="size-4" />
+                )}
+                테스트 발송
+              </Button>
+            </div>
+
+            {tgChats.length > 0 ? (
+              <div className="space-y-1.5">
+                <p className="text-muted-foreground text-[11px]">
+                  감지된 대화 — 클릭하면 chat_id 가 입력됩니다. 저장을 눌러야 반영됩니다.
+                </p>
+                {tgChats.map((c) => (
+                  <button
+                    key={c.chatId}
+                    type="button"
+                    onClick={() => patch({ telegramChatId: c.chatId })}
+                    className={cn(
+                      'hover:bg-muted/50 flex w-full items-center justify-between rounded-lg border p-2.5 text-left text-sm transition-colors',
+                      config.telegramChatId === c.chatId && 'border-foreground/40 bg-muted/60',
+                    )}
+                  >
+                    <span>
+                      {c.title}{' '}
+                      <span className="text-muted-foreground text-[11px]">
+                        (
+                        {c.type === 'private' ? '1:1 대화' : c.type === 'channel' ? '채널' : '그룹'}
+                        )
+                      </span>
+                    </span>
+                    <span className="tabular text-muted-foreground text-xs">{c.chatId}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <ToggleRow
+              label="텔레그램으로 일일 브리핑 발송"
+              hint="카카오와 같은 내용·같은 시각에 발송됩니다"
+              checked={config.telegramEnabled}
+              onChange={(v) => patch({ telegramEnabled: v })}
+            />
+          </div>
+        )}
+      </SectionCard>
+
       {/* 데이터 소스 키 상태 */}
       <SectionCard
         title="외부 데이터 소스 키"
@@ -1424,6 +1581,14 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
             url="https://developers.kakao.com"
             quota="쿼터는 개발자센터 앱 대시보드에서 확인"
             usedToday={apiUsage?.kakao}
+          />
+          <KeyRow
+            ok={flags.telegram}
+            label="텔레그램 봇"
+            env="TELEGRAM_BOT_TOKEN"
+            url="https://t.me/BotFather"
+            quota="무료 — 초당 30건 제한"
+            usedToday={apiUsage?.telegram}
           />
           <KeyRow
             ok={flags.supabase}

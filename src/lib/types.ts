@@ -103,6 +103,10 @@ export interface UserConfig {
   household: HouseholdProfile;
   /** 카카오 브리핑 수신 여부 */
   kakaoBriefingEnabled: boolean;
+  /** 텔레그램 브리핑 수신 여부 */
+  telegramEnabled: boolean;
+  /** 텔레그램 발송 대상 chat_id (그룹 또는 1:1 대화) */
+  telegramChatId?: string;
   /** 브리핑 발송 시각 (KST, 0~23) */
   briefingHour: number;
   /** 카카오톡 발송 형식. image = 전문 이미지 1장(기본), summary = 요약 2장, full = 전문 분할 */

@@ -15,7 +15,7 @@ import { getAdminClient } from './supabase';
 import { nowKst } from '@/lib/format';
 
 /** 집계 대상 소스 키 */
-export type ApiUsageSource = 'molit' | 'naver' | 'ecos' | 'reb' | 'kosis' | 'kakao';
+export type ApiUsageSource = 'molit' | 'naver' | 'ecos' | 'reb' | 'kosis' | 'kakao' | 'telegram';
 
 const pending = new Map<string, number>();
 let flushTimer: ReturnType<typeof setTimeout> | null = null;

@@ -61,6 +61,7 @@ export default async function SettingsPage() {
           reb: featureFlags.hasReb,
           naver: featureFlags.hasNaver,
           kakao: featureFlags.hasKakao,
+          telegram: featureFlags.hasTelegram,
         }}
       />
       {/* 소스 상태는 운영 정보라 관리자에게만 — 대시보드 분할 때 설정으로 옮겼다 */}

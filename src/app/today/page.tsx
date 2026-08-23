@@ -2,6 +2,7 @@ import { getSessionUser, resolveOpenAIKey } from '@/lib/auth/server';
 import Link from 'next/link';
 import { buildDashboardCached } from '@/lib/pipeline/dashboard';
 import { buildBriefing } from '@/lib/kakao/briefing';
+import { buildBriefingDiff, loadPreviousBriefingSnapshot } from '@/lib/analysis/briefing-diff';
 import { hasOpenAI } from '@/lib/ai/client';
 import { SectionCard } from '@/components/ui-bits';
 import { AiOutlookPanel } from './today-client';
@@ -20,6 +21,11 @@ export default async function TodayPage() {
   const data = await buildDashboardCached(sessionUser?.id ?? 'default');
   const ai = resolveOpenAIKey(sessionUser, data.config.openaiApiKey);
   const briefing = buildBriefing(data);
+
+  /* 지난 브리핑 이후 무엇이 달라졌는지 — 발송 때 저장된 스냅샷과 비교 */
+  const prevSnap = await loadPreviousBriefingSnapshot().catch(() => null);
+  const diff = prevSnap ? buildBriefingDiff(data, prevSnap.snap) : [];
+  const prevAt = prevSnap ? new Date(prevSnap.capturedAt) : null;
 
   return (
     <div className="mx-auto max-w-[1100px] px-4 py-6">
@@ -40,7 +46,35 @@ export default async function TodayPage() {
         <AiOutlookPanel enabled={hasOpenAI() || ai.allowed} canRefresh={ai.allowed} />
       </div>
 
-      <SectionCard title="오늘의 브리핑 전문" description="카카오톡으로 발송되는 내용입니다.">
+      {prevSnap ? (
+        <div className="mb-6">
+          <SectionCard
+            title="🔄 지난 브리핑 이후 변화"
+            description={
+              prevAt
+                ? `${prevAt.getMonth() + 1}월 ${prevAt.getDate()}일 ${prevAt.getHours()}시 발송분과 비교`
+                : undefined
+            }
+          >
+            {diff.length > 0 ? (
+              <ul className="space-y-1">
+                {diff.map((l, i) => (
+                  <li key={i} className="text-sm">
+                    · {l}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-muted-foreground text-sm">시세·갭·과열점수 모두 변동 없습니다.</p>
+            )}
+          </SectionCard>
+        </div>
+      ) : null}
+
+      <SectionCard
+        title="오늘의 브리핑 전문"
+        description="카카오톡·텔레그램으로 발송되는 내용입니다."
+      >
         <div className="space-y-5">
           {briefing.sections.map((s) => (
             <div key={s.heading}>
