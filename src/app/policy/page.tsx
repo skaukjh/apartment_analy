@@ -5,7 +5,6 @@ import { AutoRefresh } from '@/components/auto-refresh';
 import { PolicyDigestPanel } from '@/components/policy/policy-digest-panel';
 import { CatalystSection } from '@/components/dashboard/catalyst-section';
 import { NewsSection } from '@/components/dashboard/news-section';
-import { ScheduleSection } from '@/components/dashboard/schedule-section';
 import { CommunitySection, PressSection } from '@/components/dashboard/press-community';
 
 export const dynamic = 'force-dynamic';
@@ -36,20 +35,17 @@ export default async function PolicyPage() {
       {/* 정책 요약 — 이 페이지의 본론 */}
       <PolicyDigestPanel canRefresh={canRefreshAi} />
 
-      {/* 공식 발표와 관련 뉴스 */}
+      {/* 공식 발표(+주요 일정 탭)와 관련 뉴스 */}
       <div className="grid gap-6 xl:grid-cols-2">
-        <PressSection press={data.press} />
+        <PressSection press={data.press} schedule={data.schedule} />
         <NewsSection news={data.news} />
       </div>
 
       {/* 내 지역에 걸린 호재·악재 */}
       <CatalystSection catalysts={data.catalysts} regions={catalystCoverageRegions(data.config)} />
 
-      {/* 여론과 일정 */}
-      <div className="grid gap-6 xl:grid-cols-2">
-        <CommunitySection posts={data.community} />
-        <ScheduleSection schedule={data.schedule} />
-      </div>
+      {/* 여론 */}
+      <CommunitySection posts={data.community} />
     </div>
   );
 }

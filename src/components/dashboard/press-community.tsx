@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { ExternalLink, Landmark, MessageSquare, Star } from 'lucide-react';
-import type { CommunityPost, NewsItem } from '@/lib/types';
+import type { CommunityPost, NewsItem, ScheduleEvent } from '@/lib/types';
 import { OFFICIAL_LINKS } from '@/lib/sources/gov';
+import { ScheduleList, upcomingEvents } from '@/components/dashboard/schedule-section';
 import { EmptyHint, SectionCard } from '@/components/ui-bits';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -19,8 +20,20 @@ function relativeTime(iso: string): string {
   return iso.slice(0, 10);
 }
 
-/** 정부 부처·공공기관 공식 발표 */
-export function PressSection({ press }: { press: NewsItem[] }) {
+/**
+ * 정부 부처·공공기관 공식 발표 + 주요 일정.
+ * 일정은 별도 카드였으나 "정책 흐름을 한 자리에서" 보게 탭으로 합쳤다.
+ */
+export function PressSection({
+  press,
+  schedule = [],
+}: {
+  press: NewsItem[];
+  schedule?: ScheduleEvent[];
+}) {
+  const [tab, setTab] = useState('press');
+  const upcoming = upcomingEvents(schedule);
+
   return (
     <SectionCard
       title={
@@ -31,62 +44,77 @@ export function PressSection({ press }: { press: NewsItem[] }) {
       description="국토교통부·금융위원회·기획재정부·한국은행·금감원 발표를 표적 수집합니다. 정책은 원문 확인이 가장 정확합니다."
       badge={<Badge variant="secondary">{press.length}건</Badge>}
     >
-      {press.length === 0 ? (
-        <EmptyHint>
-          수집된 공식 발표가 없습니다. 네이버 검색 API 키를 확인하거나, 아래 원문 링크에서 직접
-          확인하세요.
-        </EmptyHint>
-      ) : (
-        <ul className="divide-y">
-          {press.slice(0, 10).map((n) => (
-            <li key={n.url} className="py-2">
-              <a
-                href={n.url}
-                target="_blank"
-                rel="noreferrer"
-                className="group flex items-start gap-2"
-              >
-                {/* 정부 도메인 원문만 '공식', 언론 보도는 '보도'로 구분한다 */}
-                <Badge
-                  variant={n.official ? 'secondary' : 'outline'}
-                  className="mt-0.5 shrink-0 text-[10px]"
-                >
-                  {n.official ? '공식' : '보도'} · {n.agency ?? '정부'}
-                </Badge>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start gap-1.5">
-                    <span className="text-sm leading-snug group-hover:underline">{n.title}</span>
-                    <ExternalLink className="text-muted-foreground mt-0.5 size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
-                  </div>
-                  <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-[11px]">
-                    <span>{n.source}</span>
-                    <span>·</span>
-                    <span>{relativeTime(n.publishedAt)}</span>
-                  </div>
-                </div>
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList>
+          <TabsTrigger value="press">공식 발표 {press.length}</TabsTrigger>
+          <TabsTrigger value="schedule">주요 일정 {upcoming.length}</TabsTrigger>
+        </TabsList>
 
-      <div className="mt-3 border-t pt-3">
-        <h4 className="mb-1.5 text-xs font-semibold">원문 바로가기</h4>
-        <div className="flex flex-wrap gap-1.5">
-          {OFFICIAL_LINKS.map((l) => (
-            <a
-              key={l.url}
-              href={l.url}
-              target="_blank"
-              rel="noreferrer"
-              title={l.note}
-              className="text-muted-foreground hover:bg-muted hover:text-foreground rounded-full border px-2.5 py-1 text-[11px] transition-colors"
-            >
-              {l.name}
-            </a>
-          ))}
-        </div>
-      </div>
+        <TabsContent value="press" className="mt-2">
+          {press.length === 0 ? (
+            <EmptyHint>
+              수집된 공식 발표가 없습니다. 네이버 검색 API 키를 확인하거나, 아래 원문 링크에서 직접
+              확인하세요.
+            </EmptyHint>
+          ) : (
+            <ul className="divide-y">
+              {press.slice(0, 10).map((n) => (
+                <li key={n.url} className="py-2">
+                  <a
+                    href={n.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group flex items-start gap-2"
+                  >
+                    {/* 정부 도메인 원문만 '공식', 언론 보도는 '보도'로 구분한다 */}
+                    <Badge
+                      variant={n.official ? 'secondary' : 'outline'}
+                      className="mt-0.5 shrink-0 text-[10px]"
+                    >
+                      {n.official ? '공식' : '보도'} · {n.agency ?? '정부'}
+                    </Badge>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start gap-1.5">
+                        <span className="text-sm leading-snug group-hover:underline">
+                          {n.title}
+                        </span>
+                        <ExternalLink className="text-muted-foreground mt-0.5 size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+                      </div>
+                      <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-[11px]">
+                        <span>{n.source}</span>
+                        <span>·</span>
+                        <span>{relativeTime(n.publishedAt)}</span>
+                      </div>
+                    </div>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="mt-3 border-t pt-3">
+            <h4 className="mb-1.5 text-xs font-semibold">원문 바로가기</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {OFFICIAL_LINKS.map((l) => (
+                <a
+                  key={l.url}
+                  href={l.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={l.note}
+                  className="text-muted-foreground hover:bg-muted hover:text-foreground rounded-full border px-2.5 py-1 text-[11px] transition-colors"
+                >
+                  {l.name}
+                </a>
+              ))}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="schedule" className="mt-2">
+          <ScheduleList schedule={schedule} />
+        </TabsContent>
+      </Tabs>
     </SectionCard>
   );
 }

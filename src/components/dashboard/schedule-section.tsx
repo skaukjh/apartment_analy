@@ -17,32 +17,34 @@ const CATEGORY_CLASS: Record<ScheduleEvent['category'], string> = {
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
-export function ScheduleSection({ schedule }: { schedule: ScheduleEvent[] }) {
+/** 다가오는 주요 일정 (필터 규칙 공유용) */
+export function upcomingEvents(schedule: ScheduleEvent[]): ScheduleEvent[] {
   const today = todayKst();
-  const upcoming = schedule
+  return schedule
     .filter((e) => e.date >= today)
     .filter((e) => e.importance !== 'low')
     .slice(0, 14);
+}
+
+/**
+ * 일정 목록만 렌더링 — 공식 발표·정책 카드의 탭에서도 쓴다.
+ * 카드 없이 목록만 필요할 때 이걸 쓰고, 독립 카드는 ScheduleSection.
+ */
+export function ScheduleList({ schedule }: { schedule: ScheduleEvent[] }) {
+  const today = todayKst();
+  const upcoming = upcomingEvents(schedule);
 
   if (upcoming.length === 0) {
-    return (
-      <SectionCard title="주요 일정">
-        <EmptyHint>향후 90일 내 주요 일정이 없습니다.</EmptyHint>
-      </SectionCard>
-    );
+    return <EmptyHint>향후 90일 내 주요 일정이 없습니다.</EmptyHint>;
   }
 
   return (
-    <SectionCard
-      title="주요 일정"
-      description={
-        <>
-          <strong className="text-primary font-semibold">일정을 누르면</strong> 그 결과에 따라
-          부동산 시장이 어느 방향으로 움직이는지{' '}
-          <strong className="text-primary font-semibold">시나리오별</strong>로 볼 수 있습니다.
-        </>
-      }
-    >
+    <>
+      <p className="text-muted-foreground mb-2 text-xs">
+        <strong className="text-primary font-semibold">일정을 누르면</strong> 그 결과에 따라 부동산
+        시장이 어느 방향으로 움직이는지{' '}
+        <strong className="text-primary font-semibold">시나리오별</strong>로 볼 수 있습니다.
+      </p>
       <ol className="relative space-y-1 border-l pl-5">
         {upcoming.map((e) => {
           const d = new Date(e.date);
@@ -86,6 +88,15 @@ export function ScheduleSection({ schedule }: { schedule: ScheduleEvent[] }) {
           );
         })}
       </ol>
+    </>
+  );
+}
+
+/** 독립 카드 버전 — 정책 페이지에서는 공식 발표 카드의 탭으로 통합됐다 */
+export function ScheduleSection({ schedule }: { schedule: ScheduleEvent[] }) {
+  return (
+    <SectionCard title="주요 일정">
+      <ScheduleList schedule={schedule} />
     </SectionCard>
   );
 }
