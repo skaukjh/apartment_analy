@@ -217,7 +217,7 @@ export function GapSection({ config, quotes }: Props) {
   if (pairs.length === 0) {
     return (
       <SectionCard
-        title="보유 ↔ 목표 시세 갭"
+        title="내 집 ↔ 옮길 집 비교"
         description="보유 아파트와 목표 아파트를 등록하면 실거래 기준 갭과 세후 실소요 자금을 계산합니다."
       >
         <EmptyHint>
@@ -232,13 +232,14 @@ export function GapSection({ config, quotes }: Props) {
 
   return (
     <SectionCard
-      title="보유 ↔ 목표 시세 갭"
+      title="내 집 ↔ 옮길 집 비교"
       description={
         <>
-          갭은 단순 시세 차이이고,{' '}
-          <strong className="text-primary font-semibold">실소요 자금</strong>은
-          양도세·취득세·중개보수까지 반영한{' '}
-          <strong className="text-primary font-semibold">실제로 더 필요한 현금</strong>입니다.
+          대출은 은행에서 빌리면 되니, 진짜 중요한 건{' '}
+          <strong className="text-primary font-semibold">💰 내가 준비할 현금</strong>입니다.
+          세금·수수료와 기존 대출 갚는 것까지 계산해서{' '}
+          <strong className="text-primary font-semibold">앞으로 얼마를 모아야 하는지</strong>{' '}
+          알려드립니다.
         </>
       }
       badge={
@@ -312,7 +313,7 @@ export function GapSection({ config, quotes }: Props) {
 
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div>
-                    <div className="text-muted-foreground text-xs">보유 시세</div>
+                    <div className="text-muted-foreground text-xs">내 집 값</div>
                     <div className="tabular font-semibold">{formatKrw(p.holdingPrice)}</div>
                     <div className="text-muted-foreground text-[11px]">
                       {basisLabel(hq?.basis ?? 'unknown')}
@@ -331,7 +332,7 @@ export function GapSection({ config, quotes }: Props) {
                     ) : null}
                   </div>
                   <div>
-                    <div className="text-muted-foreground text-xs">목표 시세</div>
+                    <div className="text-muted-foreground text-xs">옮길 집 값</div>
                     <div className="tabular font-semibold">{formatKrw(p.targetPrice)}</div>
                     <div className="text-primary tabular text-[11px] font-medium">
                       보유 대비 {p.ratio.toFixed(2)}배
@@ -353,46 +354,50 @@ export function GapSection({ config, quotes }: Props) {
                     ) : null}
                   </div>
                   <div>
-                    <div className="text-muted-foreground text-xs">시세 갭</div>
+                    <div className="text-muted-foreground text-xs">두 집의 가격 차이</div>
                     <div className="tabular text-rise font-semibold">{formatKrw(p.gap)}</div>
                     <div className="text-muted-foreground text-[11px]">
                       보유 대비 {p.ratio.toFixed(2)}배
                     </div>
                   </div>
+                  {/* 이 칸이 카드의 결론이다 — 대출은 은행이 주는 돈이고, 사용자가 실제로
+                      모아야 하는 건 "내가 준비할 현금"뿐이다. 그래서 이 숫자를 가장 크게 둔다. */}
                   <div>
-                    <div className="text-muted-foreground text-xs">세후 실소요 자금</div>
-                    <div className="tabular text-primary text-lg font-bold underline decoration-dotted underline-offset-4">
-                      {formatKrw(p.realCashNeeded)}
+                    <div className="text-muted-foreground text-xs">💰 내가 준비할 현금</div>
+                    <div className="tabular text-primary text-2xl leading-tight font-extrabold underline decoration-dotted underline-offset-4">
+                      {formatKrw(p.grossByCash)}
                     </div>
-                    {/* 실소요(순 기준)에서 조달총액(기존 부채 상환 포함)으로 넘어가는 다리를
-                        보여준다. 이 줄이 없으면 "6.4억"인데 아래에 "내 돈 8.5억 + 대출 4억"이
-                        붙어 산수가 안 맞는 것처럼 보인다는 피드백이 있었다. */}
-                    {p.holding.loanBalance + p.holding.leaseDeposit > 0 ? (
-                      <div className="text-muted-foreground text-[11px]">
-                        + 기존{' '}
-                        {p.holding.loanBalance > 0
-                          ? `대출 ${formatKrw(p.holding.loanBalance, { compact: true })}`
-                          : ''}
-                        {p.holding.loanBalance > 0 && p.holding.leaseDeposit > 0 ? ' · ' : ''}
-                        {p.holding.leaseDeposit > 0
-                          ? `보증금 ${formatKrw(p.holding.leaseDeposit, { compact: true })}`
-                          : ''}{' '}
-                        상환 = 조달 {formatKrw(p.grossNeed, { compact: true })}
+                    {/* 보유 현금과의 차이 = 앞으로 얼마를 더 모아야 하는가 */}
+                    {config.household.cashAssets > 0 ? (
+                      <div
+                        className={cn(
+                          'text-[11px] font-semibold',
+                          p.grossByCash > config.household.cashAssets ? 'text-fall' : 'text-rise',
+                        )}
+                      >
+                        {p.grossByCash > config.household.cashAssets
+                          ? `보유 ${formatKrw(config.household.cashAssets, { compact: true })} → ${formatKrw(p.grossByCash - config.household.cashAssets, { compact: true })} 더 모아야 함`
+                          : `보유 현금으로 실행 가능 (여유 ${formatKrw(config.household.cashAssets - p.grossByCash, { compact: true })})`}
                       </div>
                     ) : null}
-                    <div className="text-[11px]">
-                      <span className="text-primary font-semibold">
-                        내 돈 {formatKrw(p.grossByCash, { compact: true })}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {' '}
-                        + 신규 대출 {formatKrw(p.grossByLoan, { compact: true })}
-                      </span>
-                    </div>
                     <div className="text-muted-foreground text-[11px]">
-                      갭 대비 +{formatKrw(p.realCashNeeded - p.gap)} ·{' '}
+                      + 은행 대출 {formatKrw(p.grossByLoan, { compact: true })}
+                      <span className="text-muted-foreground/70">
+                        {' '}
+                        (한도 {formatKrw(p.loanLimit, { compact: true })})
+                      </span>{' '}
+                      = 조달 {formatKrw(p.grossNeed, { compact: true })}
+                    </div>
+                    {/* 실소요(순 기준)는 참고값으로 내린다 — 조달총액과 기준이 달라
+                        나란히 크게 두면 산수가 안 맞아 보인다는 피드백이 있었다. */}
+                    <div className="text-muted-foreground text-[11px]">
+                      세후 실소요 {formatKrw(p.realCashNeeded, { compact: true })}
+                      {p.holding.loanBalance + p.holding.leaseDeposit > 0
+                        ? ` + 기존 부채 상환 ${formatKrw(p.holding.loanBalance + p.holding.leaseDeposit, { compact: true })}`
+                        : ''}{' '}
+                      ·{' '}
                       <strong className="text-primary font-semibold">
-                        {open ? '접기' : '클릭해 세금·수수료 분해 보기'}
+                        {open ? '접기' : '클릭해 상세'}
                       </strong>
                     </div>
                   </div>
@@ -404,18 +409,20 @@ export function GapSection({ config, quotes }: Props) {
                   <div className="grid gap-6 lg:grid-cols-2">
                     {/* 매도 측 */}
                     <div>
-                      <h4 className="mb-2 text-sm font-semibold">매도 — {p.holding.complexName}</h4>
+                      <h4 className="mb-2 text-sm font-semibold">
+                        집 팔 때 — {p.holding.complexName}
+                      </h4>
                       <CostTable
                         rows={[
-                          ['매도 예상가', p.holdingPrice, 'plus'],
-                          ['양도소득세', -p.cgt.incomeTax],
-                          ['지방소득세', -p.cgt.localTax],
-                          ['중개보수 (VAT 포함)', -p.sellCost.brokerFee],
-                          ['상환할 대출 잔액', -p.holding.loanBalance],
-                          ['반환할 보증금', -p.holding.leaseDeposit],
+                          ['내 집 파는 값', p.holdingPrice, 'plus'],
+                          ['양도소득세 (집 팔 때 내는 세금)', -p.cgt.incomeTax],
+                          ['지방소득세 (양도세의 10%)', -p.cgt.localTax],
+                          ['부동산 중개수수료', -p.sellCost.brokerFee],
+                          ['갚아야 할 기존 대출', -p.holding.loanBalance],
+                          ['세입자에게 돌려줄 보증금', -p.holding.leaseDeposit],
                         ]}
                         total={[
-                          '매도 후 순현금',
+                          '집 팔고 손에 남는 돈',
                           p.netFromSale - p.holding.loanBalance - p.holding.leaseDeposit,
                         ]}
                       />
@@ -454,20 +461,25 @@ export function GapSection({ config, quotes }: Props) {
 
                     {/* 매수 측 */}
                     <div>
-                      <h4 className="mb-2 text-sm font-semibold">매수 — {p.target.complexName}</h4>
+                      <h4 className="mb-2 text-sm font-semibold">
+                        집 살 때 — {p.target.complexName}
+                      </h4>
                       <CostTable
                         rows={[
-                          ['매수 예상가', -p.targetPrice],
+                          ['옮길 집 사는 값', -p.targetPrice],
                           [`취득세 (${p.acq.rate}%)`, -p.acq.acquisitionTax],
                           ['지방교육세', -p.acq.localEducationTax],
                           ['농어촌특별세', -p.acq.ruralTax],
-                          ['중개보수 (VAT 포함)', -p.buyCost.brokerFee],
-                          ['법무사·등기', -p.buyCost.registrationFee],
-                          ['인지세', -p.buyCost.stampTax],
-                          ['국민주택채권 할인', -p.buyCost.bondDiscount],
-                          ['근저당 설정 등', -p.buyCost.movingEtc],
+                          ['부동산 중개수수료', -p.buyCost.brokerFee],
+                          ['등기 비용 (법무사)', -p.buyCost.registrationFee],
+                          ['인지세 (계약서에 붙이는 세금)', -p.buyCost.stampTax],
+                          ['국민주택채권 (등기 때 의무 매입)', -p.buyCost.bondDiscount],
+                          ['대출 근저당 설정비 등', -p.buyCost.movingEtc],
                         ]}
-                        total={['매수 총 소요', -(p.targetPrice + p.acq.total + p.buyCost.total)]}
+                        total={[
+                          '옮길 집에 드는 돈 합계',
+                          -(p.targetPrice + p.acq.total + p.buyCost.total),
+                        ]}
                       />
                       <NoteList
                         notes={[...p.acq.notes.slice(0, 2), ...p.buyCost.notes.slice(0, 1)]}
@@ -479,7 +491,7 @@ export function GapSection({ config, quotes }: Props) {
 
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div className="bg-background rounded-md border px-3 py-2">
-                      <div className="text-muted-foreground text-xs">총 마찰비용 (세금+수수료)</div>
+                      <div className="text-muted-foreground text-xs">세금·수수료 합계</div>
                       <div className="tabular text-fall font-semibold">{formatKrw(p.friction)}</div>
                       <div className="text-muted-foreground text-[11px]">
                         매수가의 {formatPct((p.friction / p.targetPrice) * 100, 2)}
@@ -493,10 +505,22 @@ export function GapSection({ config, quotes }: Props) {
                     <div className="bg-background rounded-md border px-3 py-2">
                       {/* 사용자가 실제로 준비해야 하는 건 "내 돈"이다 — 대출로 채워지는 몫을
                           뺀 자기자본을 헤드라인으로 올리고, 조달 총액은 보조 줄로 내린다 */}
-                      <div className="text-muted-foreground text-xs">내 돈 (자기자본 필요액)</div>
-                      <div className="tabular text-primary font-semibold">
+                      <div className="text-muted-foreground text-xs">💰 내가 준비할 현금</div>
+                      <div className="tabular text-primary text-xl font-extrabold">
                         {formatKrw(p.grossByCash)}
                       </div>
+                      {config.household.cashAssets > 0 ? (
+                        <div
+                          className={cn(
+                            'text-[11px] font-semibold',
+                            p.grossByCash > config.household.cashAssets ? 'text-fall' : 'text-rise',
+                          )}
+                        >
+                          {p.grossByCash > config.household.cashAssets
+                            ? `보유 ${formatKrw(config.household.cashAssets, { compact: true })} → ${formatKrw(p.grossByCash - config.household.cashAssets, { compact: true })} 더 모아야 함`
+                            : '보유 현금으로 실행 가능'}
+                        </div>
+                      ) : null}
                       <div className="text-muted-foreground text-[11px]">
                         신규 대출 {formatKrw(p.grossByLoan, { compact: true })}
                         <span className="text-muted-foreground/70">

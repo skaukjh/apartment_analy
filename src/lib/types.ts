@@ -605,8 +605,17 @@ export interface GapSummary {
   gapBefore?: number;
   /** 갭 변화 (원, 음수면 갭 축소 = 갈아타기 유리) */
   gapDelta?: number;
-  /** 세후 실제 필요 자금 (원) */
+  /** 세후 실제 필요 자금 (원) — 기존 대출·보증금 상환은 뺀 순 기준 */
   realCashNeeded: number;
+  /** 목표 주택 기준 대출 한도 (원) */
+  loanLimit?: number;
+  /** 기존 대출·보증금 상환까지 포함해 실제로 조달해야 하는 총액 (원) */
+  totalNeeded?: number;
+  /**
+   * 내가 직접 모아야 하는 현금 (원) = 조달 총액 − 대출 한도.
+   * 대출은 은행에서 나오므로 사용자가 실제로 준비해야 하는 건 이 값이다.
+   */
+  cashNeeded?: number;
 }
 
 export interface SourceStatus {

@@ -43,6 +43,8 @@ import { tradePriceOf } from '@/lib/analysis/price-basis';
 import { calcAcquisitionTaxFor } from '@/lib/tax/acquisition';
 import { calcTransactionCost } from '@/lib/tax/transaction-costs';
 import { calcCapitalGainsTax } from '@/lib/tax/capital-gains';
+import { calcLoanLimit } from '@/lib/tax/loan-limit';
+import { regulationOf } from '@/lib/analysis/regulation';
 
 /* ------------------------------------------------------------------ */
 /* 시세 산출                                                            */
@@ -159,7 +161,27 @@ function buildGaps(config: UserConfig, quotes: Record<string, PriceQuote>): GapS
       const netFromSale = holdingPrice - cgt.total - sellCost.total;
       const realCashNeeded = targetPrice + acq.total + buyCost.total - netFromSale;
 
+      /* 사용자가 실제로 모아야 하는 현금까지 여기서 계산해 둔다.
+         대출은 은행에서 나오므로 "내 돈"이 결론이고, 화면·브리핑이 같은 값을 쓰도록
+         한곳에서 만든다 (예전엔 화면마다 따로 계산해 값이 어긋날 여지가 있었다). */
+      const reg = regulationOf(target.lawdCd);
+      const loanLimit = calcLoanLimit({
+        price: targetPrice,
+        regulated: config.household.targetIsRegulated || reg.adjusted,
+        metro: reg.metro,
+        retainedHouseCount: 0,
+        firstTimeBuyer: config.household.firstTimeBuyer,
+        annualIncome: config.household.annualIncome,
+        otherDebtAnnualPayment: config.household.otherDebtAnnualPayment,
+        rate: holding.loanRate || 4,
+      }).limit;
+      const totalNeeded = realCashNeeded + holding.loanBalance + holding.leaseDeposit;
+      const cashNeeded = Math.max(0, totalNeeded - Math.min(loanLimit, Math.max(0, totalNeeded)));
+
       gaps.push({
+        loanLimit,
+        totalNeeded,
+        cashNeeded,
         holdingId: holding.id,
         holdingName: `${holding.complexName} ${formatArea(holding.areaM2)}`,
         targetId: target.id,

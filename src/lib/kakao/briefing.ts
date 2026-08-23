@@ -46,15 +46,20 @@ export function buildBriefing(data: DashboardData): Briefing {
     const lines = [
       `보유 ${primaryGap.holdingName}: ${formatKrw(primaryGap.holdingPrice, { compact: true })}`,
       `목표 ${primaryGap.targetName}: ${formatKrw(primaryGap.targetPrice, { compact: true })}`,
-      `시세 갭: ${formatKrw(primaryGap.gap, { compact: true })} (보유 대비 ${primaryGap.ratio.toFixed(2)}배)`,
-      `세금·중개비 반영 실소요: ${formatKrw(primaryGap.realCashNeeded, { compact: true })}`,
+      `두 집의 가격 차이: ${formatKrw(primaryGap.gap, { compact: true })} (내 집의 ${primaryGap.ratio.toFixed(2)}배)`,
+      `세금·수수료까지 더해 더 드는 돈: ${formatKrw(primaryGap.realCashNeeded, { compact: true })}`,
     ];
+    if (primaryGap.cashNeeded !== undefined) {
+      lines.push(
+        `내가 모아야 할 돈: ${formatKrw(primaryGap.cashNeeded, { compact: true })} (은행 대출 ${formatKrw(primaryGap.loanLimit ?? 0, { compact: true })} 받는다고 가정)`,
+      );
+    }
     if (data.gaps.length > 1) {
-      /* 차순위 후보도 배율을 함께 — 갭 금액만으로는 상급지 체감이 안 온다 */
+      /* 차순위 후보도 배율을 함께 — 금액만으로는 상급지 체감이 안 온다 */
       const others = data.gaps.slice(1);
       const min = others.reduce((a, b) => (a.gap <= b.gap ? a : b));
       lines.push(
-        `그 외 후보 ${others.length}건 · 최소 갭 ${formatEok(min.gap)} (보유 대비 ${min.ratio.toFixed(2)}배)`,
+        `다른 후보 ${others.length}곳 · 가장 가까운 곳과 ${formatEok(min.gap)} 차이 (내 집의 ${min.ratio.toFixed(2)}배)`,
       );
     }
     sections.push({ heading: '🏠 갈아타기 갭', lines });
@@ -242,8 +247,14 @@ export function briefingToKakaoGapTemplate(appUrl: string, data: DashboardData):
       `🎯 목표 ${label(primaryGap.targetId, primaryGap.targetName)} ${formatKrw(primaryGap.targetPrice, { compact: true })}`,
     );
     lines.push(
-      `📐 갭 ${formatEok(primaryGap.gap)} (보유 대비 ${primaryGap.ratio.toFixed(2)}배) · 실소요 ${formatEok(primaryGap.realCashNeeded)}`,
+      `📐 가격 차이 ${formatEok(primaryGap.gap)} (내 집의 ${primaryGap.ratio.toFixed(2)}배)`,
     );
+    /* 대출은 은행에서 나오니, 매일 확인할 값은 "내가 모아야 할 돈"이다 */
+    if (primaryGap.cashNeeded !== undefined) {
+      lines.push(
+        `💰 내가 모을 돈 ${formatEok(primaryGap.cashNeeded)} (대출 ${formatEok(primaryGap.loanLimit ?? 0)} 가정)`,
+      );
+    }
     if (primaryGap.gapDelta !== undefined) {
       lines.push(
         `${primaryGap.gapDelta < 0 ? '📉 전주 대비 갭 축소' : '📈 전주 대비 갭 확대'} ${formatEok(Math.abs(primaryGap.gapDelta))}`,
@@ -252,7 +263,7 @@ export function briefingToKakaoGapTemplate(appUrl: string, data: DashboardData):
     if (data.gaps.length > 1) {
       const second = data.gaps[1];
       lines.push(
-        `2순위 ${label(second.targetId, second.targetName)} 갭 ${formatEok(second.gap)}(${second.ratio.toFixed(2)}배)`,
+        `2순위 ${label(second.targetId, second.targetName)} 차이 ${formatEok(second.gap)}(${second.ratio.toFixed(2)}배)`,
       );
     }
   } else {

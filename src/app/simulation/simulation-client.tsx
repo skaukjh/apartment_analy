@@ -208,11 +208,14 @@ export function SimulationClient({ config, quotes }: Props) {
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 px-4 py-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">하락장 갈아타기 시뮬레이션</h1>
+        <h1 className="text-2xl font-bold tracking-tight">집값이 내리면 어떻게 될까?</h1>
         <p className="text-muted-foreground text-sm">
-          하락장에서는 상급지의 절대 낙폭이 커서 갭이 줄어듭니다. 다만 세금·중개보수 같은 마찰비용은
-          거의 그대로여서, 갭 축소분이 마찰비용을 넘어서는 지점부터 갈아타기가 실질적으로
-          유리해집니다.
+          집값이 내릴 때는 비싼 집이 더 많이 떨어져서 두 집의 가격 차이가 줄어듭니다. 대신
+          세금·수수료는 거의 그대로라,{' '}
+          <strong className="text-foreground">
+            줄어든 가격 차이가 세금·수수료보다 커지는 순간
+          </strong>
+          부터 옮기는 게 이득입니다.
         </p>
       </div>
 
@@ -304,19 +307,19 @@ export function SimulationClient({ config, quotes }: Props) {
             ) : null}
           </Field>
 
-          <Field label="매도 예상가">
+          <Field label="내 집 파는 값 (예상)">
             <MoneyInput value={sellPrice || defaultSell} onChange={setSellPrice} />
           </Field>
-          <Field label="매수 예상가">
+          <Field label="옮길 집 사는 값 (예상)">
             <MoneyInput value={buyPrice || defaultBuy} onChange={setBuyPrice} />
           </Field>
-          <Field label="동원 가능 현금">
+          <Field label="지금 모아둔 현금">
             <MoneyInput value={cashOnHand} onChange={setCashOnHand} />
           </Field>
-          <Field label="신규 대출 예정액">
+          <Field label="새로 받을 대출">
             <MoneyInput value={newLoan} onChange={setNewLoan} />
           </Field>
-          <Field label="신규 대출 금리 (%)">
+          <Field label="새 대출 금리 (%)">
             <Input
               type="number"
               step="0.01"
@@ -332,7 +335,7 @@ export function SimulationClient({ config, quotes }: Props) {
       {baseline ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Stat
-            label="현재 시세 갭"
+            label="두 집의 가격 차이"
             value={formatKrw(baseline.priceGap, { compact: true })}
             sub={`보유 대비 ${(baseline.buyPrice / baseline.sellPrice).toFixed(2)}배`}
             tone="rise"
@@ -341,7 +344,7 @@ export function SimulationClient({ config, quotes }: Props) {
           <Popover>
             <PopoverTrigger render={<div className="cursor-pointer" />}>
               <Stat
-                label="총 마찰비용 ⓘ"
+                label="세금·수수료 합계 ⓘ"
                 value={formatKrw(baseline.totalFriction, { compact: true })}
                 sub={`매수가의 ${formatPct(baseline.frictionRate, 2)} · 눌러서 상세`}
                 tone="fall"
@@ -352,18 +355,18 @@ export function SimulationClient({ config, quotes }: Props) {
             </PopoverContent>
           </Popover>
           <Stat
-            label="매도 후 순현금"
+            label="집 팔고 손에 남는 돈"
             value={formatKrw(baseline.netFromSale, { compact: true })}
-            sub="양도세·중개비·대출상환 반영"
+            sub="세금·수수료 내고 기존 대출 갚은 뒤"
           />
           <Stat
-            label="자금 과부족"
+            label="입력한 자금으로 되는지"
             value={formatKrw(baseline.fundingGap, { compact: true })}
             sub={baseline.fundingGap >= 0 ? '여유' : '부족'}
             tone={baseline.fundingGap >= 0 ? 'rise' : 'fall'}
           />
           <Stat
-            label="연 이자 증감"
+            label="이자 부담 변화 (연)"
             value={formatKrw(baseline.annualInterestDelta, { compact: true })}
             sub={`월 ${formatKrw(baseline.annualInterestDelta / 12, { compact: true })}`}
             tone={baseline.annualInterestDelta > 0 ? 'fall' : 'rise'}
@@ -385,7 +388,7 @@ export function SimulationClient({ config, quotes }: Props) {
                 </div>
                 <div className="grid gap-3 text-sm sm:grid-cols-4">
                   <div>
-                    <div className="text-muted-foreground text-xs">양도세</div>
+                    <div className="text-muted-foreground text-xs">양도세 (팔 때)</div>
                     <div className="tabular font-semibold">
                       {r2.capitalGainsTax.exempt || r2.capitalGainsTax.total === 0
                         ? '비과세'
@@ -417,8 +420,8 @@ export function SimulationClient({ config, quotes }: Props) {
                     </div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground text-xs">내 돈 (한도 대출 시)</div>
-                    <div className="tabular font-semibold">
+                    <div className="text-muted-foreground text-xs">💰 내가 준비할 현금</div>
+                    <div className="tabular text-primary text-lg font-extrabold">
                       {formatKrw(Math.max(0, need2 - byLoan2), { compact: true })}
                     </div>
                     <div className="text-muted-foreground text-xs">
@@ -461,31 +464,26 @@ export function SimulationClient({ config, quotes }: Props) {
                 return (
                   <div className="mb-4 grid gap-3 sm:grid-cols-3">
                     <Stat
-                      label="세후 실소요 자금"
+                      label="세금까지 더해 더 드는 돈"
                       value={formatKrw(need, { compact: true })}
-                      sub="매도 순현금 반영 후 더 필요한 금액"
+                      sub="내 집 판 돈으로 메우고 남는 부족분"
                     />
                     <Stat
-                      label="대출로 충당 가능"
+                      label="은행에서 빌릴 수 있는 돈"
                       value={formatKrw(byLoan, { compact: true })}
                       sub={`한도 ${formatKrw(loanLimit.result.limit, { compact: true })} (${loanLimit.result.bindingFactor})`}
                     />
+                    {/* 대출은 은행이 주는 돈이므로, 사용자가 실제로 모아야 하는 이 금액이 결론이다 */}
                     <Stat
-                      label="내 돈으로 준비 (모아둔 현금)"
+                      emphasis
+                      label="💰 내가 준비할 현금 (모아야 할 돈)"
                       value={formatKrw(byCash, { compact: true })}
                       sub={
                         config.household.cashAssets > 0
                           ? cashGap >= 0
-                            ? `보유 현금 대비 여유 ${formatKrw(cashGap, { compact: true })}`
-                            : `보유 현금 대비 부족 ${formatKrw(-cashGap, { compact: true })}`
+                            ? `보유 ${formatKrw(config.household.cashAssets, { compact: true })} → 실행 가능 (여유 ${formatKrw(cashGap, { compact: true })})`
+                            : `보유 ${formatKrw(config.household.cashAssets, { compact: true })} → ${formatKrw(-cashGap, { compact: true })} 더 모아야 함`
                           : '설정 > 자금·소득에 현금자산을 입력하세요'
-                      }
-                      tone={
-                        config.household.cashAssets > 0
-                          ? cashGap >= 0
-                            ? 'rise'
-                            : 'fall'
-                          : undefined
                       }
                     />
                   </div>
@@ -623,7 +621,7 @@ export function SimulationClient({ config, quotes }: Props) {
 
       {/* 시나리오 차트 */}
       <SectionCard
-        title="시나리오별 갭 · 실소요 자금"
+        title="상황별 가격 차이와 필요한 돈"
         description="막대는 억원 단위입니다. 회색은 시세 갭, 색상은 세금·비용 포함 실제로 더 필요한 현금입니다."
         badge={timingBadge}
       >
@@ -656,7 +654,7 @@ export function SimulationClient({ config, quotes }: Props) {
                 }}
                 formatter={(v, name) => [
                   `${Number(v)}억`,
-                  name === 'gap' ? '시세 갭' : '실소요 자금',
+                  name === 'gap' ? '가격 차이' : '필요한 돈',
                 ]}
               />
               <ReferenceLine y={0} stroke="var(--border)" />
@@ -689,13 +687,13 @@ export function SimulationClient({ config, quotes }: Props) {
             <TableHeader>
               <TableRow>
                 <TableHead className="min-w-40">시나리오</TableHead>
-                <TableHead className="text-right">매도가</TableHead>
-                <TableHead className="text-right">매수가</TableHead>
+                <TableHead className="text-right">내 집 파는 값</TableHead>
+                <TableHead className="text-right">옮길 집 사는 값</TableHead>
                 <TableHead className="text-right">갭 · 배율</TableHead>
-                <TableHead className="text-right">양도세</TableHead>
-                <TableHead className="text-right">취득세</TableHead>
-                <TableHead className="text-right">마찰비용 계</TableHead>
-                <TableHead className="text-right">실소요 자금</TableHead>
+                <TableHead className="text-right">양도세 (팔 때)</TableHead>
+                <TableHead className="text-right">취득세 (살 때)</TableHead>
+                <TableHead className="text-right">세금·수수료 합계</TableHead>
+                <TableHead className="text-right">💰 내가 준비할 현금</TableHead>
                 <TableHead className="text-right">기준 대비</TableHead>
                 <TableHead className="text-center">판정</TableHead>
               </TableRow>
@@ -764,11 +762,15 @@ export function SimulationClient({ config, quotes }: Props) {
                         </PopoverContent>
                       </Popover>
                     </TableCell>
-                    <TableCell className="tabular text-right font-semibold">
-                      <div>{formatKrw(cash, { compact: true })}</div>
-                      <div className="text-muted-foreground text-[11px] font-normal">
-                        대출 {formatKrw(byLoan, { compact: true })} · 내 돈{' '}
+                    {/* 결론은 "내가 모아야 할 돈"이므로 그 값을 주 수치로 올리고,
+                        조달총액·대출은 근거로 아래에 둔다 */}
+                    <TableCell className="tabular text-right">
+                      <div className="text-primary text-base font-extrabold">
                         {formatKrw(byCash, { compact: true })}
+                      </div>
+                      <div className="text-muted-foreground text-[11px] font-normal">
+                        조달 {formatKrw(cash, { compact: true })} · 대출{' '}
+                        {formatKrw(byLoan, { compact: true })}
                       </div>
                     </TableCell>
                     <TableCell
@@ -832,7 +834,7 @@ export function SimulationClient({ config, quotes }: Props) {
                 <Row label="중개보수" value={`-${formatKrw(baseline.sellCost.brokerFee)}`} />
                 <Row label="대출 상환" value={`-${formatKrw(holding.loanBalance)}`} />
                 <Row label="보증금 반환" value={`-${formatKrw(holding.leaseDeposit)}`} />
-                <Row label="매도 후 순현금" value={formatKrw(baseline.netFromSale)} strong />
+                <Row label="집 팔고 손에 남는 돈" value={formatKrw(baseline.netFromSale)} strong />
               </dl>
               <ul className="mt-2 space-y-0.5">
                 {baseline.capitalGainsTax.notes.map((n, i) => (

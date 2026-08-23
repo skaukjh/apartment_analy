@@ -75,11 +75,14 @@ export function Stat({
   value,
   sub,
   tone = 'default',
+  emphasis = false,
 }: {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
   tone?: 'default' | 'rise' | 'fall' | 'muted';
+  /** 화면의 결론이 되는 수치 — 테두리·크기·굵기로 눈에 먼저 들어오게 한다 */
+  emphasis?: boolean;
 }) {
   const toneClass =
     tone === 'rise'
@@ -88,11 +91,33 @@ export function Stat({
         ? 'text-fall'
         : tone === 'muted'
           ? 'text-muted-foreground'
-          : '';
+          : emphasis
+            ? 'text-primary'
+            : '';
   return (
-    <div className="bg-card rounded-lg border px-4 py-3">
-      <div className="text-muted-foreground text-xs">{label}</div>
-      <div className={cn('tabular mt-1 text-xl font-semibold', toneClass)}>{value}</div>
+    <div
+      className={cn(
+        'bg-card rounded-lg border px-4 py-3',
+        emphasis && 'border-primary/50 bg-primary/5 ring-primary/20 ring-1',
+      )}
+    >
+      <div
+        className={cn(
+          'text-xs',
+          emphasis ? 'text-foreground font-medium' : 'text-muted-foreground',
+        )}
+      >
+        {label}
+      </div>
+      <div
+        className={cn(
+          'tabular mt-1',
+          emphasis ? 'text-2xl font-extrabold' : 'text-xl font-semibold',
+          toneClass,
+        )}
+      >
+        {value}
+      </div>
       {sub ? <div className="text-muted-foreground mt-0.5 text-xs">{sub}</div> : null}
     </div>
   );
