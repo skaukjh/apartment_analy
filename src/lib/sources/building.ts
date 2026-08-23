@@ -176,23 +176,64 @@ function registerUrl(endpoint: string, bcode: string, bun: string, ji: string): 
   );
 }
 
-/** 단지명 비교용 정규화 — 공백·괄호를 떼고 '아파트/단지/차' 같은 꼬리말을 지운다 */
+/**
+ * 단지명 비교용 정규화.
+ *
+ * 실거래 등록명과 대장 등록명이 자주 다르다:
+ *   실거래 "옥수파크힐스101동~116동"  ↔  대장 "이편한세상옥수파크힐스"
+ * 동 번호·범위 표기(101동~116동, 제101동)와 흔한 꼬리말을 떼고 비교한다.
+ */
 function specNameKey(s: string): string {
   return s
-    .replace(/[\s()（）·・.]/g, '')
+    .replace(/[\s()（）·・.,]/g, '')
     .toLowerCase()
-    .replace(/\d+동$/, '')
+    .replace(/제?\d+동/g, '') // 동 번호는 단지 식별에 의미 없다 (범위 표기 포함)
+    .replace(/[~\-–]/g, '')
     .replace(/차$|아파트|apt|단지/g, '');
+}
+
+/** 대장 건물명이 사용자가 고른 단지를 가리키는가 */
+function nameMatches(complexName: string, bldNm: string): boolean {
+  const q = specNameKey(complexName);
+  const n = specNameKey(bldNm);
+  if (q.length < 2 || n.length < 2) return false;
+  /* 대장명이 사용자 입력을 품는 방향을 우선한다 (브랜드 접두사가 붙는 경우).
+     반대 방향은 "성원대치2" ⊃ "대치"처럼 옆 단지까지 삼켜 실제로 세대수가
+     3,377(대치아파트 전체)로 잘못 채워진 사고가 있어 길이 조건을 둔다. */
+  return n.includes(q) || (q.includes(n) && n.length >= q.length - 2);
+}
+
+/**
+ * 건축물대장 응답 XML — 일시 오류는 재시도한다.
+ *
+ * 공공데이터포털이 같은 요청에 대해 3번 중 1번꼴로 503 SERVICETIMEOUT_ERROR 를
+ * 돌려주는 것이 실측됐다. 이걸 "자료 없음"으로 처리하면 단지 정보가 채워지다
+ * 말다 해서, 사용자에게는 기능이 고장난 것처럼 보인다.
+ * 오류 응답이 캐시에 남지 않도록 no-store 로 받는다.
+ */
+async function fetchRegisterXml(url: string, attempts = 4): Promise<string | null> {
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      const xml = await res.text();
+      if (res.ok && xml.includes('<resultCode>')) return xml;
+    } catch {
+      /* 네트워크 오류도 재시도 대상 */
+    }
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+  }
+  return null;
 }
 
 /**
  * 건축물대장에서 지번 하나의 스펙을 읽는다.
  *
- * 한 지번에 여러 단지가 섞인 경우가 실제로 있다 — 개포동 12는 총괄표제부가
- * "대치,대청 아파트" 4,199세대로 묶여 있다. 그래서 표제부(동별)를 단지명으로
- * 걸러 합산하는 쪽을 우선하고, 총괄표제부는 빠진 값을 메우는 데 쓴다.
- * 구대장(옛 단지)은 용적률·대지면적이 0으로 비어 있는 경우가 많다 — 그때는
- * 그 항목을 채우지 않는다 (0을 진짜 값으로 쓰면 대지지분이 엉터리가 된다).
+ * 총괄표제부(단지 전체가 한 행)가 이 지번의 단지를 가리키면 그걸 쓴다 —
+ * 잠실엘스 5,678세대, 옥수파크힐스 1,218세대처럼 실제와 일치한다.
+ * 이름이 안 맞으면(한 지번에 여러 단지가 묶인 개포동 12 "대치,대청 아파트" 등)
+ * 표제부(동별)를 단지명으로 걸러 합산한다. 둘 다 아니면 채우지 않는다 —
+ * 틀린 세대수는 빈 칸보다 나쁘다.
+ * 구대장은 용적률·대지면적이 0으로 비어 있어, 0은 결측으로 처리한다.
  */
 async function fetchSpecByLot(
   bcode: string,
@@ -204,75 +245,57 @@ async function fetchSpecByLot(
   if (!env.molitKey) return null;
 
   const items = async (endpoint: string): Promise<string[]> => {
-    const res = await fetch(registerUrl(endpoint, bcode, bun, ji), {
-      next: { revalidate: SOURCE_TTL.molitHistory },
-    });
-    if (!res.ok) return [];
-    const xml = await res.text();
+    const xml = await fetchRegisterXml(registerUrl(endpoint, bcode, bun, ji));
+    if (!xml) return [];
     const code = pickTag(xml, 'resultCode');
     if (code && code !== '00' && code !== '000') return [];
     return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((m) => m[1]);
   };
 
-  /* 1) 표제부(동별) — 세대수 있는 동만 모으고, 단지명이 매칭되는 동으로 좁힌다 */
-  let rows = (await items(ENDPOINT)).filter((it) => (num(pickTag(it, 'hhldCnt')) ?? 0) > 0);
-  let nameFiltered = false;
-  if (complexName && rows.length > 0) {
-    const q = specNameKey(complexName);
-    const matched = rows.filter((it) => {
-      const n = specNameKey(pickTag(it, 'bldNm') ?? '');
-      return Boolean(q) && Boolean(n) && (n.includes(q) || q.includes(n));
-    });
-    if (matched.length > 0) {
-      rows = matched;
-      nameFiltered = true;
-    }
+  const [titleRows, recapRows] = await Promise.all([items(ENDPOINT), items(RECAP_ENDPOINT)]);
+
+  /* 1) 총괄표제부 — 이 지번의 단지 전체가 한 행. 이름이 맞으면 가장 정확하다. */
+  const recap = recapRows.find(
+    (it) =>
+      num(pickTag(it, 'hhldCnt')) &&
+      (!complexName || nameMatches(complexName, pickTag(it, 'bldNm') ?? '')),
+  );
+  if (recap) {
+    const households = num(pickTag(recap, 'hhldCnt'));
+    const landArea = num(pickTag(recap, 'platArea'));
+    return {
+      households,
+      floorAreaRatio: num(pickTag(recap, 'vlRat')),
+      landArea,
+      landSharePerUnit: landArea && households ? landArea / households : undefined,
+      address,
+      source: '총괄표제부',
+    };
   }
 
-  let households = rows.reduce((sum, it) => sum + (num(pickTag(it, 'hhldCnt')) ?? 0), 0);
+  /* 2) 표제부(동별) — 단지명이 맞는 동만 합산한다. 이름이 안 맞으면 포기. */
+  if (!complexName) return null;
+  const rows = titleRows.filter(
+    (it) =>
+      (num(pickTag(it, 'hhldCnt')) ?? 0) > 0 &&
+      nameMatches(complexName, pickTag(it, 'bldNm') ?? ''),
+  );
+  if (rows.length === 0) return null;
+
+  const households = rows.reduce((sum, it) => sum + (num(pickTag(it, 'hhldCnt')) ?? 0), 0);
   let far: number | undefined;
-  let landArea: number | undefined;
   for (const it of rows) {
     const v = num(pickTag(it, 'vlRat'));
     if (v && (!far || v > far)) far = v;
-    const p = num(pickTag(it, 'platArea'));
-    if (p && (!landArea || p > landArea)) landArea = p;
   }
-
-  /* 2) 총괄표제부 — 표제부에서 못 채운 값을 메운다.
-     단, 세대수는 단지명 필터가 성공했을 때는 덮지 않는다 (총괄은 지번 전체 합).
-     주소 검색이 옆 단지 지번으로 빗나가는 사고가 있다 — 잠실엘스를 찾는데
-     리센츠 대지(잠실동 22)가 잡힌 실제 사례. 단지명 필터가 실패했고 총괄의
-     건물명도 단지명과 다르면 남의 단지 데이터이므로 채우지 않는다. */
-  let landFromRecap = false;
-  const recap = (await items(RECAP_ENDPOINT)).find((it) => num(pickTag(it, 'hhldCnt')));
-  if (!nameFiltered && complexName) {
-    const q = specNameKey(complexName);
-    const n = specNameKey(recap ? (pickTag(recap, 'bldNm') ?? '') : '');
-    const recapMatches = Boolean(q) && Boolean(n) && (n.includes(q) || q.includes(n));
-    if (!recapMatches) return null; // 이 지번의 대장이 요청한 단지가 아니다
-  }
-  if (recap) {
-    if (households === 0) households = num(pickTag(recap, 'hhldCnt')) ?? 0;
-    far ??= num(pickTag(recap, 'vlRat'));
-    if (!landArea) {
-      landArea = num(pickTag(recap, 'platArea'));
-      landFromRecap = Boolean(landArea);
-    }
-  }
-
   if (households === 0 && !far) return null;
 
-  /* 대지지분은 대지면적이 이 단지 것일 때만 계산한다 — 단지명 필터로 좁혔는데
-     대지면적이 총괄(지번 전체) 값이면 나눗셈이 과대 계산된다. 그 경우는 비워 둔다. */
-  const landShareOk = Boolean(landArea) && households > 0 && !(nameFiltered && landFromRecap);
+  /* 대지면적은 지번 전체 값이라 이 단지 몫이 아닐 수 있다 — 대지지분은 비워 둔다 */
   return {
     households: households || undefined,
     floorAreaRatio: far,
-    landArea,
-    landSharePerUnit: landShareOk && landArea ? landArea / households : undefined,
     address,
-    source: nameFiltered ? '표제부(단지명 매칭 합산)' : recap ? '총괄표제부' : '표제부 합산',
+    source: '표제부(단지명 매칭 합산)',
   };
 }
 

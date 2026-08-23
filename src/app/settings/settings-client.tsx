@@ -451,6 +451,48 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
    * 단지 검색 결과로 입력값을 채운다.
    * 채우는 시세는 실거래 중앙값이다 (호가 아님). 사용자가 이어서 손볼 수 있게 둔다.
    */
+  /**
+   * 단지를 고르면 건축물대장에서 총 세대수·용적률·대지지분을 바로 채운다.
+   * 실패해도 조용히 넘어간다 — 선택 자체를 막을 이유는 없고, 값은 직접 입력하거나
+   * "자동 계산"으로 다시 시도할 수 있다.
+   */
+  const fillSpecFor = async (
+    kind: 'holding' | 'target',
+    id: string,
+    ref: { complexName: string; lawdCd: string; sido?: string; sigungu?: string; dong?: string },
+  ) => {
+    if (!ref.complexName || !/^\d{5}$/.test(ref.lawdCd)) return;
+    const qs = new URLSearchParams({
+      lawdCd: ref.lawdCd,
+      name: ref.complexName,
+      sido: ref.sido ?? '',
+      sigungu: ref.sigungu ?? '',
+      dong: ref.dong ?? '',
+    });
+    const j = await fetch(`/api/complex/spec?${qs}`)
+      .then((r) => r.json())
+      .catch(() => null);
+    const s = j?.spec;
+    if (!s || (!s.totalHouseholds && !s.floorAreaRatio)) return;
+
+    const patchValues = {
+      ...(s.totalHouseholds ? { totalHouseholds: s.totalHouseholds } : {}),
+      ...(s.floorAreaRatio ? { floorAreaRatio: s.floorAreaRatio } : {}),
+      ...(s.landShareM2 ? { landShareM2: s.landShareM2 } : {}),
+    };
+    if (kind === 'holding') updateHolding(id, patchValues);
+    else updateTarget(id, patchValues);
+
+    const parts = [
+      s.totalHouseholds ? `${s.totalHouseholds.toLocaleString('ko-KR')}세대` : null,
+      s.floorAreaRatio ? `용적률 ${s.floorAreaRatio}%` : null,
+      s.landShareM2 ? `대지지분 ${s.landShareM2}㎡` : null,
+    ].filter(Boolean);
+    toast.success(`단지 정보를 채웠습니다 — ${parts.join(' · ')} (건축물대장 ${s.source})`, {
+      description: '대장 등록명이 옆 단지와 묶인 경우가 있어 값이 실제와 다르면 직접 고치세요.',
+    });
+  };
+
   const applyHoldingPick = (id: string, pick: ComplexPick) => {
     const next: UserConfig = {
       ...config,
@@ -473,6 +515,9 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
     );
     // 취득일이 이미 입력돼 있으면 취득가액·실거주 개월·금리까지 이어서 자동 계산한다
     void autoFill('holding', false, id, next);
+    // 단지 정보(세대수·용적률·대지지분)도 곧바로 채운다
+    const picked = next.holdings.find((x) => x.id === id);
+    if (picked) void fillSpecFor('holding', id, picked);
   };
 
   const applyTargetPick = (id: string, pick: ComplexPick) => {
@@ -495,6 +540,9 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
     toast.success(
       `${pick.complexName} ${formatArea(pick.areaM2)} — 실거래 중앙값 ${formatKrw(pick.price)}으로 채웠습니다 (표본 ${pick.tradeCount}건, 최근 ${pick.latestDealDate})`,
     );
+    // 단지 정보(세대수·용적률·대지지분)도 곧바로 채운다
+    const picked = next.targets.find((x) => x.id === id);
+    if (picked) void fillSpecFor('target', id, picked);
   };
 
   /* ---------------- 목표 아파트 ---------------- */

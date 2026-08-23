@@ -165,6 +165,13 @@ export async function findTradeNearDate(
 /**
  * 단지의 대표 지번 — 캐시된 실거래에서 최빈값을 고른다. 네트워크 호출 없음.
  * 건축물대장(단지 스펙) 조회의 입력으로 쓴다.
+ *
+ * 검색 UI 가 쓰는 complexMatches 를 그대로 쓰면 안 된다 — 그쪽은 "자양"으로
+ * 자양동 전체를 찾게 하려고 동 이름 폴백을 두는데, 단지명이 동 이름을 품으면
+ * (옥수삼성 ⊃ 옥수, 잠실엘스 ⊃ 잠실) 그 동의 아무 거래나 매칭돼 최빈 지번이
+ * 엉뚱한 단지 것으로 나온다. 실제로 잠실엘스가 리센츠 지번(잠실동 22)으로,
+ * 옥수동 세 단지가 모두 같은 지번(561)으로 잡혀 대장 조회가 통째로 실패했다.
+ * 여기서는 단지명만으로 판단한다.
  */
 export async function findComplexJibun(
   lawdCd: string,
@@ -175,10 +182,15 @@ export async function findComplexJibun(
   const months = recentYearMonths(DEFAULT_LOOKBACK_MONTHS);
   const rows = await loadTradeCacheRows(lawdCd, months[0]).catch(() => []);
 
+  const q = nameKey(complexName);
+  if (!q) return null;
+
   const count = new Map<string, number>();
   for (const row of rows) {
     for (const t of row.trades ?? []) {
-      if (!t.jibun || !complexMatches(t.complexName, t.dong, complexName)) continue;
+      if (!t.jibun) continue;
+      const name = nameKey(t.complexName);
+      if (!name || !(name.includes(q) || q.includes(name))) continue;
       const k = `${t.dong}|${t.jibun}`;
       count.set(k, (count.get(k) ?? 0) + 1);
     }
