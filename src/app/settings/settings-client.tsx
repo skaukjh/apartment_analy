@@ -23,6 +23,7 @@ import type { SigunguInfo } from '@/lib/regions';
 import { SectionCard, EmptyHint } from '@/components/ui-bits';
 import { Field, ItemHeader, MoneyInput, RegionPicker } from '@/components/form-bits';
 import { ComplexSearch, type ComplexPick } from '@/components/settings/complex-search';
+import { AreaTypeSelect } from '@/components/settings/area-type-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1008,13 +1009,25 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                       }
                     />
                   </Field>
-                  <Field label="전용면적 (㎡)">
-                    <Input
-                      type="number"
-                      step="0.01"
+                  <Field
+                    label="전용면적"
+                    hint="실거래에 있는 평형만 선택할 수 있고, 바꾸면 호가가 그 평형 실거래 중앙값으로 갱신됩니다"
+                  >
+                    <AreaTypeSelect
+                      lawdCd={t.lawdCd}
+                      complexName={t.complexName}
                       value={t.areaM2}
-                      className="tabular"
-                      onChange={(e) => updateTarget(t.id, { areaM2: Number(e.target.value) })}
+                      onPick={(p) => {
+                        updateTarget(t.id, {
+                          areaM2: p.areaM2,
+                          manualPrice: p.price || undefined,
+                          builtYear: p.builtYear ?? t.builtYear,
+                          dong: p.dong ?? t.dong,
+                        });
+                        toast.success(
+                          `${t.complexName} ${formatArea(p.areaM2)} — 호가를 실거래 중앙값 ${formatKrw(p.price)}으로 갱신했습니다 (표본 ${p.tradeCount}건, 최근 ${p.latestDealDate}). 저장을 눌러야 반영됩니다.`,
+                        );
+                      }}
                     />
                   </Field>
                   <Field label="현재 호가" hint="비우면 최근 실거래 중앙값을 사용합니다">

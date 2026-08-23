@@ -80,10 +80,10 @@ export function supplyPyeong(m2: number): number {
   return Math.round(y2 + ((m2 - x2) * (y2 - y1)) / (x2 - x1));
 }
 
-/** 면적 표기 → "공급 약 26평형(전용 64.80㎡)" */
+/** 면적 표기 → "공급 약 26평형(전용 64.80㎡·19.6평)" — 공급 평형과 전용 평을 함께 보여준다 */
 export function formatArea(m2: number): string {
   if (!Number.isFinite(m2) || m2 <= 0) return '-';
-  return `공급 약 ${supplyPyeong(m2)}평형(전용 ${m2.toFixed(m2 % 1 === 0 ? 0 : 2)}㎡)`;
+  return `공급 약 ${supplyPyeong(m2)}평형(전용 ${m2.toFixed(m2 % 1 === 0 ? 0 : 2)}㎡·${toPyeong(m2).toFixed(1)}평)`;
 }
 
 /** ㎡ → 평 */

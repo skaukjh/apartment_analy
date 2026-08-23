@@ -15,7 +15,7 @@ import { useState } from 'react';
 import { Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { supplyPyeong } from '@/lib/format';
+import { formatArea } from '@/lib/format';
 
 interface AreaOption {
   areaM2: number;
@@ -170,10 +170,7 @@ export function ComplexSearch({
                           }
                         >
                           <span className="tabular">
-                            {a.areaM2}㎡
-                            <span className="text-muted-foreground ml-1 text-xs">
-                              (공급 약 {supplyPyeong(a.areaM2)}평형)
-                            </span>
+                            {formatArea(a.areaM2)}
                             <span className="text-muted-foreground ml-2 text-xs">
                               표본 {a.tradeCount}건
                             </span>
