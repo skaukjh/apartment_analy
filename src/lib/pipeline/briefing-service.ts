@@ -15,7 +15,15 @@ import {
 import { broadcast, type SendReport } from '@/lib/kakao/client';
 import { hasTelegram, sendTelegramText } from '@/lib/telegram/client';
 import { saveSnapshot } from '@/lib/store/market-data';
-import { buildBriefingDiff, loadPreviousBriefingSnapshot } from '@/lib/analysis/briefing-diff';
+import {
+  buildBriefingDiff,
+  interpretDiffFallback,
+  loadPreviousBriefingSnapshot,
+  type BriefingSnapshot,
+} from '@/lib/analysis/briefing-diff';
+import { getOpenAI, hasOpenAI, OPENAI_MODEL, SYSTEM_PROMPT } from '@/lib/ai/client';
+import { HEAT_META } from '@/lib/analysis/market-signals';
+import type { DashboardData } from '@/lib/types';
 import { getAdminClient } from '@/lib/store/supabase';
 import { env } from '@/lib/env';
 import { loadLastBriefingHash, saveLastBriefingHash } from '@/lib/store/briefing-mark';
@@ -49,6 +57,48 @@ async function logBriefing(
   });
 }
 
+/**
+ * 변경 사항의 의미·전망 분석.
+ * AI(gpt)가 있으면 컨텍스트 안에서만 해석하게 하고, 없거나 실패하면 규칙 기반으로.
+ * 변경이 있을 때만 호출되므로 하루 몇 번 수준의 소액 비용이다.
+ */
+async function buildChangeAnalysis(
+  diffLines: string[],
+  data: DashboardData,
+  prev: BriefingSnapshot,
+): Promise<string> {
+  const fallback = () => interpretDiffFallback(data, prev).join('\n');
+  if (!hasOpenAI()) return fallback();
+
+  try {
+    const heat = HEAT_META[data.sentiment.heatLevel];
+    const prompt = `다음은 부동산 브리핑에서 직전 발송 대비 달라진 수치입니다.
+
+[달라진 것]
+${diffLines.join('\n')}
+
+[현재 시장 컨텍스트]
+- 과열점수 ${data.sentiment.heatScore}/100 (${heat.label}) · 매매수급 ${data.sentiment.supplyDemandIndex}
+- 신고가 비중 ${data.sentiment.newHighRatio.toFixed(1)}% · 거래량 YoY ${data.sentiment.volumeYoy.toFixed(0)}%
+
+사용자는 보유 아파트를 팔고 상급지로 갈아타려는 1주택자입니다.
+이 변경이 갈아타기 판단에 갖는 의미와 단기 전망을 3~5문장, 400자 이내로 정리하세요.
+수치를 다시 나열하지 말고 해석 위주로 쓰세요. 위 컨텍스트에 없는 수치를 추측하지 마세요.`;
+
+    const res = await getOpenAI().chat.completions.create({
+      model: OPENAI_MODEL,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: prompt },
+      ],
+    });
+    const out = res.choices[0]?.message?.content?.trim();
+    return out || fallback();
+  } catch {
+    return fallback();
+  }
+}
+
 export async function runBriefing(
   options: {
     dryRun?: boolean;
@@ -66,15 +116,9 @@ export async function runBriefing(
   const data = await buildDashboard({ userId: options.userId });
   const briefing = buildBriefing(data);
 
-  /* 지난 브리핑 대비 변화 — 있으면 맨 앞 섹션으로 넣는다.
-     text 계산 전에 넣어야 해시·본문에 함께 반영된다. */
+  /* 지난 브리핑 대비 변화 — 전문에 섞지 않고 별도의 "변경 분석" 메시지로 보낸다 */
   const prevSnap = await loadPreviousBriefingSnapshot().catch(() => null);
-  if (prevSnap) {
-    const diff = buildBriefingDiff(data, prevSnap.snap);
-    if (diff.length > 0) {
-      briefing.sections.unshift({ heading: '🔄 지난 브리핑 대비', lines: diff.slice(0, 6) });
-    }
-  }
+  const diffLines = prevSnap ? buildBriefingDiff(data, prevSnap.snap) : [];
 
   const text = briefingToText(briefing);
   // 'image' 는 요약(텍스트 2건)으로 통합됐다 — 본문 1건 + 링크 포함 마무리 1건.
@@ -112,10 +156,15 @@ export async function runBriefing(
   }
 
   try {
-    /* 직전 발송과 본문이 완전히 같으면 이미지·전문 대신 한 줄짜리 알림만 보낸다.
-       실거래는 12시간 주기라 연속 슬롯의 내용이 자주 같은데,
-       같은 이미지를 또 보내면 "뭐가 바뀌었지?" 하고 읽는 수고만 생긴다. */
-    const contentHash = createHash('sha256').update(text).digest('hex').slice(0, 32);
+    /* "변동 없음" 판정은 핵심 수치 섹션만 본다.
+       뉴스 헤드라인·일정·날짜는 매번 바뀌므로 전문 전체를 해시하면
+       숫자가 그대로인데도 계속 "변경"으로 판정돼 같은 브리핑이 재발송된다. */
+    const VOLATILE_SECTIONS = new Set(['📰 헤드라인', '📅 다가오는 일정']);
+    const coreText = briefing.sections
+      .filter((s) => !VOLATILE_SECTIONS.has(s.heading))
+      .map((s) => `${s.heading}\n${s.lines.join('\n')}`)
+      .join('\n');
+    const contentHash = createHash('sha256').update(coreText).digest('hex').slice(0, 32);
     const uid = options.userId ?? 'default';
     const lastHash = await loadLastBriefingHash(uid);
     const unchanged = lastHash !== null && lastHash === contentHash;
@@ -164,6 +213,15 @@ export async function runBriefing(
       try {
         await sendTelegramText(data.config.telegramChatId as string, tgText);
         reports.push({ recipient: '텔레그램', ok: true });
+
+        /* 변경이 있으면 두 번째 메시지로 "무엇이 왜 달라졌고 어떻게 볼지"를 보낸다 */
+        if (!unchanged && diffLines.length > 0 && prevSnap) {
+          const analysis = await buildChangeAnalysis(diffLines, data, prevSnap.snap);
+          await sendTelegramText(
+            data.config.telegramChatId as string,
+            `🔍 변경 분석\n\n[달라진 것]\n${diffLines.map((l) => `· ${l}`).join('\n')}\n\n[의미와 전망]\n${analysis}`,
+          );
+        }
       } catch (e) {
         reports.push({ recipient: '텔레그램', ok: false, error: (e as Error).message });
       }

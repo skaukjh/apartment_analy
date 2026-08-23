@@ -102,3 +102,53 @@ export function buildBriefingDiff(data: DashboardData, prev: BriefingSnapshot): 
 
   return lines;
 }
+
+/**
+ * 변경의 의미를 규칙으로 해석 — AI 가 없거나 실패했을 때의 대체 분석.
+ * "갈아타기(하급지 매도 → 상급지 매수)" 관점으로 방향을 읽는다.
+ */
+export function interpretDiffFallback(data: DashboardData, prev: BriefingSnapshot): string[] {
+  const out: string[] = [];
+
+  const nowGap = data.gaps[0];
+  const prevGap =
+    nowGap && prev.gaps
+      ? prev.gaps.find((g) => g.holdingId === nowGap.holdingId && g.targetId === nowGap.targetId)
+      : undefined;
+  if (nowGap && prevGap) {
+    const dGap = nowGap.gap - prevGap.gap;
+    if (dGap < 0) {
+      out.push(
+        `갭이 ${formatKrw(-dGap, { compact: true })} 줄었습니다 — 상급지와의 격차가 좁혀져 갈아타기에 유리한 방향입니다.`,
+      );
+    } else if (dGap > 0) {
+      out.push(
+        `갭이 ${formatKrw(dGap, { compact: true })} 벌어졌습니다 — 기다릴수록 상급지 진입 부담이 커지는 방향입니다.`,
+      );
+    }
+    const dCash = nowGap.realCashNeeded - prevGap.realCashNeeded;
+    if (dCash !== 0) {
+      out.push(
+        `실소요 자금이 ${formatKrw(Math.abs(dCash), { compact: true })} ${dCash > 0 ? '늘었습니다' : '줄었습니다'}.`,
+      );
+    }
+  }
+
+  if (prev.sentiment) {
+    const d = data.sentiment.heatScore - prev.sentiment.heatScore;
+    if (d >= 5) {
+      out.push(
+        '과열점수가 뚜렷이 올랐습니다 — 매수 경쟁이 심해지는 국면으로, 목표 단지 시세가 먼저 움직일 수 있습니다.',
+      );
+    } else if (d <= -5) {
+      out.push(
+        '과열점수가 뚜렷이 내렸습니다 — 관망세가 짙어지는 국면으로, 급하게 추격 매수할 이유는 약해집니다.',
+      );
+    }
+  }
+
+  if (out.length === 0) {
+    out.push('시세 변동 폭이 크지 않아 갈아타기 판단을 바꿀 수준은 아닙니다.');
+  }
+  return out;
+}
