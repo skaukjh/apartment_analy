@@ -9,7 +9,9 @@
  * 반영한 규칙:
  *  - LTV: 비규제 70% / 조정대상지역(규제) 50% / 규제지역 2주택 이상 0%(신규 주담대 금지)
  *  - 생애최초: 지역 무관 LTV 80%
- *  - 수도권·규제지역 주담대 총액 한도 6억 (2025.6.27 가계부채 대책)
+ *  - 주담대 총액 한도:
+ *      · 규제지역 — 주택가격 15억 이하 6억 / 15~25억 4억 / 25억 초과 2억 (2025.10.15 대책)
+ *      · 비규제 수도권 — 일괄 6억 (2025.6.27 가계부채 대책)
  *  - DSR: 은행권 40%, 스트레스 금리 +1.5%p 가산(변동금리 가정)
  *  - 갈아타기(기존 주택 처분조건부)는 무주택자와 같은 LTV 를 적용
  */
@@ -53,8 +55,23 @@ export interface LoanLimitResult {
   notes: string[];
 }
 
-/** 수도권·규제지역 주담대 총액 한도 (원) — 정책 변경 시 env 로 덮어쓰기 */
+/** 주담대 총액 기본 한도 (원, 15억 이하·비규제 수도권) — 정책 변경 시 env 로 덮어쓰기 */
 const POLICY_CAP = Number(process.env.NEXT_PUBLIC_MORTGAGE_CAP ?? '') || 600_000_000;
+
+/**
+ * 주담대 총액 한도 — 2025.10.15 대책 반영.
+ * 규제지역은 주택가격 구간별 차등: 15억 이하 6억 / 15~25억 4억 / 25억 초과 2억.
+ * 비규제 수도권은 6.27 대책의 일괄 6억 유지. 그 외 지역은 총액 한도 없음.
+ */
+function policyCapOf(price: number, regulated: boolean, metro: boolean): number | null {
+  if (regulated) {
+    if (price <= 1_500_000_000) return POLICY_CAP;
+    if (price <= 2_500_000_000) return 400_000_000;
+    return 200_000_000;
+  }
+  if (metro) return POLICY_CAP;
+  return null;
+}
 
 /** DSR 비율 (은행권) */
 const DSR_RATIO = 0.4;
@@ -117,13 +134,17 @@ export function calcLoanLimit(input: LoanLimitInput): LoanLimitResult {
     notes.push('연소득을 입력하면 DSR 한도까지 함께 계산합니다 (현재는 LTV 만 적용).');
   }
 
-  /* 3) 정책 총액 한도 */
+  /* 3) 정책 총액 한도 — 규제지역은 주택가격 구간별 차등 (2025.10.15 대책) */
   let policyCap: number | null = null;
-  if ((input.metro || input.regulated) && ltvRate > 0) {
-    policyCap = POLICY_CAP;
-    notes.push(
-      `수도권·규제지역 주담대 총액 한도 ${(POLICY_CAP / 100_000_000).toFixed(0)}억을 적용했습니다 (2025.6 가계부채 대책 기준).`,
-    );
+  if (ltvRate > 0) {
+    policyCap = policyCapOf(input.price, input.regulated, input.metro);
+    if (policyCap !== null) {
+      notes.push(
+        input.regulated
+          ? `규제지역 주담대 한도 — 주택가격 ${input.price <= 1_500_000_000 ? '15억 이하' : input.price <= 2_500_000_000 ? '15~25억' : '25억 초과'} 구간, ${(policyCap / 100_000_000).toFixed(0)}억을 적용했습니다 (2025.10.15 대책).`
+          : `수도권 주담대 총액 한도 ${(policyCap / 100_000_000).toFixed(0)}억을 적용했습니다 (2025.6.27 가계부채 대책).`,
+      );
+    }
   }
 
   /* 4) 최종 한도 */

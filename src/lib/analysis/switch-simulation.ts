@@ -24,12 +24,16 @@ export function simulateSwitch(
 ): SwitchSimulationResult {
   const { holding, household, sellPrice, buyPrice } = input;
 
-  // 1) 매도 — 양도소득세
+  // 1) 매도 부대비용 — 중개보수는 양도세 필요경비이므로 양도세보다 먼저 계산한다
+  //    (대시보드 갭 카드(buildGaps·GapSection)와 같은 순서 — 다르면 두 화면 수치가 어긋난다)
+  const sellCost = calcTransactionCost({ price: sellPrice, side: 'sell' });
+
+  // 2) 매도 — 양도소득세
   const isOneHouse = household.ownedHouseCount <= 1;
   const capitalGainsTax = calcCapitalGainsTax({
     salePrice: sellPrice,
     acquisitionPrice: holding.acquisitionPrice,
-    expenses: holding.acquisitionCost + holding.capitalExpenditure,
+    expenses: holding.acquisitionCost + holding.capitalExpenditure + sellCost.brokerFee,
     acquiredAt: holding.acquiredAt,
     soldAt: input.soldAt ?? todayKst(),
     residenceMonths: holding.residenceMonths,
@@ -43,9 +47,6 @@ export function simulateSwitch(
     isRegulated: household.holdingIsRegulated,
     usedBasicDeduction: household.otherCapitalGainThisYear > 0 ? 2_500_000 : 0,
   });
-
-  // 2) 매도 부대비용
-  const sellCost = calcTransactionCost({ price: sellPrice, side: 'sell' });
 
   // 3) 매수 — 취득세 (기존 주택 처분 전제 → 일시적 2주택 표준세율)
   const acquisitionTax = calcAcquisitionTaxFor(buyPrice, input.target.areaM2, household, {

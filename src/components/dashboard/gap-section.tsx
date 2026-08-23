@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowRight, ChevronDown, Info } from 'lucide-react';
 import type { PriceQuote, UserConfig } from '@/lib/types';
-import { formatArea, formatKrw, formatPct, todayKst } from '@/lib/format';
+import { complexSpecLine, formatArea, formatKrw, formatPct, todayKst } from '@/lib/format';
 import { askingPremiumPct, tradePriceOf } from '@/lib/analysis/price-basis';
 import { calcAcquisitionTaxFor } from '@/lib/tax/acquisition';
 import { calcCapitalGainsTax } from '@/lib/tax/capital-gains';
@@ -73,10 +73,9 @@ export function GapSection({ config, quotes }: Props) {
       friction: number;
       /** 목표 주택 기준 대출 한도 (기존 주택 처분 전제) */
       loanLimit: number;
-      /** 실소요(순 기준)를 대출/현금으로 나눈 것 */
-      netByLoan: number;
-      netByCash: number;
-      /** 기존 대출·보증금 상환 포함 총 필요액의 대출/현금 분해 */
+      /** 기존 대출·보증금 상환 포함 총 필요액의 대출/현금 분해.
+          "내 돈"은 항상 이 기준 하나만 쓴다 — 순 기준 분해를 같이 보여줬더니
+          "내 돈"이 두 값으로 나와 헷갈린다는 피드백이 있었다. */
       grossNeed: number;
       grossByLoan: number;
       grossByCash: number;
@@ -86,8 +85,6 @@ export function GapSection({ config, quotes }: Props) {
         netFromSale: number;
         realCashNeeded: number;
         friction: number;
-        netByLoan: number;
-        netByCash: number;
         grossNeed: number;
         grossByLoan: number;
         grossByCash: number;
@@ -168,7 +165,6 @@ export function GapSection({ config, quotes }: Props) {
           otherDebtAnnualPayment: config.household.otherDebtAnnualPayment,
           rate: holding.loanRate || 4,
         }).limit;
-        const netByLoan = Math.min(loanLimit, Math.max(0, realCashNeeded));
         const grossNeed = realCashNeeded + holding.loanBalance + holding.leaseDeposit;
         const grossByLoan = Math.min(loanLimit, Math.max(0, grossNeed));
 
@@ -177,7 +173,6 @@ export function GapSection({ config, quotes }: Props) {
         if (cgt2y) {
           const netFromSale2 = holdingPrice - cgt2y.total - sellCost.total;
           const realCashNeeded2 = targetPrice + acq.total + buyCost.total - netFromSale2;
-          const netByLoan2 = Math.min(loanLimit, Math.max(0, realCashNeeded2));
           const grossNeed2 = realCashNeeded2 + holding.loanBalance + holding.leaseDeposit;
           const grossByLoan2 = Math.min(loanLimit, Math.max(0, grossNeed2));
           alt = {
@@ -185,8 +180,6 @@ export function GapSection({ config, quotes }: Props) {
             netFromSale: netFromSale2,
             realCashNeeded: realCashNeeded2,
             friction: cgt2y.total + acq.total + sellCost.total + buyCost.total,
-            netByLoan: netByLoan2,
-            netByCash: Math.max(0, realCashNeeded2 - netByLoan2),
             grossNeed: grossNeed2,
             grossByLoan: grossByLoan2,
             grossByCash: Math.max(0, grossNeed2 - grossByLoan2),
@@ -211,8 +204,6 @@ export function GapSection({ config, quotes }: Props) {
           realCashNeeded,
           friction: cgt.total + acq.total + sellCost.total + buyCost.total,
           loanLimit,
-          netByLoan,
-          netByCash: Math.max(0, realCashNeeded - netByLoan),
           grossNeed,
           grossByLoan,
           grossByCash: Math.max(0, grossNeed - grossByLoan),
@@ -329,6 +320,11 @@ export function GapSection({ config, quotes }: Props) {
                       ) : null}
                     </div>
                     <AskingHint quote={hq} />
+                    {complexSpecLine(p.holding) ? (
+                      <div className="text-muted-foreground text-[11px]">
+                        {complexSpecLine(p.holding)}
+                      </div>
+                    ) : null}
                   </div>
                   <div>
                     <div className="text-muted-foreground text-xs">목표 시세</div>
@@ -343,6 +339,11 @@ export function GapSection({ config, quotes }: Props) {
                       ) : null}
                     </div>
                     <AskingHint quote={tq} />
+                    {complexSpecLine(p.target) ? (
+                      <div className="text-muted-foreground text-[11px]">
+                        {complexSpecLine(p.target)}
+                      </div>
+                    ) : null}
                   </div>
                   <div>
                     <div className="text-muted-foreground text-xs">시세 갭</div>
@@ -355,8 +356,8 @@ export function GapSection({ config, quotes }: Props) {
                       {formatKrw(p.realCashNeeded)}
                     </div>
                     <div className="text-muted-foreground text-[11px]">
-                      대출 {formatKrw(p.netByLoan, { compact: true })} · 내 돈{' '}
-                      {formatKrw(p.netByCash, { compact: true })}
+                      내 돈 {formatKrw(p.grossByCash, { compact: true })} + 신규 대출{' '}
+                      {formatKrw(p.grossByLoan, { compact: true })}
                     </div>
                     <div className="text-muted-foreground text-[11px]">
                       갭 대비 +{formatKrw(p.realCashNeeded - p.gap)} ·{' '}
@@ -460,18 +461,29 @@ export function GapSection({ config, quotes }: Props) {
                       </div>
                     </div>
                     <div className="bg-background rounded-md border px-3 py-2">
-                      <div className="text-muted-foreground text-xs">추가로 필요한 현금·대출</div>
-                      <div className="tabular font-semibold">{formatKrw(p.grossNeed)}</div>
-                      <div className="text-muted-foreground text-[11px]">
-                        기존 대출·보증금 상환분 포함
+                      {/* 사용자가 실제로 준비해야 하는 건 "내 돈"이다 — 대출로 채워지는 몫을
+                          뺀 자기자본을 헤드라인으로 올리고, 조달 총액은 보조 줄로 내린다 */}
+                      <div className="text-muted-foreground text-xs">내 돈 (자기자본 필요액)</div>
+                      <div className="tabular text-primary font-semibold">
+                        {formatKrw(p.grossByCash)}
                       </div>
-                      <div className="text-muted-foreground mt-1 text-[11px]">
-                        = 신규 대출 {formatKrw(p.grossByLoan, { compact: true })}
+                      <div className="text-muted-foreground text-[11px]">
+                        신규 대출 {formatKrw(p.grossByLoan, { compact: true })}
                         <span className="text-muted-foreground/70">
                           {' '}
                           (한도 {formatKrw(p.loanLimit, { compact: true })})
-                        </span>{' '}
-                        + 내 돈 {formatKrw(p.grossByCash, { compact: true })}
+                        </span>
+                        까지 받는 가정
+                      </div>
+                      <div className="text-muted-foreground mt-1 text-[11px]">
+                        조달 총액 {formatKrw(p.grossNeed, { compact: true })} = 실소요{' '}
+                        {formatKrw(p.realCashNeeded, { compact: true })}
+                        {p.holding.loanBalance > 0
+                          ? ` + 기존 대출 상환 ${formatKrw(p.holding.loanBalance, { compact: true })}`
+                          : ''}
+                        {p.holding.leaseDeposit > 0
+                          ? ` + 보증금 반환 ${formatKrw(p.holding.leaseDeposit, { compact: true })}`
+                          : ''}
                       </div>
                     </div>
                     <div className="flex items-center">
