@@ -29,6 +29,13 @@ export interface PolicyDigest {
   generatedAt: string;
   /** 마지막으로 새 자료를 점검한 시각 — 캐시 신선도는 이 값 기준 */
   refreshedAt?: string;
+  /**
+   * 규제지역 지정·해제 발표 감지.
+   * 앱의 규제 테이블(regulation.ts)은 수동 관리라, 정부 발표가 감지되면
+   * "테이블이 낡았을 수 있다"는 경고를 화면에 띄우는 용도다.
+   * 자동으로 테이블을 바꾸지는 않는다 — 오탐으로 세금 계산이 틀어지는 게 더 위험하다.
+   */
+  regulationAlert?: { title: string; url: string; publishedAt?: string };
 }
 
 const KIND = 'policy-digest';
@@ -133,6 +140,16 @@ export async function buildPolicyDigest(
   const articles = sources.filter((s) => s.kind === 'news').slice(0, 18);
   const selected = [...official, ...articles];
 
+  /* 규제지역 변경 발표 감지 — 공식 발표(정부 도메인) 중 지정·해제 키워드.
+     기사만 있으면 오보 가능성이 있어 공식 발표를 우선하고, 없으면 기사도 본다. */
+  const REG_RE = /(조정대상지역|투기과열지구|토지거래허가)[^.]{0,40}(지정|해제|확대|축소|추가)/;
+  const alertSource =
+    official.find((s) => REG_RE.test(`${s.title} ${s.summary}`)) ??
+    articles.find((s) => REG_RE.test(`${s.title} ${s.summary}`));
+  const regulationAlert = alertSource
+    ? { title: alertSource.title, url: alertSource.url, publishedAt: alertSource.publishedAt }
+    : undefined;
+
   const renderList = (list: OutlookSource[]) =>
     list
       .map(
@@ -195,6 +212,7 @@ ${renderList(selected)}
   const now = new Date().toISOString();
   return {
     markdown,
+    regulationAlert,
     promptHash,
     usage: res.usage
       ? {

@@ -27,6 +27,8 @@ interface DigestResponse {
   sources?: DigestSource[];
   generatedAt?: string;
   refreshedAt?: string;
+  /** 규제지역 지정·해제 발표 감지 — 앱 규제 테이블 확인 필요 신호 */
+  regulationAlert?: { title: string; url: string; publishedAt?: string };
 }
 
 function formatAt(iso: string): string {
@@ -139,6 +141,23 @@ export function PolicyDigestPanel({ canRefresh = false }: { canRefresh?: boolean
 
       {data?.ok && data.markdown && (
         <>
+          {data.regulationAlert ? (
+            <div className="mb-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+              <span className="font-semibold text-amber-700 dark:text-amber-400">
+                ⚠️ 규제지역 변경 발표 감지
+              </span>{' '}
+              — 앱의 규제 기준(10·15 대책 반영)과 다를 수 있습니다. 세금·대출 판정에 영향이
+              있으니 확인하세요:{' '}
+              <a
+                href={data.regulationAlert.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="underline underline-offset-2"
+              >
+                {data.regulationAlert.title}
+              </a>
+            </div>
+          ) : null}
           <div className="space-y-1">{renderMarkdown(data.markdown)}</div>
 
           <div className="text-muted-foreground mt-4 space-y-1 border-t pt-3 text-[11px] leading-relaxed">
