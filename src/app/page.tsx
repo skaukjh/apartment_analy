@@ -127,7 +127,7 @@ export default async function HomePage() {
           sub={
             primaryGap
               ? primarySplit
-                ? `대출 ${formatEok(primarySplit.byLoan)} · 현금 ${formatEok(primarySplit.byCash)}`
+                ? `대출 ${formatEok(primarySplit.byLoan)} · 내 돈 ${formatEok(primarySplit.byCash)}`
                 : `갭 대비 +${formatEok(primaryGap.realCashNeeded - primaryGap.gap)}`
               : '세금·중개비 포함'
           }

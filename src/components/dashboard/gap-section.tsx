@@ -291,7 +291,7 @@ export function GapSection({ config, quotes }: Props) {
                       {formatKrw(p.realCashNeeded)}
                     </div>
                     <div className="text-muted-foreground text-[11px]">
-                      대출 {formatKrw(p.netByLoan, { compact: true })} · 현금{' '}
+                      대출 {formatKrw(p.netByLoan, { compact: true })} · 내 돈{' '}
                       {formatKrw(p.netByCash, { compact: true })}
                     </div>
                     <div className="text-muted-foreground text-[11px]">
@@ -407,7 +407,7 @@ export function GapSection({ config, quotes }: Props) {
                           {' '}
                           (한도 {formatKrw(p.loanLimit, { compact: true })})
                         </span>{' '}
-                        + 현금 {formatKrw(p.grossByCash, { compact: true })}
+                        + 내 돈 {formatKrw(p.grossByCash, { compact: true })}
                       </div>
                     </div>
                     <div className="flex items-center">

@@ -47,13 +47,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import {
-  // recharts 의 Tooltip 과 이름이 겹쳐 별칭을 쓴다
-  Tooltip as UiTooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -276,21 +270,20 @@ export function SimulationClient({ config, quotes }: Props) {
             sub={`${(baseline.buyPrice / baseline.sellPrice).toFixed(2)}배`}
             tone="rise"
           />
-          <TooltipProvider>
-            <UiTooltip>
-              <TooltipTrigger render={<div className="cursor-help" />}>
-                <Stat
-                  label="총 마찰비용 ⓘ"
-                  value={formatKrw(baseline.totalFriction, { compact: true })}
-                  sub={`매수가의 ${formatPct(baseline.frictionRate, 2)} · 올려서 상세`}
-                  tone="fall"
-                />
-              </TooltipTrigger>
-              <TooltipContent>
-                <FrictionDetail r={baseline} />
-              </TooltipContent>
-            </UiTooltip>
-          </TooltipProvider>
+          {/* 모바일에는 호버가 없어 클릭(탭)으로 여는 팝오버를 쓴다 */}
+          <Popover>
+            <PopoverTrigger render={<div className="cursor-pointer" />}>
+              <Stat
+                label="총 마찰비용 ⓘ"
+                value={formatKrw(baseline.totalFriction, { compact: true })}
+                sub={`매수가의 ${formatPct(baseline.frictionRate, 2)} · 눌러서 상세`}
+                tone="fall"
+              />
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-3 text-xs">
+              <FrictionDetail r={baseline} />
+            </PopoverContent>
+          </Popover>
           <Stat
             label="매도 후 순현금"
             value={formatKrw(baseline.netFromSale, { compact: true })}
@@ -347,7 +340,7 @@ export function SimulationClient({ config, quotes }: Props) {
                       sub={`한도 ${formatKrw(loanLimit.result.limit, { compact: true })} (${loanLimit.result.bindingFactor})`}
                     />
                     <Stat
-                      label="현금으로 준비"
+                      label="내 돈으로 준비 (모아둔 현금)"
                       value={formatKrw(byCash, { compact: true })}
                       sub={
                         config.household.cashAssets > 0
@@ -598,25 +591,23 @@ export function SimulationClient({ config, quotes }: Props) {
                       {formatKrw(m.result.acquisitionTax.total, { compact: true })}
                     </TableCell>
                     <TableCell className="tabular text-fall text-right">
-                      <TooltipProvider>
-                        <UiTooltip>
-                          <TooltipTrigger
-                            render={
-                              <span className="cursor-help underline decoration-dotted underline-offset-2" />
-                            }
-                          >
-                            {formatKrw(m.result.totalFriction, { compact: true })}
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <FrictionDetail r={m.result} />
-                          </TooltipContent>
-                        </UiTooltip>
-                      </TooltipProvider>
+                      <Popover>
+                        <PopoverTrigger
+                          render={
+                            <span className="cursor-pointer underline decoration-dotted underline-offset-2" />
+                          }
+                        >
+                          {formatKrw(m.result.totalFriction, { compact: true })}
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-3 text-xs">
+                          <FrictionDetail r={m.result} />
+                        </PopoverContent>
+                      </Popover>
                     </TableCell>
                     <TableCell className="tabular text-right font-semibold">
                       <div>{formatKrw(cash, { compact: true })}</div>
                       <div className="text-muted-foreground text-[11px] font-normal">
-                        대출 {formatKrw(byLoan, { compact: true })} · 현금{' '}
+                        대출 {formatKrw(byLoan, { compact: true })} · 내 돈{' '}
                         {formatKrw(byCash, { compact: true })}
                       </div>
                     </TableCell>
@@ -754,7 +745,7 @@ function FrictionDetail({ r }: { r: ReturnType<typeof simulateSwitch> }) {
           <span className="tabular">{formatKrw(v, { compact: true })}</span>
         </div>
       ))}
-      <div className="border-background/30 mt-1 flex justify-between gap-4 border-t pt-1 font-semibold">
+      <div className="mt-1 flex justify-between gap-4 border-t pt-1 font-semibold">
         <span>총 마찰비용</span>
         <span className="tabular">{formatKrw(r.totalFriction, { compact: true })}</span>
       </div>
