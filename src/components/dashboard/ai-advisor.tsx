@@ -261,17 +261,22 @@ export function AiAdvisor({
       action={
         <div className="flex items-center gap-2">
           <Select value={selected.id} onValueChange={(v) => setApartmentId(String(v ?? ''))}>
-            <SelectTrigger size="sm" className="w-64">
+            <SelectTrigger size="sm" className="w-64 max-w-full min-w-0">
               {/* SelectValue 의 함수 자식은 항목이 등록되기 전엔 id 를 그대로 노출하는
                   버그가 있어, 선택된 아파트의 라벨을 직접 렌더링한다 */}
               <SelectValue>
-                {selected.complexName} {formatArea(selected.areaM2)}
+                <span className="block min-w-0 truncate">
+                  {selected.complexName} · {formatArea(selected.areaM2)}
+                </span>
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {apartments.map((a) => (
                 <SelectItem key={a.id} value={a.id}>
-                  {a.complexName} {formatArea(a.areaM2)}
+                  <span className="flex flex-col items-start gap-0.5">
+                    <span>{a.complexName}</span>
+                    <span className="text-muted-foreground text-xs">{formatArea(a.areaM2)}</span>
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>

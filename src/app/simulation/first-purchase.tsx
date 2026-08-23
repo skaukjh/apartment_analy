@@ -202,16 +202,26 @@ export function FirstPurchasePanel({ config, quotes }: Props) {
                 setBuyPrice(0);
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger className="min-w-0">
                 {/* 함수 자식은 항목 등록 전 id 를 노출하므로 선택된 라벨을 직접 렌더링한다 */}
                 <SelectValue>
-                  {target.complexName} {formatArea(target.areaM2)}
+                  <span className="block min-w-0 truncate">
+                    {target.complexName} · {formatArea(target.areaM2)}
+                  </span>
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {targets.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
-                    {t.complexName} {formatArea(t.areaM2)}
+                    <span className="flex flex-col items-start gap-0.5">
+                      <span>{t.complexName}</span>
+                      <span className="text-muted-foreground text-xs">
+                        {formatArea(t.areaM2)}
+                        {tradePriceOf(quotes[t.id]) > 0
+                          ? ` · ${formatKrw(tradePriceOf(quotes[t.id]), { compact: true })}`
+                          : ''}
+                      </span>
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>

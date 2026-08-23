@@ -137,14 +137,14 @@ export function AreaTypeSelect({
         if (a) onPick({ ...a, builtYear: entry?.builtYear, dong: entry?.dong });
       }}
     >
-      <SelectTrigger className="w-full" disabled={loading}>
+      <SelectTrigger className="w-full min-w-0" disabled={loading}>
         <SelectValue>
           {loading ? (
             <span className="flex items-center gap-1.5">
               <Loader2 className="size-3.5 animate-spin" /> 평형 불러오는 중…
             </span>
           ) : (
-            formatArea(value)
+            <span className="block min-w-0 truncate">{formatArea(value)}</span>
           )}
         </SelectValue>
       </SelectTrigger>
@@ -156,8 +156,14 @@ export function AreaTypeSelect({
         ) : (
           areas.map((a) => (
             <SelectItem key={a.areaM2} value={String(a.areaM2)}>
-              {formatArea(a.areaM2)} — 중앙값 {formatKrw(a.price, { compact: true })} ·{' '}
-              {a.tradeCount}건
+              {/* 두 줄 — 첫 줄 평형, 둘째 줄 시세·표본. 잘리지 않게 항목에서 다 보여준다 */}
+              <span className="flex flex-col items-start gap-0.5">
+                <span>{formatArea(a.areaM2)}</span>
+                <span className="text-muted-foreground text-xs">
+                  중앙값 {formatKrw(a.price, { compact: true })} · 표본 {a.tradeCount}건 · 최근{' '}
+                  {a.latestDealDate}
+                </span>
+              </span>
             </SelectItem>
           ))
         )}

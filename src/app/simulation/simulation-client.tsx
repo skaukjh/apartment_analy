@@ -206,16 +206,21 @@ export function SimulationClient({ config, quotes }: Props) {
                 setNewLoanRate(h?.loanRate ?? 4);
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger className="min-w-0">
                 {/* 함수 자식은 항목 등록 전 id 를 노출하므로 선택된 라벨을 직접 렌더링한다 */}
                 <SelectValue>
-                  {holding.complexName} {formatArea(holding.areaM2)}
+                  <span className="block min-w-0 truncate">
+                    {holding.complexName} · {formatArea(holding.areaM2)}
+                  </span>
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {config.holdings.map((h) => (
                   <SelectItem key={h.id} value={h.id}>
-                    {h.complexName} {formatArea(h.areaM2)}
+                    <span className="flex flex-col items-start gap-0.5">
+                      <span>{h.complexName}</span>
+                      <span className="text-muted-foreground text-xs">{formatArea(h.areaM2)}</span>
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -232,18 +237,25 @@ export function SimulationClient({ config, quotes }: Props) {
                 setBuyPrice(t ? tradePriceOf(quotes[t.id]) : 0);
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger className="min-w-0">
                 <SelectValue>
-                  {target.complexName} {formatArea(target.areaM2)}
+                  <span className="block min-w-0 truncate">
+                    {target.complexName} · {formatArea(target.areaM2)}
+                  </span>
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {targetsByPrice.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
-                    {t.complexName} {formatArea(t.areaM2)}
-                    {tradePriceOf(quotes[t.id]) > 0
-                      ? ` — ${formatEok(tradePriceOf(quotes[t.id]))}`
-                      : ''}
+                    <span className="flex flex-col items-start gap-0.5">
+                      <span>{t.complexName}</span>
+                      <span className="text-muted-foreground text-xs">
+                        {formatArea(t.areaM2)}
+                        {tradePriceOf(quotes[t.id]) > 0
+                          ? ` · ${formatEok(tradePriceOf(quotes[t.id]))}`
+                          : ''}
+                      </span>
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
