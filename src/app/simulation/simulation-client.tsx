@@ -515,7 +515,7 @@ export function SimulationClient({ config, quotes }: Props) {
       {/* 상세 테이블 */}
       <SectionCard
         title="시나리오 상세"
-        description="양도세는 보유 아파트 매도 시, 취득세는 목표 아파트 매수 시 기준입니다."
+        description="양도세는 보유 아파트 매도 시, 취득세는 목표 아파트 매수 시 기준입니다. 실소요 자금 아래의 대출은 해당 시나리오 매수가 기준 한도(LTV·DSR·정책 총액 중 최소) 안에서 충당 가능한 금액, 현금은 그 나머지입니다."
       >
         <div className="thin-scrollbar overflow-x-auto">
           <Table>
@@ -536,6 +536,22 @@ export function SimulationClient({ config, quotes }: Props) {
             <TableBody>
               {matrix.map((m) => {
                 const cash = m.result.totalNeeded - m.result.netFromSale;
+                /* 시나리오별 대출 한도 — LTV 가 매수가에 비례하므로 시나리오마다 다시 계산.
+                   DSR·정책 총액 한도는 가격과 무관해 기준선과 같은 조건을 쓴다. */
+                const scenarioLimit = loanLimit
+                  ? calcLoanLimit({
+                      price: m.result.buyPrice,
+                      regulated: config.household.targetIsRegulated || loanLimit.reg.adjusted,
+                      metro: loanLimit.reg.metro,
+                      retainedHouseCount: 0,
+                      firstTimeBuyer: config.household.firstTimeBuyer,
+                      annualIncome: config.household.annualIncome,
+                      otherDebtAnnualPayment: config.household.otherDebtAnnualPayment,
+                      rate: newLoanRate,
+                    }).limit
+                  : 0;
+                const byLoan = Math.min(scenarioLimit, Math.max(0, cash));
+                const byCash = Math.max(0, cash - byLoan);
                 return (
                   <TableRow key={m.scenario.label}>
                     <TableCell>
@@ -565,7 +581,11 @@ export function SimulationClient({ config, quotes }: Props) {
                       {formatKrw(m.result.totalFriction, { compact: true })}
                     </TableCell>
                     <TableCell className="tabular text-right font-semibold">
-                      {formatKrw(cash, { compact: true })}
+                      <div>{formatKrw(cash, { compact: true })}</div>
+                      <div className="text-muted-foreground text-[11px] font-normal">
+                        대출 {formatKrw(byLoan, { compact: true })} · 현금{' '}
+                        {formatKrw(byCash, { compact: true })}
+                      </div>
                     </TableCell>
                     <TableCell
                       className={cn(
