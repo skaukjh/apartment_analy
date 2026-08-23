@@ -106,8 +106,8 @@ export interface ComplexSpec {
   landSharePerUnit?: number;
   /** 조회에 쓴 지번 주소 */
   address: string;
-  /** 총괄표제부(단지 단위) 또는 표제부 합산(동별 합계) */
-  source: '총괄표제부' | '표제부 합산';
+  /** 어떤 대장에서 어떻게 집계했는지 */
+  source: string;
 }
 
 /** 지번 주소 → 법정동코드 10자리(b_code)·본번·부번 (카카오 주소검색) */
@@ -176,12 +176,30 @@ function registerUrl(endpoint: string, bcode: string, bun: string, ji: string): 
   );
 }
 
-/** 건축물대장에서 지번 하나의 스펙을 읽는다 — 총괄표제부 우선, 없으면 표제부 합산 */
+/** 단지명 비교용 정규화 — 공백·괄호를 떼고 '아파트/단지/차' 같은 꼬리말을 지운다 */
+function specNameKey(s: string): string {
+  return s
+    .replace(/[\s()（）·・.]/g, '')
+    .toLowerCase()
+    .replace(/\d+동$/, '')
+    .replace(/차$|아파트|apt|단지/g, '');
+}
+
+/**
+ * 건축물대장에서 지번 하나의 스펙을 읽는다.
+ *
+ * 한 지번에 여러 단지가 섞인 경우가 실제로 있다 — 개포동 12는 총괄표제부가
+ * "대치,대청 아파트" 4,199세대로 묶여 있다. 그래서 표제부(동별)를 단지명으로
+ * 걸러 합산하는 쪽을 우선하고, 총괄표제부는 빠진 값을 메우는 데 쓴다.
+ * 구대장(옛 단지)은 용적률·대지면적이 0으로 비어 있는 경우가 많다 — 그때는
+ * 그 항목을 채우지 않는다 (0을 진짜 값으로 쓰면 대지지분이 엉터리가 된다).
+ */
 async function fetchSpecByLot(
   bcode: string,
   bun: string,
   ji: string,
   address: string,
+  complexName?: string,
 ): Promise<ComplexSpec | null> {
   if (!env.molitKey) return null;
 
@@ -196,42 +214,65 @@ async function fetchSpecByLot(
     return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((m) => m[1]);
   };
 
-  // 1) 총괄표제부 — 단지 전체가 한 행 (세대수·용적률·대지면적이 단지 합계)
-  const recap = (await items(RECAP_ENDPOINT)).find((it) => num(pickTag(it, 'hhldCnt')));
-  if (recap) {
-    const households = num(pickTag(recap, 'hhldCnt'));
-    const landArea = num(pickTag(recap, 'platArea'));
-    return {
-      households,
-      floorAreaRatio: num(pickTag(recap, 'vlRat')),
-      landArea,
-      landSharePerUnit: landArea && households ? landArea / households : undefined,
-      address,
-      source: '총괄표제부',
-    };
+  /* 1) 표제부(동별) — 세대수 있는 동만 모으고, 단지명이 매칭되는 동으로 좁힌다 */
+  let rows = (await items(ENDPOINT)).filter((it) => (num(pickTag(it, 'hhldCnt')) ?? 0) > 0);
+  let nameFiltered = false;
+  if (complexName && rows.length > 0) {
+    const q = specNameKey(complexName);
+    const matched = rows.filter((it) => {
+      const n = specNameKey(pickTag(it, 'bldNm') ?? '');
+      return Boolean(q) && Boolean(n) && (n.includes(q) || q.includes(n));
+    });
+    if (matched.length > 0) {
+      rows = matched;
+      nameFiltered = true;
+    }
   }
 
-  // 2) 표제부 — 동(棟)별 행이라 세대수를 합산한다. 용적률·대지면적은 대지 값이라 최댓값.
-  const rows = await items(ENDPOINT);
-  if (rows.length === 0) return null;
-  let households = 0;
+  let households = rows.reduce((sum, it) => sum + (num(pickTag(it, 'hhldCnt')) ?? 0), 0);
   let far: number | undefined;
   let landArea: number | undefined;
   for (const it of rows) {
-    households += num(pickTag(it, 'hhldCnt')) ?? 0;
     const v = num(pickTag(it, 'vlRat'));
     if (v && (!far || v > far)) far = v;
     const p = num(pickTag(it, 'platArea'));
     if (p && (!landArea || p > landArea)) landArea = p;
   }
+
+  /* 2) 총괄표제부 — 표제부에서 못 채운 값을 메운다.
+     단, 세대수는 단지명 필터가 성공했을 때는 덮지 않는다 (총괄은 지번 전체 합).
+     주소 검색이 옆 단지 지번으로 빗나가는 사고가 있다 — 잠실엘스를 찾는데
+     리센츠 대지(잠실동 22)가 잡힌 실제 사례. 단지명 필터가 실패했고 총괄의
+     건물명도 단지명과 다르면 남의 단지 데이터이므로 채우지 않는다. */
+  let landFromRecap = false;
+  const recap = (await items(RECAP_ENDPOINT)).find((it) => num(pickTag(it, 'hhldCnt')));
+  if (!nameFiltered && complexName) {
+    const q = specNameKey(complexName);
+    const n = specNameKey(recap ? (pickTag(recap, 'bldNm') ?? '') : '');
+    const recapMatches = Boolean(q) && Boolean(n) && (n.includes(q) || q.includes(n));
+    if (!recapMatches) return null; // 이 지번의 대장이 요청한 단지가 아니다
+  }
+  if (recap) {
+    if (households === 0) households = num(pickTag(recap, 'hhldCnt')) ?? 0;
+    far ??= num(pickTag(recap, 'vlRat'));
+    if (!landArea) {
+      landArea = num(pickTag(recap, 'platArea'));
+      landFromRecap = Boolean(landArea);
+    }
+  }
+
   if (households === 0 && !far) return null;
+
+  /* 대지지분은 대지면적이 이 단지 것일 때만 계산한다 — 단지명 필터로 좁혔는데
+     대지면적이 총괄(지번 전체) 값이면 나눗셈이 과대 계산된다. 그 경우는 비워 둔다. */
+  const landShareOk = Boolean(landArea) && households > 0 && !(nameFiltered && landFromRecap);
   return {
     households: households || undefined,
     floorAreaRatio: far,
     landArea,
-    landSharePerUnit: landArea && households ? landArea / households : undefined,
+    landSharePerUnit: landShareOk && landArea ? landArea / households : undefined,
     address,
-    source: '표제부 합산',
+    source: nameFiltered ? '표제부(단지명 매칭 합산)' : recap ? '총괄표제부' : '표제부 합산',
   };
 }
 
@@ -265,7 +306,7 @@ export async function fetchComplexSpec(opts: {
   }
   if (!lot) return null;
 
-  return fetchSpecByLot(lot.bcode, lot.bun, lot.ji, lot.address);
+  return fetchSpecByLot(lot.bcode, lot.bun, lot.ji, lot.address, opts.complexName);
 }
 
 /**

@@ -126,7 +126,7 @@ export async function POST(request: Request) {
           field: 'totalHouseholds',
           label: '총 세대수',
           value: spec.households,
-          basis,
+          basis: `${basis} — 대장 등록명 기준. 인접 단지와 묶여 등록된 경우 실제와 다를 수 있으니 확인하세요.`,
         });
       }
       if (spec.floorAreaRatio && (overwrite || !apt.floorAreaRatio)) {
