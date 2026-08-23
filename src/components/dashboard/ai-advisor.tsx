@@ -5,6 +5,7 @@ import { Bot, Loader2, Send, Sparkles, User } from 'lucide-react';
 import type { ApartmentRef, UserConfig } from '@/lib/types';
 import type { NearbySummary } from '@/lib/sources/place';
 import type { BankRate } from '@/lib/sources/bank-rates';
+import { formatArea } from '@/lib/format';
 import { EmptyHint, SectionCard } from '@/components/ui-bits';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -203,18 +204,17 @@ export function AiAdvisor({ config, enabled }: { config: UserConfig; enabled: bo
       action={
         <div className="flex items-center gap-2">
           <Select value={selected.id} onValueChange={(v) => setApartmentId(String(v ?? ''))}>
-            <SelectTrigger size="sm" className="w-48">
+            <SelectTrigger size="sm" className="w-64">
+              {/* SelectValue 의 함수 자식은 항목이 등록되기 전엔 id 를 그대로 노출하는
+                  버그가 있어, 선택된 아파트의 라벨을 직접 렌더링한다 */}
               <SelectValue>
-                {(value) => {
-                  const a = apartments.find((x) => x.id === value);
-                  return a ? `${a.complexName} ${a.areaM2}㎡` : '선택';
-                }}
+                {selected.complexName} {formatArea(selected.areaM2)}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {apartments.map((a) => (
                 <SelectItem key={a.id} value={a.id}>
-                  {a.complexName} {a.areaM2}㎡
+                  {a.complexName} {formatArea(a.areaM2)}
                 </SelectItem>
               ))}
             </SelectContent>

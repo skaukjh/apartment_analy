@@ -23,7 +23,8 @@ export async function POST(request: Request) {
   try {
     // 비용 귀속: 관리자는 운영자 키, 회원은 자기 키(BYOK)
     const user = await getSessionUser();
-    const cfgForKey = await loadUserConfig(await configIdForRequest());
+    const configId = await configIdForRequest();
+    const cfgForKey = await loadUserConfig(configId);
     const ai = resolveOpenAIKey(user, cfgForKey.openaiApiKey);
     if (!ai.allowed) {
       return NextResponse.json(
@@ -47,7 +48,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: '메시지가 비어 있습니다.' }, { status: 400 });
     }
 
-    const data = await buildDashboard();
+    // 요청 사용자의 설정 기준으로 조립 — 기본값이면 익명(default) 설정을 읽는 버그가 있었다
+    const data = await buildDashboard({ userId: configId });
 
     // 특정 아파트를 지정하면 그 물건 컨텍스트를, 아니면 시장 전반 컨텍스트를 붙인다
     let contextMd: string;

@@ -23,7 +23,7 @@ import {
   runScenarioMatrix,
   simulateSwitch,
 } from '@/lib/analysis/switch-simulation';
-import { formatEok, formatKrw, formatPct } from '@/lib/format';
+import { formatArea, formatEok, formatKrw, formatPct } from '@/lib/format';
 import { calcLoanLimit } from '@/lib/tax/loan-limit';
 import { REGULATION_AS_OF, regulationOf } from '@/lib/analysis/regulation';
 import { SectionCard, EmptyHint, Stat } from '@/components/ui-bits';
@@ -186,18 +186,15 @@ export function SimulationClient({ config, quotes }: Props) {
               }}
             >
               <SelectTrigger>
-                {/* 기본 렌더는 value(=id)를 그대로 보여주므로 라벨로 바꿔준다 */}
+                {/* 함수 자식은 항목 등록 전 id 를 노출하므로 선택된 라벨을 직접 렌더링한다 */}
                 <SelectValue>
-                  {(value) => {
-                    const h = config.holdings.find((x) => x.id === value);
-                    return h ? `${h.complexName} ${h.areaM2}㎡` : '선택';
-                  }}
+                  {holding.complexName} {formatArea(holding.areaM2)}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {config.holdings.map((h) => (
                   <SelectItem key={h.id} value={h.id}>
-                    {h.complexName} {h.areaM2}㎡
+                    {h.complexName} {formatArea(h.areaM2)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -216,16 +213,13 @@ export function SimulationClient({ config, quotes }: Props) {
             >
               <SelectTrigger>
                 <SelectValue>
-                  {(value) => {
-                    const t = config.targets.find((x) => x.id === value);
-                    return t ? `${t.complexName} ${t.areaM2}㎡` : '선택';
-                  }}
+                  {target.complexName} {formatArea(target.areaM2)}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {config.targets.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
-                    {t.complexName} {t.areaM2}㎡
+                    {t.complexName} {formatArea(t.areaM2)}
                   </SelectItem>
                 ))}
               </SelectContent>

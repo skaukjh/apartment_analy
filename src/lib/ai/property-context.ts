@@ -15,7 +15,7 @@ import { fetchNearby, hasPlaceApi, type NearbySummary } from '@/lib/sources/plac
 import { fetchBankMortgageRates, hasBankRates, type BankRate } from '@/lib/sources/bank-rates';
 import { HEAT_META } from '@/lib/analysis/market-signals';
 import { STAGE_META } from '@/lib/analysis/rebound';
-import { formatKrw, formatPct } from '@/lib/format';
+import { formatArea, formatKrw, formatPct } from '@/lib/format';
 
 export interface PropertyContext {
   /** 사람이 읽어도 되는 마크다운 — 그대로 프롬프트에 넣는다 */
@@ -64,7 +64,7 @@ export async function buildPropertyContext(
 
   sections.push(
     `# 대상 아파트\n` +
-      line('단지', `${apartment.complexName} 전용 ${apartment.areaM2}㎡`) +
+      line('단지', `${apartment.complexName} ${formatArea(apartment.areaM2)}`) +
       '\n' +
       line('위치', `${apartment.sido} ${apartment.sigungu} ${apartment.dong ?? ''}`.trim()) +
       '\n' +

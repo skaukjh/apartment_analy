@@ -9,7 +9,7 @@ import { calcAcquisitionTax } from '@/lib/tax/acquisition';
 import { calcTransactionCost } from '@/lib/tax/transaction-costs';
 import { calcLoanLimit } from '@/lib/tax/loan-limit';
 import { isRegulated } from '@/lib/analysis/auto-fill';
-import { formatKrw, formatPct } from '@/lib/format';
+import { formatArea, formatKrw, formatPct } from '@/lib/format';
 import { EmptyHint, SectionCard, Stat } from '@/components/ui-bits';
 import { Field, MoneyInput } from '@/components/form-bits';
 import { Button } from '@/components/ui/button';
@@ -198,17 +198,15 @@ export function FirstPurchasePanel({ config, quotes }: Props) {
               }}
             >
               <SelectTrigger>
+                {/* 함수 자식은 항목 등록 전 id 를 노출하므로 선택된 라벨을 직접 렌더링한다 */}
                 <SelectValue>
-                  {(value) => {
-                    const t = targets.find((x) => x.id === value);
-                    return t ? `${t.complexName} ${t.areaM2}㎡` : '선택';
-                  }}
+                  {target.complexName} {formatArea(target.areaM2)}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {targets.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
-                    {t.complexName} {t.areaM2}㎡
+                    {t.complexName} {formatArea(t.areaM2)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -277,7 +275,7 @@ export function FirstPurchasePanel({ config, quotes }: Props) {
           <div className="grid gap-6 lg:grid-cols-2">
             <SectionCard
               title="비용 상세"
-              description={`${target.complexName} ${target.areaM2}㎡ 기준`}
+              description={`${target.complexName} ${formatArea(target.areaM2)} 기준`}
             >
               <table className="w-full text-sm">
                 <tbody>
@@ -398,7 +396,7 @@ export function FirstPurchasePanel({ config, quotes }: Props) {
                     {comparison.map((r) => (
                       <TableRow key={r.t.id}>
                         <TableCell className="font-medium">
-                          {r.t.complexName} {r.t.areaM2}㎡
+                          {r.t.complexName} {formatArea(r.t.areaM2)}
                         </TableCell>
                         <TableCell className="tabular text-right">
                           {formatKrw(r.price, { compact: true })}

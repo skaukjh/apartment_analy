@@ -11,18 +11,20 @@
  *  - 토지거래허가구역: 실거주 목적만 매수 가능 (2년 실거주 의무), 갭투자 불가
  */
 
-export const REGULATION_AS_OF = '10·15 대책(2025) 반영, 2026-08 확인';
+export const REGULATION_AS_OF = '10·15 대책(2025) + 2026-07-01 동탄·기흥·구리 추가 반영';
 
 export type RegulationKind = 'adjusted' | 'speculation' | 'land-permit';
 
 /**
- * 10·15 부동산 대책 (2025-10-15 발표) 기준:
- *  - 조정대상지역·투기과열지구: 서울 전 지역 + 경기 12곳 (2025-10-16 발효)
- *  - 토지거래허가구역: 서울 전 지역 + 경기 12곳의 아파트 (2025-10-20 발효)
+ * 지정 근거:
+ *  - 10·15 부동산 대책 (2025-10-15 발표): 서울 전 지역 + 경기 12곳
+ *    조정대상지역·투기과열지구 2025-10-16 발효, 토지거래허가구역(아파트) 2025-10-20 발효
+ *  - 2026-06-29 주거정책심의위: 화성 동탄구·용인 기흥구·구리시 추가 지정 (2026-07-01 발효,
+ *    토지거래허가구역-아파트는 2026-07-05부터)
  *
  * 이전에는 강남3구·용산만 들어 있어 광진구가 "비규제"로 표시되던 오류가 있었다.
  */
-const GYEONGGI_12 = new Set<string>([
+const GYEONGGI_REGULATED = new Set<string>([
   '41290', // 과천시
   '41210', // 광명시
   '41135', // 성남 분당구
@@ -35,6 +37,10 @@ const GYEONGGI_12 = new Set<string>([
   '41465', // 용인 수지구
   '41430', // 의왕시
   '41450', // 하남시
+  // 2026-07-01 추가 지정분
+  '41597', // 화성 동탄구 (2026-02-01 분구 신설 코드)
+  '41463', // 용인 기흥구
+  '41310', // 구리시
 ]);
 
 /** 서울 시군구 여부 (법정동코드 11로 시작) */
@@ -42,12 +48,12 @@ function isSeoulGu(lawdCd: string): boolean {
   return /^11\d{3}$/.test(lawdCd);
 }
 
-/** 조정대상지역 여부 — 서울 전역 + 경기 12곳 */
+/** 조정대상지역 여부 — 서울 전역 + 경기 규제지역 */
 function isAdjusted(lawdCd: string): boolean {
-  return isSeoulGu(lawdCd) || GYEONGGI_12.has(lawdCd);
+  return isSeoulGu(lawdCd) || GYEONGGI_REGULATED.has(lawdCd);
 }
 
-/** 하위 호환 — Set 을 직접 참조하던 코드용. 서울 25개 구 + 경기 12곳 */
+/** 하위 호환 — Set 을 직접 참조하던 코드용. 서울 25개 구 + 경기 규제지역 */
 export const ADJUSTED_AREAS = new Set<string>([
   ...[
     '11110',
@@ -76,7 +82,7 @@ export const ADJUSTED_AREAS = new Set<string>([
     '11710',
     '11740',
   ],
-  ...GYEONGGI_12,
+  ...GYEONGGI_REGULATED,
 ]);
 
 /** 투기과열지구 — 10·15 대책으로 조정대상지역과 동일 범위 */

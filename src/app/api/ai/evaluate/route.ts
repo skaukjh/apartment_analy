@@ -37,7 +37,8 @@ export async function POST(request: Request) {
   try {
     // 비용 귀속: 관리자는 운영자 키, 회원은 자기 키(BYOK)
     const user = await getSessionUser();
-    const cfgForKey = await loadUserConfig(await configIdForRequest());
+    const configId = await configIdForRequest();
+    const cfgForKey = await loadUserConfig(configId);
     const ai = resolveOpenAIKey(user, cfgForKey.openaiApiKey);
     if (!ai.allowed) {
       return NextResponse.json(
@@ -56,7 +57,9 @@ export async function POST(request: Request) {
     const body = await request.json();
     const apartmentId = String(body?.apartmentId ?? '');
 
-    const data = await buildDashboard();
+    // 요청 사용자의 설정으로 조립해야 한다 — 기본값이면 익명(default) 설정을 읽어
+    // 로그인 사용자의 아파트 id 가 "등록되지 않은 아파트"로 404 나던 버그가 있었다
+    const data = await buildDashboard({ userId: configId });
     const apartment: ApartmentRef | undefined =
       data.config.holdings.find((h) => h.id === apartmentId) ??
       data.config.targets.find((t) => t.id === apartmentId);

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { errorResponse } from '@/lib/api-auth';
+import { configIdForRequest } from '@/lib/auth/server';
 import { buildDashboard } from '@/lib/pipeline/dashboard';
 import {
   autoFillHolding,
@@ -34,7 +35,9 @@ export async function POST(request: Request) {
 
     // 시세를 얻으려면 대시보드 조립이 필요하다 (뉴스·거시지표는 시세와 무관해 생략 가능하지만
     // 대출 금리 자동 입력에 ECOS 가 필요하므로 라이브 호출을 유지한다)
-    const data = await buildDashboard();
+    // 요청 사용자의 설정 기준으로 조립 — 익명(default) 설정으로 조립하면
+    // 로그인 사용자의 아파트 id 에 해당하는 시세가 없어 자동 채움이 빈다
+    const data = await buildDashboard({ userId: await configIdForRequest() });
 
     /* 취득일 인근 실거래 — 취득가액 자동 채움용.
        본인의 매수 거래 자체가 국토부에 신고돼 있으므로, 취득일과 가장 가까운

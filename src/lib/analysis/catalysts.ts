@@ -53,7 +53,7 @@ export const CATALYST_SEEDS: CatalystSeed[] = [
     title: 'GTX-A (운정~동탄)',
     category: 'transport',
     keywords: ['GTX-A', 'GTX A노선'],
-    affects: ['41480', '41287', '41285', '11650', '11680', '41590', '41117'],
+    affects: ['41480', '41287', '41285', '11650', '11680', '41597', '41117'],
     impact: 'high',
     sourceUrl: 'https://www.molit.go.kr',
   },

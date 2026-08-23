@@ -15,7 +15,7 @@ import {
   Unplug,
   Wand2,
 } from 'lucide-react';
-import { formatKrw } from '@/lib/format';
+import { formatArea, formatKrw } from '@/lib/format';
 import { REGULATION_AS_OF, regulationOf } from '@/lib/analysis/regulation';
 import type { Holding, TargetApartment, UserConfig, WatchRegion } from '@/lib/types';
 import type { SigunguInfo } from '@/lib/regions';
@@ -417,7 +417,7 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
     };
     setConfig(next);
     toast.success(
-      `${pick.complexName} ${pick.areaM2}㎡ — 실거래 중앙값 ${formatKrw(pick.price)}으로 채웠습니다 (표본 ${pick.tradeCount}건, 최근 ${pick.latestDealDate})`,
+      `${pick.complexName} ${formatArea(pick.areaM2)} — 실거래 중앙값 ${formatKrw(pick.price)}으로 채웠습니다 (표본 ${pick.tradeCount}건, 최근 ${pick.latestDealDate})`,
     );
     // 취득일이 이미 입력돼 있으면 취득가액·실거주 개월·금리까지 이어서 자동 계산한다
     void autoFill('holding', false, id, next);
@@ -441,7 +441,7 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
     };
     setConfig(next);
     toast.success(
-      `${pick.complexName} ${pick.areaM2}㎡ — 실거래 중앙값 ${formatKrw(pick.price)}으로 채웠습니다 (표본 ${pick.tradeCount}건, 최근 ${pick.latestDealDate})`,
+      `${pick.complexName} ${formatArea(pick.areaM2)} — 실거래 중앙값 ${formatKrw(pick.price)}으로 채웠습니다 (표본 ${pick.tradeCount}건, 최근 ${pick.latestDealDate})`,
     );
   };
 
@@ -745,7 +745,7 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                     <HistoryList
                       rows={cardVersions((c) => c.holdings, h.id).map(({ savedAt, item }) => ({
                         savedAt,
-                        summary: `${item.complexName || '(이름 없음)'} ${item.areaM2}㎡ · 취득가 ${
+                        summary: `${item.complexName || '(이름 없음)'} ${formatArea(item.areaM2)} · 취득가 ${
                           item.acquisitionPrice > 0 ? formatKrw(item.acquisitionPrice) : '미입력'
                         } · 호가 ${item.manualPrice ? formatKrw(item.manualPrice) : '실거래 기준'} · 대출 ${
                           item.loanBalance > 0 ? formatKrw(item.loanBalance) : '없음'
@@ -930,7 +930,7 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                     <HistoryList
                       rows={cardVersions((c) => c.targets, t.id).map(({ savedAt, item }) => ({
                         savedAt,
-                        summary: `${item.complexName || '(이름 없음)'} ${item.areaM2}㎡ · 호가 ${
+                        summary: `${item.complexName || '(이름 없음)'} ${formatArea(item.areaM2)} · 호가 ${
                           item.manualPrice ? formatKrw(item.manualPrice) : '실거래 기준'
                         } · 우선순위 ${item.priority}`,
                         restore: () => {
