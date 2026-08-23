@@ -47,7 +47,7 @@ DATA_GO_KR_SERVICE_KEY=<Decoding 인증키>
 
 ### 같은 키로 추가 신청하면 좋은 것 (선택)
 
-- [건축물대장정보 서비스](https://www.data.go.kr/data/15044713/openapi.do) — 용적률·대지지분·세대수 (재건축 사업성 판단)
+- [건축HUB 건축물대장정보 서비스](https://www.data.go.kr/data/15134735/openapi.do) — 용적률·대지지분·세대수 (설정 "자동 계산"이 사용. 재건축 사업성 판단)
 
 ---
 

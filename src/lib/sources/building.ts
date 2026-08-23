@@ -1,7 +1,7 @@
 /**
  * 건축물대장 정보 — 국토교통부 「건축물대장정보 서비스」 (공공데이터포털)
  *
- * 신청: https://www.data.go.kr/data/15044713/openapi.do
+ * 신청: https://www.data.go.kr/data/15134735/openapi.do (건축HUB_건축물대장정보 서비스)
  * 실거래가와 같은 DATA_GO_KR_SERVICE_KEY 를 쓴다 (활용신청은 별도로 해야 함).
  *
  * 여기서 얻는 것: 용적률 · 건폐율 · 대지면적 · 연면적 · 세대수 · 사용승인일 · 주차대수
