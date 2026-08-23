@@ -364,9 +364,30 @@ export function GapSection({ config, quotes }: Props) {
                     <div className="tabular text-primary text-lg font-bold underline decoration-dotted underline-offset-4">
                       {formatKrw(p.realCashNeeded)}
                     </div>
-                    <div className="text-muted-foreground text-[11px]">
-                      내 돈 {formatKrw(p.grossByCash, { compact: true })} + 신규 대출{' '}
-                      {formatKrw(p.grossByLoan, { compact: true })}
+                    {/* 실소요(순 기준)에서 조달총액(기존 부채 상환 포함)으로 넘어가는 다리를
+                        보여준다. 이 줄이 없으면 "6.4억"인데 아래에 "내 돈 8.5억 + 대출 4억"이
+                        붙어 산수가 안 맞는 것처럼 보인다는 피드백이 있었다. */}
+                    {p.holding.loanBalance + p.holding.leaseDeposit > 0 ? (
+                      <div className="text-muted-foreground text-[11px]">
+                        + 기존{' '}
+                        {p.holding.loanBalance > 0
+                          ? `대출 ${formatKrw(p.holding.loanBalance, { compact: true })}`
+                          : ''}
+                        {p.holding.loanBalance > 0 && p.holding.leaseDeposit > 0 ? ' · ' : ''}
+                        {p.holding.leaseDeposit > 0
+                          ? `보증금 ${formatKrw(p.holding.leaseDeposit, { compact: true })}`
+                          : ''}{' '}
+                        상환 = 조달 {formatKrw(p.grossNeed, { compact: true })}
+                      </div>
+                    ) : null}
+                    <div className="text-[11px]">
+                      <span className="text-primary font-semibold">
+                        내 돈 {formatKrw(p.grossByCash, { compact: true })}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {' '}
+                        + 신규 대출 {formatKrw(p.grossByLoan, { compact: true })}
+                      </span>
                     </div>
                     <div className="text-muted-foreground text-[11px]">
                       갭 대비 +{formatKrw(p.realCashNeeded - p.gap)} ·{' '}
