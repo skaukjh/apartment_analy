@@ -224,15 +224,19 @@ export async function runBriefing(
       failed.length > 0 ? summary : undefined,
     );
 
-    /* 발송 성공 시에만 본문 해시 갱신 — 다음 슬롯의 "변동 없음" 판정 기준.
-       해시는 텔레그램 전문 재발송 방지용이므로, 카카오만 나간 실행(오전 카카오
-       단독 발송)이 갱신하면 텔레그램이 변경 내용을 못 받은 채 "변동 없음"이 된다. */
-    if (telegramOn && failed.length === 0) await saveLastBriefingHash(uid, contentHash);
+    /* 해시·스냅샷은 텔레그램 전용 기준이므로 텔레그램 성공 여부만 본다.
+       예전에는 failed.length(전체 수신자)로 판단했는데, 카카오 수신자 한 명이
+       권한 없음(403)으로 계속 실패하자 해시가 영영 갱신되지 않아 "변동 없음"
+       판정이 죽고 같은 전문이 매 슬롯 재발송되던 실제 버그가 있었다. */
+    const telegramFailed = reports.some((r) => r.recipient === '텔레그램' && !r.ok);
+
+    /* 본문 해시 갱신 — 다음 슬롯의 "변동 없음" 판정 기준 */
+    if (telegramOn && !telegramFailed) await saveLastBriefingHash(uid, contentHash);
 
     /* 갭 변화 추적용 스냅샷 — 변경 분석(텔레그램 2번째 메시지)의 비교 기준이므로
        카카오 단독 발송에서는 남기지 않는다. 기준이 앞서가면 텔레그램이
        보고하지 못한 변화가 "이미 본 것"으로 묻힌다. */
-    if (telegramOn) {
+    if (telegramOn && !telegramFailed) {
       await saveSnapshot({
         userId: uid,
         generatedAt: data.generatedAt,
