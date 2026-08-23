@@ -21,6 +21,123 @@ interface Props {
   macro: MacroIndicator[];
 }
 
+/** 최근 6개월 추세 — 금리형(%)은 0.05%p, 지수형은 0.5% 이상 움직여야 방향으로 본다 */
+function trendOf(m: MacroIndicator): 'up' | 'down' | 'flat' {
+  const s = m.series.slice(-7);
+  if (s.length < 2) return 'flat';
+  const diff = s[s.length - 1].value - s[0].value;
+  const threshold = m.unit === '%' ? 0.05 : Math.abs(s[0].value || 1) * 0.005;
+  if (diff > threshold) return 'up';
+  if (diff < -threshold) return 'down';
+  return 'flat';
+}
+
+const TREND_LABEL: Record<'up' | 'down' | 'flat', string> = {
+  up: '상승세',
+  down: '하락세',
+  flat: '횡보',
+};
+
+interface IndicatorGuide {
+  /** 이 지수가 무엇이고 왜 갈아타기 판단에 중요한지 */
+  meaning: string;
+  /** 추세 방향별 해석 */
+  interpret: Record<'up' | 'down' | 'flat', string>;
+}
+
+const INDICATOR_GUIDES: Partial<Record<MacroIndicator['key'], IndicatorGuide>> = {
+  'base-rate': {
+    meaning:
+      '한국은행이 결정하는 정책금리로, 모든 대출금리의 바닥을 정합니다. 부동산 수요(매수 여력)에 가장 직접적으로 작용하는 거시 변수입니다.',
+    interpret: {
+      up: '금리 인상 국면 — 대출 이자 부담이 늘어 매수세가 먼저 위축됩니다. 갈아타기 시 신규 대출 금리도 오르므로 이자 증감 시뮬레이션을 보수적으로 보세요.',
+      down: '금리 인하 국면 — 통상 6~12개월 시차를 두고 거래량 회복으로 이어집니다. 갭이 벌어지기 전 갈아타기를 검토할 타이밍 신호 중 하나입니다.',
+      flat: '동결 기조 — 금리 자체보다 대출 규제(스트레스 DSR, 총액 한도)가 매수 여력을 좌우하는 구간입니다.',
+    },
+  },
+  'mortgage-rate': {
+    meaning:
+      '예금은행이 신규 취급한 주택담보대출의 가중평균 금리입니다. 매수자가 실제로 체감하는 금리라 기준금리보다 시장에 먼저 반영됩니다.',
+    interpret: {
+      up: '실질 대출 부담 증가 — 같은 한도라도 월 상환액이 늘어 매수세가 약해집니다. 시뮬레이션의 신규 대출 금리를 최신 값으로 올려 확인하세요.',
+      down: '대출 부담 완화 — 매수세 회복에 선행하는 경우가 많습니다. 갈아타기의 연 이자 증감이 유리해지는 방향입니다.',
+      flat: '금리 안정 구간 — 대출 조건 변화보다 매물·수급이 가격을 움직입니다.',
+    },
+  },
+  cpi: {
+    meaning:
+      '소비자물가지수. 물가가 목표(2%)를 웃돌면 한국은행이 금리를 내리기 어려워, 부동산에는 간접적인 긴축 요인이 됩니다.',
+    interpret: {
+      up: '물가 오름세 — 금리 인하가 지연될 가능성이 커집니다. 저금리 기대에 기댄 매수 전략은 위험합니다.',
+      down: '물가 안정세 — 금리 인하 명분이 쌓이는 구간으로, 중기적으로 부동산 수요에 우호적입니다.',
+      flat: '물가 횡보 — 금리 경로에 대한 불확실성이 유지됩니다.',
+    },
+  },
+  m2: {
+    meaning:
+      '광의통화(M2) — 시중에 풀린 유동성 총량입니다. 역사적으로 서울 아파트 가격은 유동성 증가율과 동행성이 높았습니다.',
+    interpret: {
+      up: '유동성 확대 — 자산가격 상방 압력이 커집니다. 상급지일수록 유동성 장세의 수혜가 커서 갭이 벌어지기 쉽습니다.',
+      down: '유동성 둔화 — 가격 상승 동력이 약해지는 구간입니다. 조정 시나리오의 실현 가능성이 상대적으로 높아집니다.',
+      flat: '유동성 중립 — 통화량보다 규제·심리가 가격을 좌우합니다.',
+    },
+  },
+  'net-migration': {
+    meaning:
+      '전입에서 전출을 뺀 순이동 인구입니다. 플러스면 사람이 들어오는 지역이라 실수요가 늘고, 마이너스면 빠져나가는 지역입니다.',
+    interpret: {
+      up: '인구 유입 확대 — 실수요 기반이 두터워져 가격 하방이 단단해집니다.',
+      down: '인구 유출 — 중장기 수요 기반이 약해지는 신호입니다. 다만 서울은 고가화로 인한 경기 유출이 많아 가격 약세와 직결되지는 않습니다.',
+      flat: '인구 이동 안정 — 수급에 중립적입니다.',
+    },
+  },
+  'reb-apt-sale-index': {
+    meaning:
+      '한국부동산원 아파트 매매가격지수(전국). 호가·심리가 아닌 조사 기반 공표 통계로, 시장 방향의 공식 기준선입니다.',
+    interpret: {
+      up: '매매가 상승 국면 — 기다릴수록 상급지 갭이 벌어집니다. 갈아타기는 상승 초입일수록 유리합니다.',
+      down: '매매가 조정 국면 — 상급지 절대 낙폭이 커서 갭이 줄어듭니다. 시뮬레이션의 조정 시나리오와 맞춰 보세요.',
+      flat: '가격 보합 — 거래량과 심리 지표에서 방향 단서를 찾아야 하는 구간입니다.',
+    },
+  },
+  'reb-apt-jeonse-index': {
+    meaning:
+      '아파트 전세가격지수. 전세가는 실사용 가치의 대리 지표로, 전세가 오르면 매매 전환 수요가 늘고 갭투자 부담이 줄어 매매가를 밀어 올리는 경향이 있습니다.',
+    interpret: {
+      up: '전세가 상승 — 매매가의 선행 지표로 작동하는 경우가 많습니다. 전세 낀 매물의 갭이 줄어 매수 수요가 유입됩니다.',
+      down: '전세가 하락 — 역전세 위험이 커지고 매매 수요 전환도 약해집니다.',
+      flat: '전세가 보합 — 매매·전세 모두 관망세인 구간입니다.',
+    },
+  },
+  'reb-apt-rt-index': {
+    meaning:
+      '아파트 실거래가격지수. 실제 신고된 계약만으로 만든 지수라 호가 거품 없이 체결 가격의 방향을 보여줍니다. 조사 기반 지수보다 변동이 빠르고 큽니다.',
+    interpret: {
+      up: '실거래가 상승 — 실제 체결 가격이 오르고 있다는 뜻으로, 조사 지수보다 먼저 움직입니다.',
+      down: '실거래가 하락 — 체결 기준으로 조정이 진행 중입니다. 급매 위주 체결일 수 있으니 거래량과 함께 보세요.',
+      flat: '실거래가 보합 — 매도·매수 호가 간극이 유지되는 구간입니다.',
+    },
+  },
+  'reb-unsold': {
+    meaning:
+      '전국 미분양 주택 수. 공급 부담의 대표 지표로, 미분양이 쌓이면 신축부터 가격이 눌리고 해소되면 공급 부족 신호입니다.',
+    interpret: {
+      up: '미분양 증가 — 공급 부담이 커져 가격 하방 압력으로 작동합니다. 다만 서울 핵심지는 미분양 영향이 제한적입니다.',
+      down: '미분양 감소 — 공급이 소화되고 있다는 뜻으로, 이후 공급 부족 국면의 전조가 되기도 합니다.',
+      flat: '미분양 정체 — 공급 변수는 중립입니다.',
+    },
+  },
+  'reb-consumer-sentiment': {
+    meaning:
+      '부동산시장 소비심리지수. 100을 넘으면 가격 상승 기대가 우세, 100 미만이면 하락 기대가 우세하다는 뜻의 설문 기반 심리 지표입니다.',
+    interpret: {
+      up: '심리 개선 — 매수 대기 수요가 시장에 들어올 준비를 하는 구간입니다. 거래량 회복이 뒤따르는지 확인하세요.',
+      down: '심리 위축 — 관망세가 짙어져 거래량부터 줄어듭니다. 급하지 않다면 매수를 서두를 이유가 약한 구간입니다.',
+      flat: '심리 중립 — 관망 속 실수요 위주로 거래되는 구간입니다.',
+    },
+  },
+};
+
 /** 지표 조합으로 한 줄 해설을 만든다 */
 function buildCommentary(macro: MacroIndicator[]): string[] {
   const notes: string[] = [];
@@ -106,11 +223,13 @@ export function MacroSection({ macro }: Props) {
   const active = macro[Math.min(selected, macro.length - 1)];
   const chartData = active.series.slice(-60);
   const commentary = buildCommentary(macro);
+  const guide = INDICATOR_GUIDES[active.key];
+  const trend = trendOf(active);
 
   return (
     <SectionCard
       title="주요 지수 · 분석 브리핑"
-      description="한국은행 ECOS 원본 시계열. 지표를 클릭하면 차트가 바뀝니다."
+      description="한국은행 ECOS 원본 시계열. 지표를 클릭하면 차트와 함께 그 지수의 의미·추세 해석이 아래에 표시됩니다."
       badge={<Badge variant="secondary">{macro.length}개 지표</Badge>}
     >
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -202,6 +321,21 @@ export function MacroSection({ macro }: Props) {
           {active.source} 원본 <ExternalLink className="size-3" />
         </a>
       </div>
+
+      {guide ? (
+        <div className="mt-3 rounded-lg border p-4">
+          <div className="mb-1.5 flex items-center gap-2">
+            <h4 className="text-sm font-semibold">{active.label}이란?</h4>
+            <Badge variant="secondary" className="font-normal">
+              최근 6개월 {TREND_LABEL[trend]}
+            </Badge>
+          </div>
+          <p className="text-muted-foreground text-xs leading-relaxed">{guide.meaning}</p>
+          <p className="mt-2 text-xs leading-relaxed">
+            <span className="font-medium">추세 해석</span> — {guide.interpret[trend]}
+          </p>
+        </div>
+      ) : null}
 
       <div className="bg-muted/30 mt-3 rounded-lg border p-4">
         <h4 className="mb-2 text-sm font-semibold">분석 브리핑</h4>

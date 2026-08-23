@@ -146,8 +146,8 @@ export function PolicyDigestPanel({ canRefresh = false }: { canRefresh?: boolean
               <span className="font-semibold text-amber-700 dark:text-amber-400">
                 ⚠️ 규제지역 변경 발표 감지
               </span>{' '}
-              — 앱의 규제 기준(10·15 대책 반영)과 다를 수 있습니다. 세금·대출 판정에 영향이
-              있으니 확인하세요:{' '}
+              — 앱의 규제 기준(10·15 대책 반영)과 다를 수 있습니다. 세금·대출 판정에 영향이 있으니
+              확인하세요:{' '}
               <a
                 href={data.regulationAlert.url}
                 target="_blank"
