@@ -47,6 +47,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  // recharts 의 Tooltip 과 이름이 겹쳐 별칭을 쓴다
+  Tooltip as UiTooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -79,6 +86,13 @@ export function SimulationClient({ config, quotes }: Props) {
 
   const holding = config.holdings.find((h) => h.id === holdingId) ?? config.holdings[0];
   const target = config.targets.find((t) => t.id === targetId) ?? config.targets[0];
+
+  // 목표 드롭다운은 가격 낮은 순 — 시세 없는(0원) 항목은 뒤로 보낸다
+  const targetsByPrice = [...config.targets].sort((a, b) => {
+    const pa = tradePriceOf(quotes[a.id]) || Number.MAX_SAFE_INTEGER;
+    const pb = tradePriceOf(quotes[b.id]) || Number.MAX_SAFE_INTEGER;
+    return pa - pb;
+  });
 
   // 시뮬레이션 기본값도 실거래가 기준. 호가는 사용자가 직접 고칠 수 있다.
   const defaultSell = holding ? tradePriceOf(quotes[holding.id]) : 0;
@@ -217,9 +231,12 @@ export function SimulationClient({ config, quotes }: Props) {
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {config.targets.map((t) => (
+                {targetsByPrice.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
                     {t.complexName} {formatArea(t.areaM2)}
+                    {tradePriceOf(quotes[t.id]) > 0
+                      ? ` — ${formatEok(tradePriceOf(quotes[t.id]))}`
+                      : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -259,12 +276,21 @@ export function SimulationClient({ config, quotes }: Props) {
             sub={`${(baseline.buyPrice / baseline.sellPrice).toFixed(2)}배`}
             tone="rise"
           />
-          <Stat
-            label="총 마찰비용"
-            value={formatKrw(baseline.totalFriction, { compact: true })}
-            sub={`매수가의 ${formatPct(baseline.frictionRate, 2)}`}
-            tone="fall"
-          />
+          <TooltipProvider>
+            <UiTooltip>
+              <TooltipTrigger render={<div className="cursor-help" />}>
+                <Stat
+                  label="총 마찰비용 ⓘ"
+                  value={formatKrw(baseline.totalFriction, { compact: true })}
+                  sub={`매수가의 ${formatPct(baseline.frictionRate, 2)} · 올려서 상세`}
+                  tone="fall"
+                />
+              </TooltipTrigger>
+              <TooltipContent>
+                <FrictionDetail r={baseline} />
+              </TooltipContent>
+            </UiTooltip>
+          </TooltipProvider>
           <Stat
             label="매도 후 순현금"
             value={formatKrw(baseline.netFromSale, { compact: true })}
@@ -572,7 +598,20 @@ export function SimulationClient({ config, quotes }: Props) {
                       {formatKrw(m.result.acquisitionTax.total, { compact: true })}
                     </TableCell>
                     <TableCell className="tabular text-fall text-right">
-                      {formatKrw(m.result.totalFriction, { compact: true })}
+                      <TooltipProvider>
+                        <UiTooltip>
+                          <TooltipTrigger
+                            render={
+                              <span className="cursor-help underline decoration-dotted underline-offset-2" />
+                            }
+                          >
+                            {formatKrw(m.result.totalFriction, { compact: true })}
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <FrictionDetail r={m.result} />
+                          </TooltipContent>
+                        </UiTooltip>
+                      </TooltipProvider>
                     </TableCell>
                     <TableCell className="tabular text-right font-semibold">
                       <div>{formatKrw(cash, { compact: true })}</div>
@@ -605,6 +644,13 @@ export function SimulationClient({ config, quotes }: Props) {
         </div>
 
         <p className="text-muted-foreground mt-3 text-[11px] leading-relaxed">
+          <strong className="text-foreground">실소요 자금 산식</strong> — 매수 총 소요(매수가 +
+          취득세 + 매수비용) − 매도 후 순현금(매도가 − 양도세 − 중개보수 −{' '}
+          <strong className="text-foreground">기존 대출 상환 − 보증금 반환</strong>). 갭 +
+          마찰비용보다 큰 이유는 기존 대출·보증금 상환분이 더해지기 때문입니다. 그만큼은 신규 대출로
+          다시 조달할 수 있어 위의 대출/현금 분해로 나눠 보여줍니다.
+        </p>
+        <p className="text-muted-foreground mt-2 text-[11px] leading-relaxed">
           시나리오 하락률은 2022~2023년 실제 조정기 패턴(상급지 낙폭이 하급지보다 큼)을 참고한
           가정치입니다. 지역별 실제 낙폭은 대시보드의 확산 지도에서 2023년초 대비 변동률로
           확인하세요.
@@ -687,6 +733,30 @@ export function SimulationClient({ config, quotes }: Props) {
             </li>
           ))}
         </ul>
+      </div>
+    </div>
+  );
+}
+
+/** 마찰비용 구성 상세 — 마우스 올리면 보이는 툴팁 내용 */
+function FrictionDetail({ r }: { r: ReturnType<typeof simulateSwitch> }) {
+  const rows: Array<[string, number]> = [
+    ['양도세 (지방소득세 포함)', r.capitalGainsTax.total],
+    ['매도 중개보수', r.sellCost.total],
+    ['취득세·지방교육세·농특세', r.acquisitionTax.total],
+    ['매수 부대비용 (중개·등기·인지·채권)', r.buyCost.total],
+  ];
+  return (
+    <div className="min-w-56 space-y-0.5">
+      {rows.map(([label, v]) => (
+        <div key={label} className="flex justify-between gap-4">
+          <span>{label}</span>
+          <span className="tabular">{formatKrw(v, { compact: true })}</span>
+        </div>
+      ))}
+      <div className="border-background/30 mt-1 flex justify-between gap-4 border-t pt-1 font-semibold">
+        <span>총 마찰비용</span>
+        <span className="tabular">{formatKrw(r.totalFriction, { compact: true })}</span>
       </div>
     </div>
   );

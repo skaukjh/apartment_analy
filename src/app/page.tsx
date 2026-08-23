@@ -4,6 +4,8 @@ import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { buildDashboardCached, summarizeDashboard } from '@/lib/pipeline/dashboard';
 import { isConfigEmpty } from '@/lib/store/config';
 import { HEAT_META } from '@/lib/analysis/market-signals';
+import { regulationOf } from '@/lib/analysis/regulation';
+import { calcLoanLimit } from '@/lib/tax/loan-limit';
 import { formatEok, formatKrw } from '@/lib/format';
 import { Stat } from '@/components/ui-bits';
 import { Button } from '@/components/ui/button';
@@ -29,6 +31,28 @@ export default async function HomePage() {
   const { spread, primaryGap, newHighs, newLows } = summarizeDashboard(data);
   const empty = isConfigEmpty(data.config);
   const heat = HEAT_META[data.sentiment.heatLevel];
+
+  /* 1순위 조합의 실소요를 대출/현금으로 분해 — 아래 갭 카드와 같은 기준 */
+  let primarySplit: { byLoan: number; byCash: number } | null = null;
+  if (primaryGap) {
+    const target = data.config.targets.find((t) => t.id === primaryGap.targetId);
+    const holding = data.config.holdings.find((h) => h.id === primaryGap.holdingId);
+    if (target) {
+      const reg = regulationOf(target.lawdCd);
+      const limit = calcLoanLimit({
+        price: primaryGap.targetPrice,
+        regulated: data.config.household.targetIsRegulated || reg.adjusted,
+        metro: reg.metro,
+        retainedHouseCount: 0,
+        firstTimeBuyer: data.config.household.firstTimeBuyer,
+        annualIncome: data.config.household.annualIncome,
+        otherDebtAnnualPayment: data.config.household.otherDebtAnnualPayment,
+        rate: holding?.loanRate || 4,
+      }).limit;
+      const byLoan = Math.min(limit, Math.max(0, primaryGap.realCashNeeded));
+      primarySplit = { byLoan, byCash: Math.max(0, primaryGap.realCashNeeded - byLoan) };
+    }
+  }
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6">
@@ -102,7 +126,9 @@ export default async function HomePage() {
           value={primaryGap ? formatKrw(primaryGap.realCashNeeded, { compact: true }) : '-'}
           sub={
             primaryGap
-              ? `갭 대비 +${formatEok(primaryGap.realCashNeeded - primaryGap.gap)}`
+              ? primarySplit
+                ? `대출 ${formatEok(primarySplit.byLoan)} · 현금 ${formatEok(primarySplit.byCash)}`
+                : `갭 대비 +${formatEok(primaryGap.realCashNeeded - primaryGap.gap)}`
               : '세금·중개비 포함'
           }
         />
@@ -132,7 +158,7 @@ export default async function HomePage() {
 
       {/* AI 평가·상담 — 관리자(운영자 키) 또는 개인 키(BYOK) 등록 회원에게만 */}
       {resolveOpenAIKey(sessionUser, data.config.openaiApiKey).allowed ? (
-        <AiAdvisor config={data.config} enabled />
+        <AiAdvisor config={data.config} quotes={data.quotes} enabled />
       ) : null}
     </div>
   );

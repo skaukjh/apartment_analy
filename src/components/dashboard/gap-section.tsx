@@ -8,6 +8,8 @@ import { askingPremiumPct, tradePriceOf } from '@/lib/analysis/price-basis';
 import { calcAcquisitionTaxFor } from '@/lib/tax/acquisition';
 import { calcCapitalGainsTax } from '@/lib/tax/capital-gains';
 import { calcTransactionCost } from '@/lib/tax/transaction-costs';
+import { calcLoanLimit } from '@/lib/tax/loan-limit';
+import { regulationOf } from '@/lib/analysis/regulation';
 import { SectionCard, EmptyHint, Delta } from '@/components/ui-bits';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -66,6 +68,15 @@ export function GapSection({ config, quotes }: Props) {
       netFromSale: number;
       realCashNeeded: number;
       friction: number;
+      /** 목표 주택 기준 대출 한도 (기존 주택 처분 전제) */
+      loanLimit: number;
+      /** 실소요(순 기준)를 대출/현금으로 나눈 것 */
+      netByLoan: number;
+      netByCash: number;
+      /** 기존 대출·보증금 상환 포함 총 필요액의 대출/현금 분해 */
+      grossNeed: number;
+      grossByLoan: number;
+      grossByCash: number;
     }> = [];
 
     for (const holding of config.holdings) {
@@ -129,6 +140,23 @@ export function GapSection({ config, quotes }: Props) {
           }
         }
 
+        /* 목표 주택 기준 대출 한도 — 실소요를 "대출로 충당 / 현금으로 준비"로 나눠 보여준다.
+           갈아타기는 기존 주택 처분 전제이므로 보유 주택 수 0으로 계산한다. */
+        const reg = regulationOf(target.lawdCd);
+        const loanLimit = calcLoanLimit({
+          price: targetPrice,
+          regulated: config.household.targetIsRegulated || reg.adjusted,
+          metro: reg.metro,
+          retainedHouseCount: 0,
+          firstTimeBuyer: config.household.firstTimeBuyer,
+          annualIncome: config.household.annualIncome,
+          otherDebtAnnualPayment: config.household.otherDebtAnnualPayment,
+          rate: holding.loanRate || 4,
+        }).limit;
+        const netByLoan = Math.min(loanLimit, Math.max(0, realCashNeeded));
+        const grossNeed = realCashNeeded + holding.loanBalance + holding.leaseDeposit;
+        const grossByLoan = Math.min(loanLimit, Math.max(0, grossNeed));
+
         out.push({
           key: `${holding.id}-${target.id}`,
           holding,
@@ -146,6 +174,12 @@ export function GapSection({ config, quotes }: Props) {
           netFromSale,
           realCashNeeded,
           friction: cgt.total + acq.total + sellCost.total + buyCost.total,
+          loanLimit,
+          netByLoan,
+          netByCash: Math.max(0, realCashNeeded - netByLoan),
+          grossNeed,
+          grossByLoan,
+          grossByCash: Math.max(0, grossNeed - grossByLoan),
         });
       }
     }
@@ -257,6 +291,10 @@ export function GapSection({ config, quotes }: Props) {
                       {formatKrw(p.realCashNeeded)}
                     </div>
                     <div className="text-muted-foreground text-[11px]">
+                      대출 {formatKrw(p.netByLoan, { compact: true })} · 현금{' '}
+                      {formatKrw(p.netByCash, { compact: true })}
+                    </div>
+                    <div className="text-muted-foreground text-[11px]">
                       갭 대비 +{formatKrw(p.realCashNeeded - p.gap)} ·{' '}
                       <strong className="text-primary font-semibold">
                         {open ? '접기' : '클릭해 세금·수수료 분해 보기'}
@@ -359,13 +397,17 @@ export function GapSection({ config, quotes }: Props) {
                     </div>
                     <div className="bg-background rounded-md border px-3 py-2">
                       <div className="text-muted-foreground text-xs">추가로 필요한 현금·대출</div>
-                      <div className="tabular font-semibold">
-                        {formatKrw(
-                          p.realCashNeeded + p.holding.loanBalance + p.holding.leaseDeposit,
-                        )}
-                      </div>
+                      <div className="tabular font-semibold">{formatKrw(p.grossNeed)}</div>
                       <div className="text-muted-foreground text-[11px]">
                         기존 대출·보증금 상환분 포함
+                      </div>
+                      <div className="text-muted-foreground mt-1 text-[11px]">
+                        = 신규 대출 {formatKrw(p.grossByLoan, { compact: true })}
+                        <span className="text-muted-foreground/70">
+                          {' '}
+                          (한도 {formatKrw(p.loanLimit, { compact: true })})
+                        </span>{' '}
+                        + 현금 {formatKrw(p.grossByCash, { compact: true })}
                       </div>
                     </div>
                     <div className="flex items-center">

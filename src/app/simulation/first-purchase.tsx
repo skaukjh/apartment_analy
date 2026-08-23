@@ -51,7 +51,12 @@ interface Props {
  * 취득세·중개보수·법무비·이사비까지 포함한 "목표 집까지 필요한 현금"을 보여준다.
  */
 export function FirstPurchasePanel({ config, quotes }: Props) {
-  const targets = [...config.targets].sort((a, b) => a.priority - b.priority);
+  // 드롭다운은 가격 낮은 순 — 시세 없는(0원) 항목은 뒤로
+  const targets = [...config.targets].sort((a, b) => {
+    const pa = tradePriceOf(quotes[a.id]) || Number.MAX_SAFE_INTEGER;
+    const pb = tradePriceOf(quotes[b.id]) || Number.MAX_SAFE_INTEGER;
+    return pa - pb;
+  });
   const [targetId, setTargetId] = useState(targets[0]?.id ?? '');
   const target = targets.find((t) => t.id === targetId) ?? targets[0];
 

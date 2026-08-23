@@ -80,8 +80,21 @@ function inline(text: string) {
     );
 }
 
-export function AiAdvisor({ config, enabled }: { config: UserConfig; enabled: boolean }) {
-  const apartments: ApartmentRef[] = [...config.holdings, ...config.targets];
+export function AiAdvisor({
+  config,
+  quotes,
+  enabled,
+}: {
+  config: UserConfig;
+  quotes?: Record<string, { price: number }>;
+  enabled: boolean;
+}) {
+  // 보유 먼저, 목표는 가격 낮은 순 (시세 없는 항목은 뒤로)
+  const priceOf = (id: string) => quotes?.[id]?.price || Number.MAX_SAFE_INTEGER;
+  const apartments: ApartmentRef[] = [
+    ...config.holdings,
+    ...[...config.targets].sort((a, b) => priceOf(a.id) - priceOf(b.id)),
+  ];
   const [apartmentId, setApartmentId] = useState(apartments[0]?.id ?? '');
 
   const [evaluating, setEvaluating] = useState(false);
