@@ -1417,8 +1417,8 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
             </p>
 
             <ToggleRow
-              label="일일 브리핑 자동 발송"
-              hint="Vercel Cron 이 매일 정해진 시각에 호출합니다"
+              label="카카오로 일일 브리핑 발송"
+              hint="텔레그램과 별개로 켜고 끕니다. Vercel Cron 이 매일 정해진 시각에 호출합니다"
               checked={config.kakaoBriefingEnabled}
               onChange={(v) => patch({ kakaoBriefingEnabled: v })}
             />

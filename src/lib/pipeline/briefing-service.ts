@@ -52,6 +52,7 @@ async function logBriefing(
 export async function runBriefing(
   options: {
     dryRun?: boolean;
+    /** @deprecated 채널별 켜짐 설정을 항상 따른다 — 꺼진 채널을 강제로 보내지 않는다 */
     force?: boolean;
     recipientIds?: string[];
     /** 발송 시간대. 같은 데이터라도 시간대별로 먼저 보여줄 항목이 다르다. */
@@ -99,12 +100,11 @@ export async function runBriefing(
   }
 
   /* 발송 채널 결정 — 카카오와 텔레그램은 독립적으로 켜고 끈다.
-     force(수동 발송)는 꺼져 있어도 설정된 채널 전부에 보낸다. */
-  const kakaoOn = data.config.kakaoBriefingEnabled || Boolean(options.force);
+     force(수동 발송)도 꺼진 채널은 건드리지 않는다 — 사용자가 카카오를
+     종료했는데 수동 발송이 카카오로 다시 나가는 사고를 막기 위함이다. */
+  const kakaoOn = data.config.kakaoBriefingEnabled;
   const telegramOn =
-    hasTelegram() &&
-    Boolean(data.config.telegramChatId) &&
-    (data.config.telegramEnabled || Boolean(options.force));
+    hasTelegram() && Boolean(data.config.telegramChatId) && data.config.telegramEnabled;
 
   if (!kakaoOn && !telegramOn) {
     await logBriefing('skipped', '카카오·텔레그램 브리핑이 모두 꺼져 있습니다.');
@@ -156,9 +156,11 @@ export async function runBriefing(
     }
 
     if (telegramOn) {
+      /* 텔레그램은 카카오처럼 200자 제한이 없다 — 요약 대신 브리핑 전문을
+         통째로 보내고 마지막에 접속 링크를 붙인다 (4096자 초과 시 자동 분할). */
       const tgText = unchanged
         ? `[${briefing.title}]\n직전 브리핑과 내용이 동일합니다 (변동 없음).\n${todayUrl}`
-        : `${chunks.join('\n\n')}\n\n${todayUrl}`;
+        : `${text}\n\n📱 전체 보기: ${todayUrl}`;
       try {
         await sendTelegramText(data.config.telegramChatId as string, tgText);
         reports.push({ recipient: '텔레그램', ok: true });
