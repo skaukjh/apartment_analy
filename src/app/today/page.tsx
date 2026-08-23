@@ -22,8 +22,10 @@ export default async function TodayPage() {
   const ai = resolveOpenAIKey(sessionUser, data.config.openaiApiKey);
   const briefing = buildBriefing(data);
 
-  /* 지난 브리핑 이후 무엇이 달라졌는지 — 발송 때 저장된 스냅샷과 비교 */
-  const prevSnap = await loadPreviousBriefingSnapshot().catch(() => null);
+  /* 지난 브리핑 이후 무엇이 달라졌는지 — 이 사용자의 발송 스냅샷과 비교 */
+  const prevSnap = await loadPreviousBriefingSnapshot(sessionUser?.id ?? 'default').catch(
+    () => null,
+  );
   const diff = prevSnap ? buildBriefingDiff(data, prevSnap.snap) : [];
   const prevAt = prevSnap ? new Date(prevSnap.capturedAt) : null;
 

@@ -113,11 +113,12 @@ export async function runBriefing(
 ): Promise<BriefingRunResult> {
   const dryRun = options.dryRun ?? false;
 
+  const uid = options.userId ?? 'default';
   const data = await buildDashboard({ userId: options.userId });
   const briefing = buildBriefing(data);
 
   /* 지난 브리핑 대비 변화 — 전문에 섞지 않고 별도의 "변경 분석" 메시지로 보낸다 */
-  const prevSnap = await loadPreviousBriefingSnapshot().catch(() => null);
+  const prevSnap = await loadPreviousBriefingSnapshot(uid).catch(() => null);
   const diffLines = prevSnap ? buildBriefingDiff(data, prevSnap.snap) : [];
 
   const text = briefingToText(briefing);
@@ -165,7 +166,6 @@ export async function runBriefing(
       .map((s) => `${s.heading}\n${s.lines.join('\n')}`)
       .join('\n');
     const contentHash = createHash('sha256').update(coreText).digest('hex').slice(0, 32);
-    const uid = options.userId ?? 'default';
     const lastHash = await loadLastBriefingHash(uid);
     const unchanged = lastHash !== null && lastHash === contentHash;
 
@@ -243,6 +243,7 @@ export async function runBriefing(
 
     // 갭 변화 추적용 스냅샷
     await saveSnapshot({
+      userId: uid,
       generatedAt: data.generatedAt,
       gaps: data.gaps,
       sentiment: data.sentiment,

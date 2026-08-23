@@ -13,6 +13,7 @@ import { getAdminClient } from '@/lib/store/supabase';
 import { memoryState } from '@/lib/store/memory';
 
 export interface BriefingSnapshot {
+  userId?: string;
   generatedAt?: string;
   gaps?: DashboardData['gaps'];
   sentiment?: DashboardData['sentiment'];
@@ -20,19 +21,23 @@ export interface BriefingSnapshot {
 }
 
 /**
- * 가장 최근 브리핑 스냅샷.
- * dashboard_snapshot 테이블에는 캐시·히스토리 등 kind 가 붙은 행이 섞여 있어
- * kind 없는 행(브리핑 스냅샷)만 걸러 읽는다.
+ * 이 사용자의 가장 최근 브리핑 스냅샷.
+ *
+ * 반드시 userId 로 걸러야 한다 — 사용자 구분 없이 최신 행을 읽던 시절,
+ * 다른 계정(레거시 default)의 브리핑이 1분 먼저 발송되면 그 스냅샷이
+ * 비교 대상이 되어 아파트가 하나도 안 겹치고 "변화 0건"으로 판정되는
+ * 실제 사고가 있었다 (변경 분석 메시지가 안 나간 원인).
  */
-export async function loadPreviousBriefingSnapshot(): Promise<{
+export async function loadPreviousBriefingSnapshot(userId: string): Promise<{
   capturedAt: string;
   snap: BriefingSnapshot;
 } | null> {
   const client = getAdminClient();
   if (!client) {
-    const found = memoryState().snapshots.find(
-      (s) => !(s.payload as { kind?: string } | null)?.kind,
-    );
+    const found = memoryState().snapshots.find((s) => {
+      const p = s.payload as BriefingSnapshot & { kind?: string };
+      return !p?.kind && p?.userId === userId;
+    });
     return found ? { capturedAt: found.capturedAt, snap: found.payload as BriefingSnapshot } : null;
   }
 
@@ -40,6 +45,7 @@ export async function loadPreviousBriefingSnapshot(): Promise<{
     .from('dashboard_snapshot')
     .select('captured_at, payload')
     .is('payload->>kind', null)
+    .eq('payload->>userId', userId)
     .order('captured_at', { ascending: false })
     .limit(1)
     .maybeSingle();
