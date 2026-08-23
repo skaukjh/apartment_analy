@@ -14,6 +14,7 @@ import { SectionCard, EmptyHint, Delta } from '@/components/ui-bits';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 
@@ -48,6 +49,8 @@ function AskingHint({ quote }: { quote?: PriceQuote }) {
 
 export function GapSection({ config, quotes }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
+  /* 2년 보유 도달 가정으로 전체 수치를 바꿔 보는 토글 — 2년 미만 보유자만 노출 */
+  const [applyTwoYear, setApplyTwoYear] = useState(false);
 
   const pairs = useMemo(() => {
     const out: Array<{
@@ -77,6 +80,18 @@ export function GapSection({ config, quotes }: Props) {
       grossNeed: number;
       grossByLoan: number;
       grossByCash: number;
+      /** 2년 보유 도달 가정의 수치 (2년 미만일 때만) — 토글로 전환해 본다 */
+      alt: {
+        cgt: ReturnType<typeof calcCapitalGainsTax>;
+        netFromSale: number;
+        realCashNeeded: number;
+        friction: number;
+        netByLoan: number;
+        netByCash: number;
+        grossNeed: number;
+        grossByLoan: number;
+        grossByCash: number;
+      } | null;
     }> = [];
 
     for (const holding of config.holdings) {
@@ -157,6 +172,27 @@ export function GapSection({ config, quotes }: Props) {
         const grossNeed = realCashNeeded + holding.loanBalance + holding.leaseDeposit;
         const grossByLoan = Math.min(loanLimit, Math.max(0, grossNeed));
 
+        /* 2년 도달 가정의 전체 수치 — 토글로 카드 전체를 이 기준으로 바꿔 볼 수 있게 */
+        let alt: (typeof out)[number]['alt'] = null;
+        if (cgt2y) {
+          const netFromSale2 = holdingPrice - cgt2y.total - sellCost.total;
+          const realCashNeeded2 = targetPrice + acq.total + buyCost.total - netFromSale2;
+          const netByLoan2 = Math.min(loanLimit, Math.max(0, realCashNeeded2));
+          const grossNeed2 = realCashNeeded2 + holding.loanBalance + holding.leaseDeposit;
+          const grossByLoan2 = Math.min(loanLimit, Math.max(0, grossNeed2));
+          alt = {
+            cgt: cgt2y,
+            netFromSale: netFromSale2,
+            realCashNeeded: realCashNeeded2,
+            friction: cgt2y.total + acq.total + sellCost.total + buyCost.total,
+            netByLoan: netByLoan2,
+            netByCash: Math.max(0, realCashNeeded2 - netByLoan2),
+            grossNeed: grossNeed2,
+            grossByLoan: grossByLoan2,
+            grossByCash: Math.max(0, grossNeed2 - grossByLoan2),
+          };
+        }
+
         out.push({
           key: `${holding.id}-${target.id}`,
           holding,
@@ -180,6 +216,7 @@ export function GapSection({ config, quotes }: Props) {
           grossNeed,
           grossByLoan,
           grossByCash: Math.max(0, grossNeed - grossByLoan),
+          alt,
         });
       }
     }
@@ -213,10 +250,37 @@ export function GapSection({ config, quotes }: Props) {
           <strong className="text-primary font-semibold">실제로 더 필요한 현금</strong>입니다.
         </>
       }
-      badge={<Badge variant="secondary">{pairs.length}개 조합</Badge>}
+      badge={
+        <div className="flex items-center gap-2">
+          {applyTwoYear ? (
+            <Badge className="bg-emerald-500/15 font-normal text-emerald-700 dark:text-emerald-400">
+              2년 도달 후 매도 기준
+            </Badge>
+          ) : null}
+          <Badge variant="secondary">{pairs.length}개 조합</Badge>
+        </div>
+      }
     >
+      {pairs.some((p) => p.alt) ? (
+        <label className="mb-3 flex cursor-pointer flex-wrap items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
+          <Switch
+            checked={applyTwoYear}
+            onCheckedChange={setApplyTwoYear}
+            aria-label="2년 보유 도달 가정으로 보기"
+          />
+          <span className="text-sm font-medium">
+            2년 보유 도달({pairs.find((p) => p.alt)?.twoYearDate}) 가정으로 보기
+          </span>
+          <span className="text-muted-foreground text-xs">
+            — 1세대1주택 비과세 적용, 시세는 현재와 동일 가정
+          </span>
+        </label>
+      ) : null}
+
       <div className="space-y-3">
-        {pairs.map((p) => {
+        {pairs.map((p0) => {
+          // 토글이 켜져 있으면 카드 전체 수치를 2년 도달 가정으로 바꿔 보여준다
+          const p = applyTwoYear && p0.alt ? { ...p0, ...p0.alt } : p0;
           const open = openId === p.key;
           const hq = quotes[p.holding.id];
           const tq = quotes[p.target.id];
@@ -332,7 +396,7 @@ export function GapSection({ config, quotes }: Props) {
                           ...p.cgt.notes.slice(0, 2),
                         ]}
                       />
-                      {p.cgt2y ? (
+                      {!applyTwoYear && p.cgt2y ? (
                         <div className="mt-2 rounded-md border border-emerald-500/40 bg-emerald-500/5 p-2.5 text-[11px] leading-relaxed">
                           <span className="font-semibold text-emerald-700 dark:text-emerald-400">
                             🕐 2년 보유 도달({p.twoYearDate}) 후 매도 시
