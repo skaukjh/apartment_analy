@@ -10,8 +10,9 @@ import {
   isRegulated,
 } from '@/lib/analysis/auto-fill';
 import { draftConfigSchema } from '@/lib/store/config';
-import { findTradeNearDate } from '@/lib/sources/complex-search';
-import type { TradeRecord, UserConfig } from '@/lib/types';
+import { findComplexJibun, findTradeNearDate } from '@/lib/sources/complex-search';
+import { fetchComplexSpec } from '@/lib/sources/building';
+import type { ApartmentRef, TradeRecord, UserConfig } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -64,7 +65,13 @@ export async function POST(request: Request) {
     };
 
     const next: UserConfig = structuredClone(config);
-    const filled: Array<{ owner: string; field: string; label: string; basis: string }> = [];
+    const filled: Array<{
+      owner: string;
+      field: string;
+      label: string;
+      value?: number;
+      basis: string;
+    }> = [];
     const skipped: string[] = [];
 
     if (scope === 'all' || scope === 'holding') {
@@ -85,6 +92,81 @@ export async function POST(request: Request) {
         skipped.push(...r.skipped.map((s) => `${t.complexName || '목표 아파트'}: ${s}`));
         return { ...t, ...r.values };
       });
+    }
+
+    /* 단지 스펙(총 세대수·용적률·대지지분) — 건축물대장에서 채운다.
+       지번은 실거래 캐시의 최빈값으로 찾고, 카카오 주소검색으로 법정동코드를
+       확정한 뒤 총괄표제부를 읽는다. 실패해도 다른 채움을 막지 않는다. */
+    const fillSpec = async (apt: ApartmentRef, owner: string): Promise<Partial<ApartmentRef>> => {
+      const needs = overwrite || !apt.totalHouseholds || !apt.floorAreaRatio || !apt.landShareM2;
+      if (!needs || !apt.complexName || !/^\d{5}$/.test(apt.lawdCd)) return {};
+
+      const lot = await findComplexJibun(apt.lawdCd, apt.complexName).catch(() => null);
+      const spec = await fetchComplexSpec({
+        complexName: apt.complexName,
+        sido: apt.sido,
+        sigungu: apt.sigungu,
+        dong: apt.dong || lot?.dong,
+        jibun: lot?.jibun,
+      }).catch(() => null);
+
+      if (!spec) {
+        skipped.push(
+          `${owner}: 건축물대장에서 단지 정보를 찾지 못했습니다 (세대수·용적률·대지지분). 카카오/국토부 키와 건축물대장 API 활용신청 여부를 확인하세요.`,
+        );
+        return {};
+      }
+
+      const values: Partial<ApartmentRef> = {};
+      const basis = `건축물대장 ${spec.source} (${spec.address})`;
+      if (spec.households && (overwrite || !apt.totalHouseholds)) {
+        values.totalHouseholds = spec.households;
+        filled.push({
+          owner,
+          field: 'totalHouseholds',
+          label: '총 세대수',
+          value: spec.households,
+          basis,
+        });
+      }
+      if (spec.floorAreaRatio && (overwrite || !apt.floorAreaRatio)) {
+        values.floorAreaRatio = Math.round(spec.floorAreaRatio * 10) / 10;
+        filled.push({
+          owner,
+          field: 'floorAreaRatio',
+          label: '용적률',
+          value: values.floorAreaRatio,
+          basis,
+        });
+      }
+      if (spec.landSharePerUnit && (overwrite || !apt.landShareM2)) {
+        values.landShareM2 = Math.round(spec.landSharePerUnit * 100) / 100;
+        filled.push({
+          owner,
+          field: 'landShareM2',
+          label: '대지지분(추정)',
+          value: values.landShareM2,
+          basis: `${basis} — 대지면적 ${spec.landArea?.toLocaleString('ko-KR')}㎡ ÷ ${spec.households?.toLocaleString('ko-KR')}세대 추정. 등기부 대지권과 다를 수 있습니다.`,
+        });
+      }
+      return values;
+    };
+
+    if (scope === 'all' || scope === 'holding') {
+      for (let i = 0; i < next.holdings.length; i += 1) {
+        const h = next.holdings[i];
+        if (targetId && h.id !== targetId) continue;
+        const v = await fillSpec(h, h.complexName || '보유 아파트');
+        next.holdings[i] = { ...h, ...v };
+      }
+    }
+    if (scope === 'all' || scope === 'target') {
+      for (let i = 0; i < next.targets.length; i += 1) {
+        const t = next.targets[i];
+        if (targetId && t.id !== targetId) continue;
+        const v = await fillSpec(t, t.complexName || '목표 아파트');
+        next.targets[i] = { ...t, ...v };
+      }
     }
 
     let householdNotes: string[] = [];

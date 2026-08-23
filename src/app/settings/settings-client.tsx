@@ -5,6 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
+  ChevronDown,
+  ChevronUp,
   History,
   Loader2,
   MessageCircle,
@@ -521,6 +523,17 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
   const removeTarget = (id: string) =>
     patch({ targets: config.targets.filter((t) => t.id !== id) });
 
+  /* 목표 아파트 순서 이동 — 배열 순서를 바꾸고 우선순위를 순서대로(1부터) 다시 매긴다.
+     우선순위가 갭 카드·브리핑의 1순위 판정 기준이므로 화면 순서와 항상 일치시킨다. */
+  const moveTarget = (id: string, dir: -1 | 1) => {
+    const idx = config.targets.findIndex((t) => t.id === id);
+    const to = idx + dir;
+    if (idx < 0 || to < 0 || to >= config.targets.length) return;
+    const arr = [...config.targets];
+    [arr[idx], arr[to]] = [arr[to], arr[idx]];
+    patch({ targets: arr.map((t, i) => ({ ...t, priority: i + 1 })) });
+  };
+
   /* ---------------- 관심 지역 ---------------- */
 
   const addRegion = (r: SigunguInfo) => {
@@ -670,11 +683,15 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                       </span>{' '}
                       <span className="tabular text-muted-foreground">
                         →{' '}
-                        {f.field === 'loanRate'
+                        {f.field === 'loanRate' || f.field === 'floorAreaRatio'
                           ? `${f.value}%`
                           : f.field === 'residenceMonths'
                             ? `${f.value}개월`
-                            : formatKrw(f.value)}
+                            : f.field === 'totalHouseholds'
+                              ? `${f.value.toLocaleString('ko-KR')}세대`
+                              : f.field === 'landShareM2'
+                                ? `${f.value}㎡`
+                                : formatKrw(f.value)}
                       </span>
                       <div className="text-muted-foreground">{f.basis}</div>
                     </li>
@@ -990,13 +1007,39 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
           <EmptyHint>목표 아파트를 추가하세요.</EmptyHint>
         ) : (
           <div className="space-y-4">
-            {config.targets.map((t) => (
+            {config.targets.map((t, i) => (
               <div key={t.id} className="rounded-lg border p-4">
                 <ItemHeader
                   title={t.complexName}
                   subtitle={t.lawdCd ? `${t.sigungu} · ${t.lawdCd}` : '지역 미선택'}
                   onRemove={() => removeTarget(t.id)}
                 />
+                {/* 순서 이동 — 순서가 곧 우선순위(1순위가 갭 카드·브리핑의 기준)가 된다 */}
+                <div className="-mt-2 mb-2 flex items-center gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={i === 0}
+                    onClick={() => moveTarget(t.id, -1)}
+                    aria-label="위로 이동"
+                  >
+                    <ChevronUp className="size-4" /> 위로
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={i === config.targets.length - 1}
+                    onClick={() => moveTarget(t.id, 1)}
+                    aria-label="아래로 이동"
+                  >
+                    <ChevronDown className="size-4" /> 아래로
+                  </Button>
+                  <Badge variant="outline" className="text-[10px]">
+                    {t.priority}순위
+                  </Badge>
+                </div>
                 <div className="mb-3 space-y-2">
                   <ComplexSearch lawdCd={t.lawdCd} onPick={(pick) => applyTargetPick(t.id, pick)} />
                   <Button

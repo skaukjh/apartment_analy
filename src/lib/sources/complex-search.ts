@@ -163,6 +163,41 @@ export async function findTradeNearDate(
 }
 
 /**
+ * 단지의 대표 지번 — 캐시된 실거래에서 최빈값을 고른다. 네트워크 호출 없음.
+ * 건축물대장(단지 스펙) 조회의 입력으로 쓴다.
+ */
+export async function findComplexJibun(
+  lawdCd: string,
+  complexName: string,
+): Promise<{ dong: string; jibun: string } | null> {
+  if (!/^\d{5}$/.test(lawdCd) || !complexName) return null;
+
+  const months = recentYearMonths(DEFAULT_LOOKBACK_MONTHS);
+  const rows = await loadTradeCacheRows(lawdCd, months[0]).catch(() => []);
+
+  const count = new Map<string, number>();
+  for (const row of rows) {
+    for (const t of row.trades ?? []) {
+      if (!t.jibun || !complexMatches(t.complexName, t.dong, complexName)) continue;
+      const k = `${t.dong}|${t.jibun}`;
+      count.set(k, (count.get(k) ?? 0) + 1);
+    }
+  }
+
+  let best: string | null = null;
+  let bestN = 0;
+  for (const [k, n] of count) {
+    if (n > bestN) {
+      best = k;
+      bestN = n;
+    }
+  }
+  if (!best) return null;
+  const [dong, jibun] = best.split('|');
+  return { dong, jibun };
+}
+
+/**
  * 시군구 안에서 단지명으로 검색한다.
  *
  * @param lawdCd 법정동코드 앞 5자리
