@@ -69,14 +69,31 @@ async function geocodeComplexUncached(
 ): Promise<Coord | null> {
   const addressQuery = [sigungu, dong].filter(Boolean).join(' ');
 
-  // 1) 키워드 검색이 아파트 단지명에 가장 잘 맞는다
-  const keyword = `${sigungu} ${complexName}`.trim();
+  /* 1) 키워드 검색이 아파트 단지명에 가장 잘 맞는다.
+     단, 결과 주소가 요청한 시군구·동에 있는지 반드시 확인한다 —
+     "광진구 우성2"를 검색했는데 잠실 "우성1,2,3차"가 첫 결과로 와서
+     엉뚱한 동네의 역·학교가 평가에 들어간 실제 사고가 있었다. */
+  const keyword = [sigungu, dong, complexName].filter(Boolean).join(' ');
+  const guName = sigungu.split(' ').pop() ?? '';
   try {
     const json = await kakaoGet<{
-      documents: Array<{ place_name: string; x: string; y: string }>;
-    }>(`${SEARCH_KEYWORD}?query=${encodeURIComponent(keyword)}&size=1`);
-    const d = json.documents[0];
-    if (d) return { lat: Number(d.y), lon: Number(d.x), via: 'keyword', matched: d.place_name };
+      documents: Array<{ place_name: string; address_name?: string; x: string; y: string }>;
+    }>(`${SEARCH_KEYWORD}?query=${encodeURIComponent(keyword)}&size=5`);
+    const inRegion = json.documents.find((d) => {
+      const addr = d.address_name ?? '';
+      if (dong && !addr.includes(dong)) return false;
+      if (guName && !addr.includes(guName)) return false;
+      return true;
+    });
+    if (inRegion) {
+      return {
+        lat: Number(inRegion.y),
+        lon: Number(inRegion.x),
+        via: 'keyword',
+        matched: inRegion.place_name,
+      };
+    }
+    // 지역이 안 맞는 결과뿐이면 쓰지 않는다 — 아래 지번/동 주소 검색이 더 정확하다
   } catch {
     /* 아래 주소 검색으로 넘어간다 */
   }

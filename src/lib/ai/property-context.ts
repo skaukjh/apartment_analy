@@ -66,6 +66,13 @@ export async function buildPropertyContext(
     `# 대상 아파트\n` +
       line('단지', `${apartment.complexName} ${formatArea(apartment.areaM2)}`) +
       '\n' +
+      line(
+        '준공',
+        apartment.builtYear
+          ? `${apartment.builtYear}년 (${new Date().getFullYear() - apartment.builtYear}년차${new Date().getFullYear() - apartment.builtYear >= 30 ? ' — 재건축 연한 도달' : ''})`
+          : '미입력',
+      ) +
+      '\n' +
       line('위치', `${apartment.sido} ${apartment.sigungu} ${apartment.dong ?? ''}`.trim()) +
       '\n' +
       line(
@@ -173,16 +180,18 @@ export async function buildPropertyContext(
     );
   }
 
-  const catalysts = data.catalysts
-    .filter((c) => c.regionId === apartment.lawdCd || true)
-    .slice(0, 5);
+  /* 이 지역에 걸린 호재·악재를 우선하고, 전국 공통(규제 등)을 뒤에 붙인다.
+     예전엔 필터 조건이 무조건 true 라 무관한 지역 호재까지 섞여 들어갔다. */
+  const regional = data.catalysts.filter((c) => c.regionId === apartment.lawdCd);
+  const nationwide = data.catalysts.filter((c) => c.scope === 'nationwide');
+  const catalysts = [...regional, ...nationwide.filter((c) => !regional.includes(c))].slice(0, 6);
   if (catalysts.length > 0) {
     sections.push(
-      `\n# 관련 호재 (뉴스에서 단계 추론)\n` +
+      `\n# 이 지역 호재·악재 (뉴스에서 단계 추론)\n` +
         catalysts
           .map(
             (c) =>
-              `- ${c.title}: ${c.stage} (${c.progress}%), 영향도 ${c.impact}, 최근 업데이트 ${c.lastUpdate === '미확인' ? '없음' : c.lastUpdate.slice(0, 10)}`,
+              `- [${c.polarity === 'negative' ? '악재' : '호재'}] ${c.title}: ${c.stage} (${c.progress}%), 영향도 ${c.impact}, 최근 업데이트 ${c.lastUpdate === '미확인' ? '없음' : c.lastUpdate.slice(0, 10)}`,
           )
           .join('\n'),
     );

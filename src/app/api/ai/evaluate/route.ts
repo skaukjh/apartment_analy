@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import { configIdForRequest, getSessionUser, resolveOpenAIKey } from '@/lib/auth/server';
 import { loadConfig as loadUserConfig } from '@/lib/store/config';
 import { errorResponse } from '@/lib/api-auth';
-import { buildDashboard } from '@/lib/pipeline/dashboard';
+import { buildDashboard, buildDashboardCached } from '@/lib/pipeline/dashboard';
+import { loadEvaluation, saveEvaluation } from '@/lib/store/ai-evaluation';
+import { formatKrw } from '@/lib/format';
 import { buildPropertyContext } from '@/lib/ai/property-context';
 import { getOpenAI, hasOpenAI, OPENAI_MODEL, SYSTEM_PROMPT } from '@/lib/ai/client';
 import type { ApartmentRef } from '@/lib/types';
@@ -21,13 +23,22 @@ const EVALUATE_INSTRUCTION = `[컨텍스트]의 아파트를 다음 순서로 �
 ## 약점·리스크
 3가지 이내. 규제(특히 토지거래허가구역), 자금 부족, 시세 흐름, 입지 약점을 우선 검토.
 
+## 호재 · 악재
+컨텍스트의 [이 지역 호재·악재]를 근거로 이 단지에 미치는 영향을 정리. 준공연도가 재건축
+연한(30년)에 도달했으면 재건축·정비사업 관점(추진 단계, 조합원 지위 양도 제한 여부 확인
+필요성)도 짚으세요. 컨텍스트에 없는 사업을 지어내지 마세요.
+
 ## 자금 현실성
 대출 가능액과 필요 현금을 짚고, 보유 현금으로 실행 가능한지 판단. 부족하면 얼마가 더 필요한지.
+
+## 앞으로의 전망 · 방향성
+지역 시세 흐름(반등 단계·최근 3개월)과 시장 온도를 근거로 단기 방향성을 2~3문장으로.
+확정적 예측이 아니라 "이런 조건이면 이렇게 움직일 가능성" 형태로 쓰세요.
 
 ## 지금 확인해야 할 것
 사용자가 직접 확인해야 하는 항목 3가지 (등기부, 관리사무소 문의, 규제 공고 등 구체적으로).
 
-마크다운 헤딩(##)을 사용하고 전체 700자 이내로 쓰세요.`;
+마크다운 헤딩(##)을 사용하고 전체 1,100자 이내로 쓰세요.`;
 
 /**
  * 아파트 종합 평가.
@@ -71,6 +82,7 @@ export async function POST(request: Request) {
       );
     }
 
+    const priceAtEval = data.quotes[apartment.id]?.price ?? 0;
     const context = await buildPropertyContext(apartment, data);
 
     const completion = await getOpenAI(ai.key).chat.completions.create({
@@ -84,17 +96,70 @@ export async function POST(request: Request) {
       ],
     });
 
+    const evaluation = completion.choices[0]?.message?.content ?? '';
+    const generatedAt = new Date().toISOString();
+
+    // 다음에 패널을 열면 그대로 보여줄 수 있게 저장 (실패해도 응답은 정상)
+    await saveEvaluation({
+      userId: configId,
+      apartmentId: apartment.id,
+      complexName: apartment.complexName,
+      areaM2: apartment.areaM2,
+      evaluation,
+      nearby: context.nearby,
+      bankRates: context.bankRates,
+      gaps: context.gaps,
+      model: OPENAI_MODEL,
+      generatedAt,
+      priceAtEval,
+    }).catch(() => {});
+
     return NextResponse.json({
       ok: true,
       apartment: { id: apartment.id, name: apartment.complexName, areaM2: apartment.areaM2 },
-      evaluation: completion.choices[0]?.message?.content ?? '',
+      evaluation,
       context: context.markdown,
       nearby: context.nearby,
       bankRates: context.bankRates,
       gaps: context.gaps,
       model: OPENAI_MODEL,
-      generatedAt: new Date().toISOString(),
+      generatedAt,
     });
+  } catch (e) {
+    return errorResponse(e);
+  }
+}
+
+/** 저장된 평가 조회 + 재평가 필요 여부 — GET /api/ai/evaluate?apartmentId=... */
+const STALE_DAYS = 7;
+
+export async function GET(request: Request) {
+  try {
+    const configId = await configIdForRequest();
+    const url = new URL(request.url);
+    const apartmentId = url.searchParams.get('apartmentId')?.trim() ?? '';
+    if (!apartmentId) {
+      return NextResponse.json({ ok: false, error: 'apartmentId 가 필요합니다.' }, { status: 400 });
+    }
+
+    const cached = await loadEvaluation(configId, apartmentId);
+    if (!cached) return NextResponse.json({ ok: true, cached: null });
+
+    // 현재 시세와 평가 시점 시세를 비교해 재평가 필요를 판정한다 (캐시된 대시보드라 가볍다)
+    const data = await buildDashboardCached(configId);
+    const currentPrice = data.quotes[apartmentId]?.price ?? 0;
+
+    let needsRefresh = false;
+    let reason: string | undefined;
+    if (currentPrice > 0 && cached.priceAtEval > 0 && currentPrice !== cached.priceAtEval) {
+      needsRefresh = true;
+      reason = `시세 변동 — 평가 당시 ${formatKrw(cached.priceAtEval, { compact: true })} → 현재 ${formatKrw(currentPrice, { compact: true })}`;
+    } else if (Date.now() - Date.parse(cached.generatedAt) > STALE_DAYS * 24 * 60 * 60 * 1000) {
+      needsRefresh = true;
+      reason = `평가 후 ${STALE_DAYS}일 경과 — 시장 상황이 달라졌을 수 있습니다`;
+    }
+
+    return NextResponse.json({ ok: true, cached, needsRefresh, reason });
   } catch (e) {
     return errorResponse(e);
   }

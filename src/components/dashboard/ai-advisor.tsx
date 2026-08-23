@@ -32,6 +32,10 @@ interface EvaluateResponse {
   bankRates?: BankRate[];
   gaps?: string[];
   model?: string;
+  generatedAt?: string;
+  /** 저장된 평가가 낡았는가 — 시세 변동·기간 경과 */
+  needsRefresh?: boolean;
+  refreshReason?: string;
 }
 
 const SUGGESTIONS = [
@@ -98,7 +102,9 @@ export function AiAdvisor({
   const [apartmentId, setApartmentId] = useState(apartments[0]?.id ?? '');
 
   const [evaluating, setEvaluating] = useState(false);
-  const [evaluation, setEvaluation] = useState<EvaluateResponse | null>(null);
+  /* 아파트별 평가 결과 — 저장된 평가를 불러오거나 새로 받은 것을 담는다 */
+  const [evaluations, setEvaluations] = useState<Record<string, EvaluateResponse>>({});
+  const fetchedRef = useRef<Set<string>>(new Set());
 
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
@@ -109,18 +115,55 @@ export function AiAdvisor({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, streaming]);
 
+  /* 저장된 평가 자동 로드 — 이미 받아둔 평가가 있으면 버튼 없이 바로 보여준다 */
+  useEffect(() => {
+    if (!enabled || !apartmentId || fetchedRef.current.has(apartmentId)) return;
+    fetchedRef.current.add(apartmentId);
+    let alive = true;
+    fetch(`/api/ai/evaluate?apartmentId=${encodeURIComponent(apartmentId)}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (!alive || !j.ok || !j.cached) return;
+        setEvaluations((prev) =>
+          prev[apartmentId] !== undefined
+            ? prev
+            : {
+                ...prev,
+                [apartmentId]: {
+                  ok: true,
+                  evaluation: j.cached.evaluation,
+                  nearby: j.cached.nearby,
+                  bankRates: j.cached.bankRates,
+                  gaps: j.cached.gaps,
+                  model: j.cached.model,
+                  generatedAt: j.cached.generatedAt,
+                  needsRefresh: j.needsRefresh,
+                  refreshReason: j.reason,
+                },
+              },
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [enabled, apartmentId]);
+
   async function evaluate() {
     setEvaluating(true);
-    setEvaluation(null);
     try {
       const res = await fetch('/api/ai/evaluate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apartmentId }),
       });
-      setEvaluation(await res.json());
+      const json = (await res.json()) as EvaluateResponse;
+      setEvaluations((prev) => ({ ...prev, [apartmentId]: { ...json, needsRefresh: false } }));
     } catch (e) {
-      setEvaluation({ ok: false, error: (e as Error).message });
+      setEvaluations((prev) => ({
+        ...prev,
+        [apartmentId]: { ok: false, error: (e as Error).message },
+      }));
     } finally {
       setEvaluating(false);
     }
@@ -205,6 +248,7 @@ export function AiAdvisor({
   }
 
   const selected = apartments.find((a) => a.id === apartmentId) ?? apartments[0];
+  const evaluation = evaluations[selected.id];
 
   return (
     <SectionCard
@@ -243,14 +287,37 @@ export function AiAdvisor({
 
         {/* 종합 평가 */}
         <TabsContent value="evaluate" className="mt-3 space-y-3">
-          <Button size="sm" onClick={evaluate} disabled={evaluating}>
-            {evaluating ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Sparkles className="size-4" />
-            )}
-            {selected.complexName} 평가 받기
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={evaluate} disabled={evaluating}>
+              {evaluating ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              {selected.complexName} {evaluation?.ok ? '다시 평가 받기' : '평가 받기'}
+            </Button>
+            {evaluation?.ok && evaluation.generatedAt ? (
+              <span className="text-muted-foreground text-[11px]">
+                저장된 평가 ·{' '}
+                {new Date(evaluation.generatedAt).toLocaleString('ko-KR', {
+                  month: 'numeric',
+                  day: 'numeric',
+                  hour: 'numeric',
+                })}{' '}
+                생성
+              </span>
+            ) : null}
+          </div>
+
+          {evaluation?.ok && evaluation.needsRefresh ? (
+            <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-2.5 text-xs">
+              <span className="font-semibold text-amber-700 dark:text-amber-400">
+                ⚠️ 재평가 필요
+              </span>{' '}
+              — {evaluation.refreshReason ?? '평가 시점과 상황이 달라졌습니다.'} 위 버튼으로 다시
+              평가 받으세요.
+            </div>
+          ) : null}
 
           {evaluation?.ok === false ? (
             <p className="text-destructive text-sm">{evaluation.error}</p>
