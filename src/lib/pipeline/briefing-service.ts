@@ -109,7 +109,7 @@ export async function runBriefing(
     userId?: string;
     /**
      * 이번 실행에서 시도할 채널. 생략하면 둘 다.
-     * 카카오(하루 1회, 갈아타기 요약)와 텔레그램(하루 4회, 전문)의
+     * 카카오(하루 1회, 갈아타기 요약)와 텔레그램(하루 4회 — 04·10·17·21시, 전문)의
      * 발송 주기가 달라 cron 이 채널을 골라 호출한다.
      */
     channels?: Array<'kakao' | 'telegram'>;
@@ -200,12 +200,23 @@ export async function runBriefing(
         await sendTelegramText(data.config.telegramChatId as string, tgText);
         reports.push({ recipient: '텔레그램', ok: true });
 
-        /* 변경이 있으면 두 번째 메시지로 "무엇이 왜 달라졌고 어떻게 볼지"를 보낸다 */
-        if (!unchanged && diffLines.length > 0 && prevSnap) {
-          const analysis = await buildChangeAnalysis(diffLines, data, prevSnap.snap);
+        /* 두 번째 메시지 — "무엇이 왜 달라졌고 어떻게 볼지".
+           전에는 달라진 수치가 하나도 없으면 이 메시지를 통째로 걸렀는데,
+           받는 쪽에서는 "브리핑이 반만 왔다"로 읽혔다. 전문을 보낸 회차라면
+           분석도 항상 짝으로 보내되, 달라진 게 없을 때는 OpenAI 를 부르지 않고
+           규칙 기반 해석으로 짧게 끝낸다 (호출당 비용이 든다). */
+        if (!unchanged && prevSnap) {
+          const analysis =
+            diffLines.length > 0
+              ? await buildChangeAnalysis(diffLines, data, prevSnap.snap)
+              : interpretDiffFallback(data, prevSnap.snap).join('\n');
+          const changedBlock =
+            diffLines.length > 0
+              ? diffLines.map((l) => `· ${l}`).join('\n')
+              : '· 직전 발송 대비 달라진 핵심 수치는 없습니다.';
           await sendTelegramText(
             data.config.telegramChatId as string,
-            `🔍 변경 분석\n\n[달라진 것]\n${diffLines.map((l) => `· ${l}`).join('\n')}\n\n[의미와 전망]\n${analysis}`,
+            `🔍 변경 분석\n\n[달라진 것]\n${changedBlock}\n\n[의미와 전망]\n${analysis}`,
           );
         }
       } catch (e) {

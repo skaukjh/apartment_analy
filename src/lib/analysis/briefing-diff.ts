@@ -98,12 +98,48 @@ export function buildBriefingDiff(data: DashboardData, prev: BriefingSnapshot): 
     }
   }
 
-  /* 3) 시장 과열도 변화 */
-  if (prev.sentiment && data.sentiment.heatScore !== prev.sentiment.heatScore) {
-    const d = data.sentiment.heatScore - prev.sentiment.heatScore;
-    lines.push(
-      `과열점수: ${prev.sentiment.heatScore} → ${data.sentiment.heatScore} (${sign(d)}${d})`,
-    );
+  /* 3) 시장 지표 변화.
+     예전에는 과열점수 하나만 봤다. 그러다 보니 브리핑 본문에는 매매수급·신고가
+     비중이 분명히 달라져 있는데도 "변화 0건"으로 판정돼 변경 분석 메시지가
+     통째로 안 나가는 일이 있었다 (실제로 11시 브리핑이 본문 한 통만 왔다).
+     본문에 싣는 수치는 전부 비교 대상에 넣되, 반올림 표시상 안 보이는 미세한
+     흔들림은 임계값으로 걸러 매번 같은 줄이 반복되지 않게 한다. */
+  if (prev.sentiment) {
+    const before = prev.sentiment;
+    const now = data.sentiment;
+
+    if (now.heatScore !== before.heatScore) {
+      const d = now.heatScore - before.heatScore;
+      lines.push(`과열점수: ${before.heatScore} → ${now.heatScore} (${sign(d)}${d})`);
+    }
+
+    const dSupply = now.supplyDemandIndex - before.supplyDemandIndex;
+    if (Math.abs(dSupply) >= 0.5) {
+      lines.push(
+        `매매수급: ${before.supplyDemandIndex.toFixed(0)} → ${now.supplyDemandIndex.toFixed(0)} (${sign(dSupply)}${dSupply.toFixed(1)})`,
+      );
+    }
+
+    const dNewHigh = now.newHighRatio - before.newHighRatio;
+    if (Math.abs(dNewHigh) >= 0.2) {
+      lines.push(
+        `신고가 비중: ${before.newHighRatio.toFixed(1)}% → ${now.newHighRatio.toFixed(1)}% (${sign(dNewHigh)}${dNewHigh.toFixed(1)}%p)`,
+      );
+    }
+
+    const dVolume = now.volumeYoy - before.volumeYoy;
+    if (Math.abs(dVolume) >= 1) {
+      lines.push(
+        `거래량 YoY: ${before.volumeYoy.toFixed(0)}% → ${now.volumeYoy.toFixed(0)}% (${sign(dVolume)}${dVolume.toFixed(0)}%p)`,
+      );
+    }
+  }
+
+  /* 4) 비교 대상 후보 수 변화 — 새 단지가 후보에 들어오거나 빠진 것도
+     "달라진 것"이다. 본문 마지막 줄("다른 후보 N곳")이 바뀐 이유를 설명해 준다. */
+  if (prev.gaps && data.gaps.length !== prev.gaps.length) {
+    const d = data.gaps.length - prev.gaps.length;
+    lines.push(`비교 후보: ${prev.gaps.length}곳 → ${data.gaps.length}곳 (${sign(d)}${d})`);
   }
 
   return lines;

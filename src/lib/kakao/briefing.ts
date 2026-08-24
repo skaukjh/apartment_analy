@@ -193,7 +193,7 @@ const KAKAO_TEXT_LIMIT = 190; // 200자 제한 + 여유
 
 /**
  * 발송 시간대(텔레그램 전문 발송용). 같은 데이터라도 시간대마다 먼저 알고 싶은 게 다르다.
- *  - morning(05시) · noon(11시) · evening(18시) · night(22시)
+ *  - morning(04시) · noon(10시) · evening(17시) · night(21시)
  */
 export type BriefingSlot = 'morning' | 'noon' | 'evening' | 'night';
 
@@ -203,13 +203,18 @@ export type BriefingSlot = 'morning' | 'noon' | 'evening' | 'night';
  * 스케줄러(GitHub Actions)는 정각에 오지 않는다 — 30~50분 밀리고 가끔
  * 한 시간을 통째로 거른다. 실제로 11시 브리핑이 통째로 빠진 날이 있었다.
  * 그래서 "정각 일치"가 아니라 "지나간 슬롯 중 미발송분을 따라잡기"로 판단한다.
- * 새벽(0~4시)에는 보낼 슬롯이 없으므로 null.
+ * 새벽(0~3시)에는 보낼 슬롯이 없으므로 null.
+ *
+ * ── 왜 05·11·18·22 에서 한 시간씩 앞당겼나 ────────────────────────
+ * 스케줄러 지연(30~50분)이 구조적으로 남는다. 원하는 시각에 손에 쥐려면
+ * 예정 시각을 그만큼 앞에 두는 편이 현실적이다 — 05시 예정이 05:31에
+ * 오던 것을 04시 예정으로 옮겨 05시 전에 도착하게 한다.
  */
 export function latestPassedSlot(hourKst: number): BriefingSlot | null {
-  if (hourKst >= 22) return 'night';
-  if (hourKst >= 18) return 'evening';
-  if (hourKst >= 11) return 'noon';
-  if (hourKst >= 5) return 'morning';
+  if (hourKst >= 21) return 'night';
+  if (hourKst >= 17) return 'evening';
+  if (hourKst >= 10) return 'noon';
+  if (hourKst >= 4) return 'morning';
   return null;
 }
 
