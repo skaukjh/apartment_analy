@@ -219,7 +219,7 @@ export async function fetchRedevelopmentStage(q: StageQuery): Promise<Redevelopm
   const byName = candidates.find((r) => {
     const a = parseAddress(r.address);
     if (q.dong && a && a.dong !== q.dong) return false;
-    const proj = r.projectName.replace(/s+/g, '');
+    const proj = r.projectName.replace(/\s+/g, '');
     return strictKeys.some((k) => proj.includes(k));
   });
   return byName ? toInfo(byName, 'name') : null;
