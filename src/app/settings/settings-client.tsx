@@ -20,7 +20,13 @@ import {
 import { formatArea, formatKrw } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { REGULATION_AS_OF, regulationOf } from '@/lib/analysis/regulation';
-import type { Holding, TargetApartment, UserConfig, WatchRegion } from '@/lib/types';
+import {
+  REDEVELOPMENT_STAGES,
+  type Holding,
+  type TargetApartment,
+  type UserConfig,
+  type WatchRegion,
+} from '@/lib/types';
 import type { SigunguInfo } from '@/lib/regions';
 import { SectionCard, EmptyHint } from '@/components/ui-bits';
 import { Field, ItemHeader, MoneyInput, RegionPicker } from '@/components/form-bits';
@@ -56,7 +62,15 @@ interface Props {
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 interface FillReport {
-  filled: Array<{ owner: string; field: string; label: string; value: number; basis: string }>;
+  filled: Array<{
+    owner: string;
+    field: string;
+    label: string;
+    value: number;
+    /** 숫자가 아닌 값 (예: 재건축 단계) — 있으면 그대로 보여준다 */
+    text?: string;
+    basis: string;
+  }>;
   skipped: string[];
   householdNotes: string[];
   asOf: string;
@@ -622,6 +636,13 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 pb-24">
+      {/* 재건축 단계 입력의 추천 목록 — 보유·목표 카드가 함께 쓴다.
+          자동 채움이 못 찾은 단지도 사용자가 여기서 골라 넣을 수 있다. */}
+      <datalist id="redevelopment-stages">
+        {REDEVELOPMENT_STAGES.map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">설정</h1>
@@ -731,15 +752,17 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                       </span>{' '}
                       <span className="tabular text-muted-foreground">
                         →{' '}
-                        {f.field === 'loanRate' || f.field === 'floorAreaRatio'
-                          ? `${f.value}%`
-                          : f.field === 'residenceMonths'
-                            ? `${f.value}개월`
-                            : f.field === 'totalHouseholds'
-                              ? `${f.value.toLocaleString('ko-KR')}세대`
-                              : f.field === 'landShareM2'
-                                ? `${f.value}㎡`
-                                : formatKrw(f.value)}
+                        {f.text
+                          ? f.text
+                          : f.field === 'loanRate' || f.field === 'floorAreaRatio'
+                            ? `${f.value}%`
+                            : f.field === 'residenceMonths'
+                              ? `${f.value}개월`
+                              : f.field === 'totalHouseholds'
+                                ? `${f.value.toLocaleString('ko-KR')}세대`
+                                : f.field === 'landShareM2'
+                                  ? `${f.value}㎡`
+                                  : formatKrw(f.value)}
                       </span>
                       <div className="text-muted-foreground">{f.basis}</div>
                     </li>
@@ -1011,6 +1034,24 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                       }
                     />
                   </Field>
+                  <Field
+                    label="재건축 단계"
+                    hint={
+                      h.redevelopmentSource ?? '선택 — 서울 단지는 정비몽땅에서 자동으로 채웁니다'
+                    }
+                  >
+                    <Input
+                      list="redevelopment-stages"
+                      value={h.redevelopmentStage ?? ''}
+                      placeholder="예: 조합설립인가"
+                      onChange={(e) =>
+                        updateHolding(h.id, {
+                          redevelopmentStage: e.target.value || undefined,
+                          redevelopmentSource: e.target.value ? '직접 입력' : undefined,
+                        })
+                      }
+                    />
+                  </Field>
                 </div>
               </div>
             ))}
@@ -1210,6 +1251,24 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                       className="tabular"
                       onChange={(e) =>
                         updateTarget(t.id, { landShareM2: Number(e.target.value) || undefined })
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label="재건축 단계"
+                    hint={
+                      t.redevelopmentSource ?? '선택 — 서울 단지는 정비몽땅에서 자동으로 채웁니다'
+                    }
+                  >
+                    <Input
+                      list="redevelopment-stages"
+                      value={t.redevelopmentStage ?? ''}
+                      placeholder="예: 조합설립인가"
+                      onChange={(e) =>
+                        updateTarget(t.id, {
+                          redevelopmentStage: e.target.value || undefined,
+                          redevelopmentSource: e.target.value ? '직접 입력' : undefined,
+                        })
                       }
                     />
                   </Field>

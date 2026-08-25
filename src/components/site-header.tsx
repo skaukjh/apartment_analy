@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  BookOpen,
   Building2,
   Landmark,
   LineChart,
@@ -24,6 +25,7 @@ import { cn } from '@/lib/utils';
 // 메뉴 4개를 긴 이름 그대로 두면 390px 화면에서 뒤쪽 두 개가 밖으로 밀려나
 // 가로 스크롤을 해야만 눌린다. 실제로 "메뉴가 안 눌린다"는 제보가 있었다.
 const NAV = [
+  { href: '/guide', label: '소개', short: '소개', icon: BookOpen },
   { href: '/today', label: '오늘의 요약', short: '요약', icon: Sparkles },
   { href: '/', label: '내 갈아타기', short: '갈아타기', icon: Building2 },
   { href: '/simulation', label: '시뮬레이션', short: '시뮬', icon: LineChart },

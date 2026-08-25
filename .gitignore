@@ -47,3 +47,5 @@ scripts/*.json
 
 # 압축 원본 — 풀어놓은 폴더만 커밋한다
 docs/**/*.zip
+
+.molit-lag/

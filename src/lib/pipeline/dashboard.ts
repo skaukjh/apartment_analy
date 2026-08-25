@@ -235,10 +235,11 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
   const sourceStatus: SourceStatus[] = [];
   const config = await loadConfig(options.userId);
 
-  // 실거래 집계가 1시간 넘게 낡았으면 최근월만 백그라운드로 다시 긁는다 (응답은 기다리지 않음)
+  /* 실거래 집계가 3시간 넘게 낡았으면 최근월만 백그라운드로 다시 긁는다 (응답은 기다리지 않음).
+     userId 를 반드시 넘긴다 — 안 넘기면 누가 열든 default 설정의 지역만 갱신된다. */
   const lazy = options.skipLive
     ? { lastRefreshedAt: null, running: false, triggered: false, reason: '라이브 호출 생략' }
-    : maybeRefreshTrades();
+    : maybeRefreshTrades(options.userId);
 
   /* --- 1) 실거래 집계 --- */
   const userCodes = analysisTargets(config);

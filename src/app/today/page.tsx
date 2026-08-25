@@ -6,6 +6,7 @@ import { buildBriefingDiff, loadPreviousBriefingSnapshot } from '@/lib/analysis/
 import { hasOpenAI } from '@/lib/ai/client';
 import { SectionCard } from '@/components/ui-bits';
 import { AiOutlookPanel } from './today-client';
+import { DemoNotice } from '@/components/demo-notice';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -31,6 +32,12 @@ export default async function TodayPage() {
 
   return (
     <div className="mx-auto max-w-[1100px] px-4 py-6">
+      {sessionUser ? null : (
+        <div className="mb-4">
+          <DemoNotice />
+        </div>
+      )}
+
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{briefing.title}</h1>

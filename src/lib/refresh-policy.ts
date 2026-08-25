@@ -19,22 +19,33 @@
 export const REFRESH_INTERVAL_SECONDS = 3600;
 
 /** 소스별 fetch 캐시 TTL (초) */
-export const SOURCE_TTL: Record<'molitRecent' | 'molitHistory' | 'ecos' | 'reb' | 'news', number> =
-  {
-    /** 실거래가 — 최근월은 신고가 계속 들어오므로 1시간 */
-    molitRecent: 3600,
-    /** 실거래가 — 과거월은 거의 바뀌지 않음 */
-    molitHistory: 60 * 60 * 24 * 7,
-    /** 한국은행 ECOS — 월간 지표라 1시간이면 충분 */
-    ecos: 3600,
-    /** 한국부동산원 — 주간 지표 */
-    reb: 3600,
-    /** 뉴스 — 가장 빨리 바뀌므로 30분 */
-    news: 1800,
-  };
+export const SOURCE_TTL: Record<
+  'molitRecent' | 'molitHistory' | 'ecos' | 'reb' | 'news' | 'redevelopment',
+  number
+> = {
+  /** 실거래가 — 최근월은 신고가 계속 들어오므로 1시간 */
+  molitRecent: 3600,
+  /** 실거래가 — 과거월은 거의 바뀌지 않음 */
+  molitHistory: 60 * 60 * 24 * 7,
+  /** 한국은행 ECOS — 월간 지표라 1시간이면 충분 */
+  ecos: 3600,
+  /** 한국부동산원 — 주간 지표 */
+  reb: 3600,
+  /** 뉴스 — 가장 빨리 바뀌므로 30분 */
+  news: 1800,
+  /** 정비사업 단계 — 인가 단위로 바뀌므로 하루면 충분 */
+  redevelopment: 60 * 60 * 24,
+};
 
-/** 실거래 집계를 지연 갱신할 기준 (이보다 오래되면 최근월 재수집) */
-export const LAZY_REFRESH_THRESHOLD_MS = REFRESH_INTERVAL_SECONDS * 1000;
+/**
+ * 실거래 집계를 지연 갱신할 기준 (이보다 오래되면 최근월 재수집).
+ *
+ * 화면 갱신 주기(1시간)와 일부러 다르게 잡았다. 우리가 보는 실거래는
+ * 공공데이터포털 OpenAPI 인데, 국토부 공개시스템보다 몇 시간 늦게 반영된다.
+ * 그 지연은 우리가 줄일 수 없으므로 1시간마다 두드려도 대개 같은 응답을 받는다.
+ * 3시간이면 "OpenAPI 에 뜬 뒤 우리가 보기까지"가 최대 3시간이고 호출량은 1/3 이다.
+ */
+export const LAZY_REFRESH_THRESHOLD_MS = 3 * 60 * 60 * 1000;
 
 /** 사람이 읽는 갱신 주기 */
 export const REFRESH_LABEL = `${Math.round(REFRESH_INTERVAL_SECONDS / 60)}분`;

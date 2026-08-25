@@ -61,6 +61,8 @@ export interface FilledField {
   field: string;
   label: string;
   value: number;
+  /** 숫자로 표현되지 않는 값 (예: 재건축 단계). 있으면 화면은 이걸 그대로 쓴다. */
+  text?: string;
   /** 어떻게 계산했는지 */
   basis: string;
 }

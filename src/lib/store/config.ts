@@ -28,6 +28,8 @@ const apartmentRefSchema = z.object({
   totalHouseholds: z.number().positive().optional(),
   floorAreaRatio: z.number().positive().optional(),
   landShareM2: z.number().positive().optional(),
+  redevelopmentStage: z.string().optional(),
+  redevelopmentSource: z.string().optional(),
 });
 
 export const holdingSchema = apartmentRefSchema.extend({

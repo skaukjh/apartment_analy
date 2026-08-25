@@ -28,7 +28,42 @@ export interface ApartmentRef {
   floorAreaRatio?: number;
   /** 세대당 대지지분 (㎡, 선택) — 등기부 대지권 기준 입력 권장 */
   landShareM2?: number;
+  /**
+   * 재건축·재개발 진행 단계 (선택).
+   * 서울시 정비몽땅에서 자동으로 채우고, 사용자가 덮어쓸 수 있다.
+   * 서울 밖이거나 정비사업이 없는 단지는 비어 있는 게 정상이다.
+   */
+  redevelopmentStage?: string;
+  /** 그 단계를 어디서 가져왔는지 (선택) — 자동/수동을 구분해 보여주기 위함 */
+  redevelopmentSource?: string;
 }
+
+/**
+ * 정비사업 진행 단계 — 앞쪽일수록 초기.
+ *
+ * 서울시 정비몽땅 표기를 그대로 따른다. 설정 화면의 추천 목록과
+ * 진척도 계산이 같은 목록을 봐야 해서 타입 모듈에 둔다
+ * (수집 모듈은 서버 전용이라 클라이언트에서 import 할 수 없다).
+ */
+export const REDEVELOPMENT_STAGES = [
+  '도시계획심의',
+  '안전진단',
+  '정비계획 수립',
+  '정비구역지정',
+  '추진위원회승인',
+  '조합설립인가',
+  '사업시행인가',
+  '관리처분인가',
+  '철거',
+  '착공',
+  '분양',
+  '준공인가',
+  '이전고시',
+  '조합해산',
+  '조합청산',
+] as const;
+
+export type RedevelopmentStage = (typeof REDEVELOPMENT_STAGES)[number];
 
 /** 보유 아파트 */
 export interface Holding extends ApartmentRef {

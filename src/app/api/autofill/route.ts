@@ -12,6 +12,7 @@ import {
 import { draftConfigSchema } from '@/lib/store/config';
 import { findComplexJibun, findTradeNearDate } from '@/lib/sources/complex-search';
 import { fetchComplexSpec } from '@/lib/sources/building';
+import { fetchRedevelopmentStage } from '@/lib/sources/redevelopment';
 import type { ApartmentRef, TradeRecord, UserConfig } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -70,6 +71,8 @@ export async function POST(request: Request) {
       field: string;
       label: string;
       value?: number;
+      /** 숫자로 표현되지 않는 값 (예: 재건축 단계) */
+      text?: string;
       basis: string;
     }> = [];
     const skipped: string[] = [];
@@ -98,10 +101,49 @@ export async function POST(request: Request) {
        지번은 실거래 캐시의 최빈값으로 찾고, 카카오 주소검색으로 법정동코드를
        확정한 뒤 총괄표제부를 읽는다. 실패해도 다른 채움을 막지 않는다. */
     const fillSpec = async (apt: ApartmentRef, owner: string): Promise<Partial<ApartmentRef>> => {
-      const needs = overwrite || !apt.totalHouseholds || !apt.floorAreaRatio || !apt.landShareM2;
+      const needsStage = overwrite || !apt.redevelopmentStage;
+      const needs =
+        overwrite || !apt.totalHouseholds || !apt.floorAreaRatio || !apt.landShareM2 || needsStage;
       if (!needs || !apt.complexName || !/^\d{5}$/.test(apt.lawdCd)) return {};
 
       const lot = await findComplexJibun(apt.lawdCd, apt.complexName).catch(() => null);
+
+      /* 재건축 진행 단계 — 서울시 정비몽땅. 자동 채움이 1순위이고,
+         못 찾으면 사용자가 직접 고르는 수동 입력이 2순위로 남는다.
+         지번으로 확정하므로 형제 단지(2차·8단지 등)를 잘못 물지 않는다. */
+      const stageValues: Partial<ApartmentRef> = {};
+      if (needsStage) {
+        const redev = await fetchRedevelopmentStage({
+          complexName: apt.complexName,
+          sigungu: apt.sigungu,
+          dong: apt.dong || lot?.dong,
+          jibun: lot?.jibun,
+        }).catch(() => null);
+
+        if (redev) {
+          stageValues.redevelopmentStage = redev.stage;
+          stageValues.redevelopmentSource =
+            redev.matchedBy === 'jibun'
+              ? `정비몽땅 · ${redev.address} 지번 대조`
+              : `정비몽땅 · 사업장명 대조(확인 권장)`;
+          filled.push({
+            owner,
+            field: 'redevelopmentStage',
+            label: '재건축 단계',
+            value: Math.round(redev.progress * 100),
+            text: redev.stage,
+            basis: `서울시 정비몽땅 — ${redev.kind} \u00b7 ${redev.projectName} (${redev.address})${
+              redev.matchedBy === 'name'
+                ? ' · 지번이 아닌 사업장명으로 맞춘 결과라 확인하세요.'
+                : ''
+            }`,
+          });
+        } else if (!apt.redevelopmentStage) {
+          skipped.push(
+            `${owner}: 서울시 정비몽땅에 등록된 정비사업이 없습니다. 서울 밖이거나 아직 정비구역이 아닌 단지이며, 필요하면 재건축 단계를 직접 입력하세요.`,
+          );
+        }
+      }
       const spec = await fetchComplexSpec({
         complexName: apt.complexName,
         sido: apt.sido,
@@ -114,10 +156,10 @@ export async function POST(request: Request) {
         skipped.push(
           `${owner}: 건축물대장에서 단지 정보를 찾지 못했습니다 (세대수·용적률·대지지분). 카카오/국토부 키와 건축물대장 API 활용신청 여부를 확인하세요.`,
         );
-        return {};
+        return stageValues;
       }
 
-      const values: Partial<ApartmentRef> = {};
+      const values: Partial<ApartmentRef> = { ...stageValues };
       const basis = `건축물대장 ${spec.source} (${spec.address})`;
       if (spec.households && (overwrite || !apt.totalHouseholds)) {
         values.totalHouseholds = spec.households;

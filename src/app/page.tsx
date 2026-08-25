@@ -13,6 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { GapSection } from '@/components/dashboard/gap-section';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { AiAdvisor } from '@/components/dashboard/ai-advisor';
+import { DemoNotice } from '@/components/demo-notice';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -80,6 +81,8 @@ export default async function HomePage() {
           </Button>
         </div>
       </div>
+
+      {sessionUser ? null : <DemoNotice />}
 
       {empty ? (
         <Alert>
