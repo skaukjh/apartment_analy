@@ -359,10 +359,14 @@ export async function loadSnapshotBefore(days: number): Promise<unknown | null> 
     return memoryState().snapshots.find((s) => s.capturedAt <= before)?.payload ?? null;
   }
 
+  /* dashboard_snapshot 은 여러 용도가 공유한다 (AI 요약 캐시·정책 확인 표시·
+     실거래 반영 측정 …). 종류를 안 가리면 gaps 가 없는 행이 잡혀 갭 변화가
+     조용히 사라진다 — 실제로 "갭 축소/확대" 문구가 안 나가던 원인이다. */
   const { data, error } = await client
     .from('dashboard_snapshot')
     .select('payload')
     .lte('captured_at', before)
+    .not('payload->gaps', 'is', null)
     .order('captured_at', { ascending: false })
     .limit(1)
     .maybeSingle();

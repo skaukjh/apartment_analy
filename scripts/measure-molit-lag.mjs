@@ -17,7 +17,12 @@
  *   node scripts/measure-molit-lag.mjs            # 30분 간격으로 계속
  *   node scripts/measure-molit-lag.mjs --once     # 한 번만 찍고 종료
  *   node scripts/measure-molit-lag.mjs --interval 15
- *   node scripts/measure-molit-lag.mjs --report   # 조회 없이 그동안의 기록만 요약
+ *   node scripts/measure-molit-lag.mjs --report   # 이 PC 에 쌓인 기록만 요약
+ *   node scripts/measure-molit-lag.mjs --remote   # 서버(tick)가 모은 기록을 요약
+ *
+ * 평소에는 --remote 만 쓰면 된다. 같은 관측을 서버의 tick 이 30분마다 하고
+ * 있어서 PC 를 꺼 두어도 계속 쌓인다. 이 스크립트를 직접 돌리는 건
+ * 더 촘촘한 간격으로 보고 싶을 때뿐이다.
  *
  * 기록은 scripts/.molit-lag/ 에 쌓인다 (state.json = 본 거래, events.jsonl = 발견 이력).
  * 호출량은 지역 수 × 2개월 × (60/간격) × 24 이며, 기본값 기준 하루 288건이다.
@@ -240,11 +245,18 @@ function report() {
     return;
   }
 
-  console.log(`\n관측 ${events.length}건 (${events[0].detectedAt} ~ ${events.at(-1).detectedAt})\n`);
+  summarize(events);
+}
+
+/** 관측 이벤트 배열을 사람이 읽는 요약으로 — 로컬·서버 기록이 같은 형식을 쓴다 */
+function summarize(events) {
+  const at = (e) => (e.detectedAt.length > 16 ? e.detectedAt.slice(0, 16).replace('T', ' ') : e.detectedAt);
+  console.log(`\n관측 ${events.length}건 (${at(events[0])} ~ ${at(events.at(-1))})\n`);
 
   // 1) 몇 시에 들어오나 — 이게 갱신 간격을 정한다
   const byHour = new Map();
-  for (const e of events) byHour.set(e.detectedHour, (byHour.get(e.detectedHour) ?? 0) + 1);
+  const hourOf = (e) => e.detectedHour ?? e.hourKst;
+  for (const e of events) byHour.set(hourOf(e), (byHour.get(hourOf(e)) ?? 0) + 1);
   console.log('■ 반영 시각 분포 (KST)');
   for (let h = 0; h < 24; h += 1) {
     const n = byHour.get(h) ?? 0;
@@ -253,7 +265,7 @@ function report() {
   }
 
   // 2) 하루에 몇 번 들어오나
-  const slots = new Set(events.map((e) => `${e.detectedAt.slice(0, 10)} ${e.detectedHour}`));
+  const slots = new Set(events.map((e) => `${e.detectedAt.slice(0, 10)} ${hourOf(e)}`));
   const days = new Set(events.map((e) => e.detectedAt.slice(0, 10)));
   console.log(`\n■ 반영이 관측된 시간대: 하루 평균 ${(slots.size / days.size).toFixed(1)}개`);
 
@@ -270,8 +282,53 @@ function report() {
 
 /* ------------------------------------------------------------------ */
 
+/** 서버(tick)가 dashboard_snapshot 에 쌓아 둔 관측을 읽어 같은 형식으로 요약한다 */
+async function remoteReport() {
+  const envPath = path.join(ROOT, '.env.local');
+  const env = Object.fromEntries(
+    fs
+      .readFileSync(envPath, 'utf8')
+      .split(/\r?\n/)
+      .filter((l) => l.includes('=') && !l.startsWith('#'))
+      .map((l) => {
+        const i = l.indexOf('=');
+        return [l.slice(0, i).trim(), l.slice(i + 1).trim().replace(/^["']|["']$/g, '')];
+      }),
+  );
+
+  const url = env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('.env.local 에 Supabase 접속 정보가 없습니다.');
+
+  const res = await fetch(
+    `${url}/rest/v1/dashboard_snapshot?select=payload&payload->>kind=eq.molit-probe` +
+      `&order=captured_at.desc&limit=1`,
+    { headers: { apikey: key, Authorization: `Bearer ${key}` } },
+  );
+  if (!res.ok) throw new Error(`Supabase 조회 실패 (HTTP ${res.status})`);
+
+  const rows = await res.json();
+  const state = rows[0]?.payload;
+  if (!state) {
+    console.log('서버 관측 기록이 아직 없습니다. tick 이 한 번 돌면 기준선이 잡힙니다.');
+    return;
+  }
+
+  const events = state.events ?? [];
+  console.log(`\n서버 관측 — 기준선 ${state.startedAt?.slice(0, 16).replace('T', ' ')} UTC`);
+  console.log(`마지막 실행 ${state.lastRunAt?.slice(0, 16).replace('T', ' ')} UTC · 추적 중인 거래 ${state.seen?.length ?? 0}건`);
+  if (state.lastError) console.log(`마지막 오류: ${state.lastError}`);
+
+  if (events.length === 0) {
+    console.log('\n아직 새로 나타난 거래가 없습니다. 조금 더 기다려 주세요.\n');
+    return;
+  }
+  summarize(events);
+}
+
 async function main() {
   const args = process.argv.slice(2);
+  if (args.includes('--remote')) return remoteReport();
   if (args.includes('--report')) return report();
 
   const key = readServiceKey();

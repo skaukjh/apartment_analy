@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { authorizeCron, errorResponse } from '@/lib/api-auth';
 import { runBriefing } from '@/lib/pipeline/briefing-service';
 import { refreshRecent } from '@/lib/pipeline/refresh';
+import { runMolitProbe } from '@/lib/pipeline/molit-probe';
 import { analysisTargets, listConfigUserIds, loadConfig } from '@/lib/store/config';
 import { CORE_WATCH_REGIONS } from '@/lib/regions';
 import { latestPassedSlot, type BriefingSlot } from '@/lib/kakao/briefing';
@@ -155,6 +156,18 @@ export async function GET(request: Request) {
         })
       : { regionsProcessed: 0, monthsFetched: 0, tradesCollected: 0, errors: [] as string[] };
 
+    /* 2-1) 실거래 반영 시각 관측 — 매 tick(30분)마다.
+       공공데이터포털 OpenAPI 가 몇 시에, 하루 몇 번 새 거래를 실어 주는지는
+       공개돼 있지 않다. 갱신 주기를 짐작이 아니라 관측으로 정하려고 남긴다.
+       3지역 × 2개월 = 6호출이라 쿼터에 거의 영향이 없고, 실패해도 무시한다. */
+    const probe = await runMolitProbe().catch((e) => ({
+      ran: false,
+      baseline: false,
+      newCount: 0,
+      seenCount: 0,
+      reason: (e as Error).message,
+    }));
+
     /* 3) AI 요약을 미리 만들어 캐시에 넣는다.
        사용자가 페이지를 열 때 20~40초를 기다리지 않아도 되고,
        호출 횟수가 시간당 1회로 고정돼 비용이 예측 가능해진다. */
@@ -237,6 +250,13 @@ export async function GET(request: Request) {
           regions: refresh.regionsProcessed,
           trades: refresh.tradesCollected,
           errors: refresh.errors.length,
+        },
+        // 실거래 반영 관측 — 이번 회차에 새로 나타난 거래 수
+        probe: {
+          new: probe.newCount,
+          seen: probe.seenCount,
+          baseline: probe.baseline,
+          error: probe.reason,
         },
       },
       { status: 200 },
