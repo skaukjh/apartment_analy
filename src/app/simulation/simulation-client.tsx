@@ -2,7 +2,12 @@
 
 import { tradePriceOf } from '@/lib/analysis/price-basis';
 import { activeTargets, targetDisabledReason } from '@/lib/analysis/target-pool';
-import { LONG_TERM_MIN_YEARS, longTermMilestone, twoYearMilestone } from '@/lib/tax/capital-gains';
+import {
+  LONG_TERM_MIN_YEARS,
+  longTermLadder,
+  longTermMilestone,
+  twoYearMilestone,
+} from '@/lib/tax/capital-gains';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -191,6 +196,18 @@ export function SimulationClient({ config, quotes }: Props) {
     if (!m) return null;
     return { ...m, result: simulateSwitch({ ...base, soldAt: m.date }) };
   }, [base, holding, config.household.ownedHouseCount]);
+
+  /* 공제율은 보유가 길어질수록 계단처럼 올라간다. 한 시점만 보여주면
+     그 값이 고정처럼 읽혀 "1년 더 기다리면 얼마?"가 보이지 않는다. */
+  const ladder = useMemo(() => {
+    if (!holding?.acquiredAt) return [];
+    return longTermLadder({
+      acquiredAt: holding.acquiredAt,
+      residenceMonths: holding.residenceMonths,
+      isOneHouseExempt: config.household.ownedHouseCount <= 1,
+      today: todayKst(),
+    });
+  }, [holding, config.household.ownedHouseCount]);
 
   /* 시나리오 표·차트의 매도 시점 — 요건을 아직 못 채운 보유자에게만 전환 버튼이 보인다 */
   const [sellTiming, setSellTiming] = useState<'now' | 'twoYear' | 'longTerm'>('now');
@@ -536,6 +553,49 @@ export function SimulationClient({ config, quotes }: Props) {
                     </div>
                   </div>
                 </div>
+                {/* 공제율 사다리 — 이 표가 없으면 위의 한 숫자가 고정값처럼 읽힌다 */}
+                {ladder.length > 0 ? (
+                  <div className="bg-background/60 mt-3 rounded-md border border-sky-500/30 p-2.5">
+                    <div className="text-muted-foreground mb-1.5 text-[11px]">
+                      보유 연차별 공제율 — 오래 들고 있을수록 계단처럼 올라갑니다
+                    </div>
+                    <div className="thin-scrollbar overflow-x-auto">
+                      <table className="w-full text-[11px]">
+                        <tbody>
+                          <tr className="text-muted-foreground">
+                            {ladder.map((step) => (
+                              <td key={step.holdYears} className="px-1.5 py-0.5 text-center">
+                                {step.holdYears}년
+                              </td>
+                            ))}
+                          </tr>
+                          <tr>
+                            {ladder.map((step) => (
+                              <td
+                                key={step.holdYears}
+                                className={cn(
+                                  'tabular px-1.5 py-0.5 text-center font-semibold',
+                                  step.holdYears === LONG_TERM_MIN_YEARS
+                                    ? 'text-sky-700 dark:text-sky-400'
+                                    : '',
+                                )}
+                              >
+                                {step.rate}%
+                              </td>
+                            ))}
+                          </tr>
+                          <tr className="text-muted-foreground">
+                            {ladder.map((step) => (
+                              <td key={step.holdYears} className="px-1.5 text-center text-[10px]">
+                                {step.date.slice(2, 7)}
+                              </td>
+                            ))}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : null}
                 <p className="text-muted-foreground mt-2 text-[11px] leading-relaxed">
                   {longTerm.longTermNote}. 장기보유특별공제는 1세대1주택 비과세(2년 보유)와 별개
                   요건이라, 2년을 채워도 {LONG_TERM_MIN_YEARS}년을 못 채우면 공제율은 0%입니다. 거주

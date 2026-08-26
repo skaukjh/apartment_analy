@@ -230,6 +230,14 @@ export function GapSection({ config, quotes }: Props) {
   const twoYearDate = pairs.find((p) => p.twoYear)?.twoYear?.date;
   const longTermInfo = pairs.find((p) => p.longTerm)?.longTerm;
 
+  /* 요건을 이미 채웠으면 그 토글은 나오지 않는다 — 비교할 "나중"이 없기 때문이다.
+     그런데 아무 설명이 없으면 "버튼이 왜 안 보이지?"로 읽힌다. 충족했다는 사실을
+     대신 알려서, 없는 것이 고장이 아니라 결과라는 걸 분명히 한다.
+     취득일을 아직 안 넣었으면 판단할 수 없으므로 아무 말도 하지 않는다. */
+  const hasAcquiredDate = config.holdings.some((h) => Boolean(h.acquiredAt));
+  const twoYearMet = hasAcquiredDate && pairs.length > 0 && !twoYearDate;
+  const longTermMet = hasAcquiredDate && pairs.length > 0 && !longTermInfo;
+
   if (pairs.length === 0) {
     return (
       <SectionCard
@@ -317,6 +325,23 @@ export function GapSection({ config, quotes }: Props) {
               — 공제율 {longTermInfo.rate}% 적용 · {longTermInfo.monthsLeft}개월 남음
             </span>
           </label>
+        ) : null}
+
+        {twoYearMet || longTermMet ? (
+          <div className="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-[11px] leading-relaxed">
+            {twoYearMet ? (
+              <div>
+                ✓ <span className="text-foreground font-medium">2년 보유</span> (1세대1주택 비과세)
+                요건은 이미 채웠습니다 — 아래 수치에 반영돼 있어 가정 버튼이 따로 없습니다.
+              </div>
+            ) : null}
+            {longTermMet ? (
+              <div>
+                ✓ <span className="text-foreground font-medium">{LONG_TERM_MIN_YEARS}년 보유</span>{' '}
+                (장기보유특별공제) 요건은 이미 채웠습니다 — 공제율이 이미 적용돼 있습니다.
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         {disabled.length > 0 ? (

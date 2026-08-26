@@ -322,3 +322,44 @@ export function twoYearMilestone(input: {
   if (!date || input.today >= date) return null;
   return { date, monthsLeft: monthsBetween(input.today, date) };
 }
+
+export interface LongTermStep {
+  /** 보유 연차 */
+  holdYears: number;
+  /** 그 연차를 채우는 날 (YYYY-MM-DD) */
+  date: string;
+  /** 그때 적용되는 공제율 (%) */
+  rate: number;
+  /** 오늘 기준 이미 지난 연차인지 */
+  reached: boolean;
+}
+
+/**
+ * 보유 연차별 장기보유특별공제율 사다리.
+ *
+ * 공제율은 한 번 정해지는 값이 아니라 보유가 길어질수록 계단처럼 올라간다.
+ * 화면에 "3년 도달 시 20%" 한 줄만 보여주면 그 20%가 고정값처럼 읽혀서,
+ * 1년 더 기다렸을 때 얼마나 커지는지가 보이지 않는다. 그 계단을 그대로 돌려준다.
+ *
+ * 거주 개월 수는 지금 입력값 그대로 가정한다 — 그 사이 계속 거주하면
+ * 1세대1주택 표2의 거주 항목이 함께 올라 실제 공제율은 여기보다 커진다.
+ */
+export function longTermLadder(input: {
+  acquiredAt: string;
+  residenceMonths: number;
+  isOneHouseExempt: boolean;
+  today: string;
+  /** 보여줄 연차 (기본 3~10년) */
+  years?: number[];
+}): LongTermStep[] {
+  const years = input.years ?? [3, 4, 5, 6, 7, 8, 9, 10];
+  const out: LongTermStep[] = [];
+
+  for (const holdYears of years) {
+    const date = holdingMilestoneDate(input.acquiredAt, holdYears);
+    if (!date) continue;
+    const { rate } = longTermRate(holdYears * 12, input.residenceMonths, input.isOneHouseExempt);
+    out.push({ holdYears, date, rate, reached: input.today >= date });
+  }
+  return out;
+}
