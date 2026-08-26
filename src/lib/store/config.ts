@@ -373,8 +373,18 @@ export async function loadConfigHistory(userId: string = CONFIG_ID): Promise<Con
 }
 
 /**
+ * 공개 앱(닉네임 방식) 사용자의 설정 id 접두사.
+ *
+ * 같은 DB 를 공개 앱과 나눠 쓰는데, 그쪽 사용자는 계정도 수신자도 없다.
+ * 접두사로 갈라 두지 않으면 이 앱의 크론이 그들에게도 브리핑을 보내려 하고
+ * 사용자 수만큼 대시보드·AI 요약을 만든다 (비용과 쿼터가 그대로 늘어난다).
+ */
+export const PUBLIC_USER_PREFIX = 'pub:';
+
+/**
  * 설정이 저장된 모든 사용자 id.
  * 브리핑 cron 이 사용자별로 발송을 돌 때 쓴다. 'default'(레거시) 포함.
+ * 공개 앱 사용자(pub:…)는 발송 대상이 아니므로 제외한다.
  */
 export async function listConfigUserIds(): Promise<string[]> {
   const client = getAdminClient();
@@ -382,7 +392,7 @@ export async function listConfigUserIds(): Promise<string[]> {
 
   const { data, error } = await client.from('user_config').select('id').limit(500);
   if (error || !data) return [CONFIG_ID];
-  const ids = data.map((r) => r.id as string);
+  const ids = data.map((r) => r.id as string).filter((id) => !id.startsWith(PUBLIC_USER_PREFIX));
   return ids.length > 0 ? ids : [CONFIG_ID];
 }
 
