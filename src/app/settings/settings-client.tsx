@@ -940,7 +940,10 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                       onChange={(e) => updateHolding(h.id, { areaM2: Number(e.target.value) })}
                     />
                   </Field>
-                  <Field label="취득일">
+                  <Field
+                    label="취득일 (잔금일)"
+                    hint="계약일이 아니라 잔금을 치른 날입니다. 잔금 전에 등기를 마쳤다면 등기접수일을 넣으세요 — 보유 2년·3년 요건이 이 날짜부터 계산됩니다."
+                  >
                     <Input
                       type="date"
                       value={h.acquiredAt}

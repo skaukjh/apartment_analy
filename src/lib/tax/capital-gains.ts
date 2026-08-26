@@ -262,14 +262,28 @@ export function calcCapitalGainsTax(input: CapitalGainsInput): CapitalGainsTaxRe
 /* 보유 요건 도달 시점                                                   */
 /* ------------------------------------------------------------------ */
 
-/** 취득일로부터 n년 요건을 채우는 날 (YYYY-MM-DD). 취득일이 없으면 null */
+/**
+ * 취득일로부터 n년 요건을 채우는 날 (YYYY-MM-DD). 취득일이 없으면 null.
+ *
+ * ── 기준일이 무엇인가 ───────────────────────────────────────────
+ * 보유기간은 **취득일부터 양도일까지**다 (소득세법 제95조 제4항).
+ * 여기서 취득일은 계약일이 아니라 **대금청산일(잔금일)** 이며, 잔금 전에
+ * 소유권이전등기를 마쳤다면 등기접수일이다 (소득세법 시행령 제162조).
+ * 계약일을 넣으면 요건 충족일이 몇 달씩 앞당겨져 보이므로 입력에서 갈라야 한다.
+ *
+ * ── 왜 "+1일"을 뺐나 ────────────────────────────────────────────
+ * 예전에는 취득일 + n년에 하루를 더했다. 국세청은 보유기간을 초일산입으로
+ * 계산하므로(2025-08-27 취득이면 2027-08-26에 이미 2년) 하루를 더하면 오히려
+ * 이틀 늦게 잡힌다. 취득일과 같은 날짜(2027-08-27)로 두면 사람들이 말하는
+ * "2년 뒤 그날"과 맞고, 세액 계산에 쓰는 monthsBetween 과도 어긋나지 않는다.
+ * 초일산입 해석 기준으로는 하루 보수적이다 — 날짜가 빠듯하면 실제 매도 전
+ * 홈택스 모의계산으로 확인해야 한다.
+ */
 export function holdingMilestoneDate(acquiredAt: string, years: number): string | null {
   if (!acquiredAt) return null;
   const d = new Date(acquiredAt);
   if (Number.isNaN(d.getTime())) return null;
   d.setFullYear(d.getFullYear() + years);
-  // 요건은 "n년 이상 보유"이므로 하루를 더해 그날부터 충족으로 본다
-  d.setDate(d.getDate() + 1);
   return d.toISOString().slice(0, 10);
 }
 
