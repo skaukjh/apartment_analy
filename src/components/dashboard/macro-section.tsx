@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import type { MacroIndicator } from '@/lib/types';
 import { formatPct } from '@/lib/format';
-import { SectionCard, EmptyHint, Delta } from '@/components/ui-bits';
+import { SectionCard, EmptyHint, Delta, PeriodCompare } from '@/components/ui-bits';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { ExternalLink } from 'lucide-react';
@@ -264,6 +264,12 @@ export function MacroSection({ macro }: Props) {
                 </>
               ) : null}
             </div>
+            {/* 전년비만으로는 최근 몇 달 사이의 방향 전환이 보이지 않는다 */}
+            <PeriodCompare
+              delta={m.compare}
+              digits={m.unit === '%' ? 2 : 1}
+              className="text-[11px]"
+            />
           </button>
         ))}
       </div>

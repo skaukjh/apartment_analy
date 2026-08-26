@@ -13,7 +13,7 @@ import {
   type MetricGuide,
 } from '@/lib/analysis/metric-guide';
 import { formatPct } from '@/lib/format';
-import { Delta, SectionCard } from '@/components/ui-bits';
+import { Delta, PeriodCompare, SectionCard } from '@/components/ui-bits';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -120,7 +120,18 @@ function GuideTooltip({
   );
 }
 
-function MetricBody({ label, value, sub }: { label: string; value: string; sub: ReactNode }) {
+function MetricBody({
+  label,
+  value,
+  sub,
+  compare,
+}: {
+  label: string;
+  value: string;
+  sub: ReactNode;
+  /** 전월·전분기 대비 — 지표마다 같은 자리에 같은 문법으로 붙인다 */
+  compare?: ReactNode;
+}) {
   return (
     <>
       <div className="text-muted-foreground flex items-center gap-1 text-xs">
@@ -129,12 +140,14 @@ function MetricBody({ label, value, sub }: { label: string; value: string; sub: 
       </div>
       <div className="tabular text-lg font-semibold">{value}</div>
       <div className="text-muted-foreground text-[11px]">{sub}</div>
+      {compare ? <div className="text-[11px]">{compare}</div> : null}
     </>
   );
 }
 
 export function SentimentSection({ sentiment }: { sentiment: MarketSentiment }) {
   const meta = HEAT_META[sentiment.heatLevel];
+  const cmp = sentiment.compare;
   const heat = heatScoreGuide(sentiment);
   const sd = supplyDemandGuide(sentiment);
   const nh = newHighGuide(sentiment);
@@ -155,6 +168,8 @@ export function SentimentSection({ sentiment }: { sentiment: MarketSentiment }) 
             }
           >
             <HeatGauge score={sentiment.heatScore} color={meta.color} />
+            {/* 점수 자체보다 "지난달보다 뜨거워졌는가"가 갈아타기 타이밍의 신호다 */}
+            <PeriodCompare delta={cmp?.heatScore} digits={1} unit="점" className="text-[11px]" />
             <p className="text-muted-foreground mt-1 flex max-w-44 items-center justify-center gap-1 text-center text-[11px] leading-relaxed">
               {meta.advice}
             </p>
@@ -197,9 +212,10 @@ export function SentimentSection({ sentiment }: { sentiment: MarketSentiment }) 
                 value={sentiment.supplyDemandIndex.toFixed(1)}
                 sub={
                   <>
-                    전주 대비 <Delta value={sentiment.supplyDemandChange} digits={1} />
+                    전주 대비 <Delta value={sentiment.supplyDemandChange} digits={1} unit="p" />
                   </>
                 }
+                compare={<PeriodCompare delta={cmp?.supplyDemandIndex} digits={1} unit="p" />}
               />
             </GuideTooltip>
 
@@ -208,6 +224,7 @@ export function SentimentSection({ sentiment }: { sentiment: MarketSentiment }) 
                 label="신고가 비중"
                 value={`${sentiment.newHighRatio.toFixed(1)}%`}
                 sub="최근 3개월 거래 중"
+                compare={<PeriodCompare delta={cmp?.newHighRatio} digits={1} />}
               />
             </GuideTooltip>
 
@@ -220,6 +237,7 @@ export function SentimentSection({ sentiment }: { sentiment: MarketSentiment }) 
                     전년 동월 <Delta value={sentiment.volumeYoy} digits={0} />
                   </>
                 }
+                compare={<PeriodCompare delta={cmp?.monthlyVolume} digits={1} />}
               />
             </GuideTooltip>
 

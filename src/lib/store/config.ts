@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod';
-import type { UserConfig } from '@/lib/types';
+import type { TargetApartment, UserConfig } from '@/lib/types';
 import { getAdminClient } from './supabase';
 import { memoryState } from './memory';
 
@@ -50,7 +50,29 @@ export const targetSchema = apartmentRefSchema.extend({
   manualPrice: z.number().nonnegative().optional(),
   priority: z.number().int().min(1).default(1),
   memo: z.string().optional(),
+  /* 목표 후보 on/off — 끈 단지도 입력값은 남기고 계산에서만 빠진다 */
+  enabled: z.boolean().default(true),
+  autoDisabledAt: z.string().optional(),
+  autoDisabledReason: z.string().optional(),
 });
+
+/**
+ * 레거시 필드 이관 — 예전에는 제외를 `excluded: true` 로 저장했다.
+ * 지금은 on/off 스위치(`enabled`)를 쓰므로 읽을 때 옮겨 준다.
+ * 저장된 값을 손대지 않고 읽는 쪽에서만 바꾸므로 이전 버전과 같이 굴러도 안전하다.
+ */
+function migrateTargets(raw: unknown): unknown {
+  if (!Array.isArray(raw)) return raw;
+  return raw.map((item) => {
+    if (!item || typeof item !== 'object') return item;
+    const t = item as Record<string, unknown>;
+    if (t.enabled !== undefined || t.excluded === undefined) return t;
+    const { excluded, ...rest } = t;
+    return { ...rest, enabled: excluded !== true };
+  });
+}
+
+const targetsField = z.preprocess(migrateTargets, z.array(targetSchema).default([]));
 
 export const watchRegionSchema = z.object({
   id: z.string().min(1),
@@ -91,7 +113,7 @@ export const draftConfigSchema = z.object({
   holdings: z
     .array(holdingSchema.extend({ ...draftLoose, acquiredAt: z.string().default('') }))
     .default([]),
-  targets: z.array(targetSchema.extend(draftLoose)).default([]),
+  targets: z.preprocess(migrateTargets, z.array(targetSchema.extend(draftLoose)).default([])),
   watchRegions: z.array(watchRegionSchema).default([]),
   household: householdSchema.default(householdSchema.parse({})),
   kakaoBriefingEnabled: z.boolean().default(true),
@@ -105,7 +127,7 @@ export const draftConfigSchema = z.object({
 
 export const userConfigSchema = z.object({
   holdings: z.array(holdingSchema).default([]),
-  targets: z.array(targetSchema).default([]),
+  targets: targetsField,
   watchRegions: z.array(watchRegionSchema).default([]),
   household: householdSchema.default(householdSchema.parse({})),
   kakaoBriefingEnabled: z.boolean().default(true),
@@ -212,6 +234,73 @@ export async function saveConfig(input: unknown, userId: string = CONFIG_ID): Pr
   if (error) throw new Error(`설정 저장 실패: ${error.message}`);
   memoryState().config = config;
   return config;
+}
+
+/** 목표 카드에서 on/off 관련 필드만 갈아끼운다 (사용자 입력값은 그대로 둔다) */
+function applySwitches(
+  targets: TargetApartment[],
+  switches: Map<string, Pick<TargetApartment, 'enabled' | 'autoDisabledAt' | 'autoDisabledReason'>>,
+): TargetApartment[] {
+  return targets.map((t) => {
+    const next = t.id ? switches.get(t.id) : undefined;
+    if (!next) return t;
+    const merged: Record<string, unknown> = { ...t };
+    // 레거시 excluded 는 enabled 로 대체됐다 — 같이 남겨 두면 어느 쪽이 참인지 헷갈린다
+    delete merged.excluded;
+    for (const key of ['enabled', 'autoDisabledAt', 'autoDisabledReason'] as const) {
+      if (next[key] === undefined) delete merged[key];
+      else merged[key] = next[key];
+    }
+    return merged as unknown as TargetApartment;
+  });
+}
+
+/**
+ * 시스템이 정한 목표 on/off 상태만 갱신한다.
+ *
+ * 대시보드 조립이 "6개월 무거래" 단지의 스위치를 자동으로 끌 때 쓴다.
+ * 사용자가 입력한 값(가격·면적·메모)은 건드리지 않고 스위치 관련 필드만 덮어쓰며,
+ * 설정 화면 저장과 겹칠 수 있어 쓰기 직전에 저장본을 다시 읽는다.
+ *
+ * updatedAt 은 올리지 않는다 — 사용자가 저장한 게 아닌데 "마지막 저장" 시각이
+ * 바뀌면 자기가 안 한 변경을 자기가 한 것으로 읽게 된다.
+ * 히스토리도 남기지 않는다 (되돌릴 대상은 사용자 입력이지 시스템 표시가 아니다).
+ */
+export async function saveTargetSwitches(
+  userId: string | undefined,
+  targets: TargetApartment[],
+): Promise<void> {
+  const id = userId ?? CONFIG_ID;
+  const switches = new Map(
+    targets.map((t) => [
+      t.id,
+      {
+        enabled: t.enabled,
+        autoDisabledAt: t.autoDisabledAt,
+        autoDisabledReason: t.autoDisabledReason,
+      },
+    ]),
+  );
+
+  const client = getAdminClient();
+  if (!client) {
+    const mem = memoryState().config;
+    if (mem) mem.targets = applySwitches(mem.targets, switches);
+    return;
+  }
+
+  const { data, error } = await client
+    .from('user_config')
+    .select('data')
+    .eq('id', id)
+    .maybeSingle();
+  if (error || !data?.data) return;
+
+  const stored = data.data as UserConfig;
+  const next: UserConfig = { ...stored, targets: applySwitches(stored.targets ?? [], switches) };
+
+  const { error: saveError } = await client.from('user_config').update({ data: next }).eq('id', id);
+  if (saveError) throw new Error(`목표 스위치 저장 실패: ${saveError.message}`);
 }
 
 /** 현재 저장본을 dashboard_snapshot 에 히스토리로 복사하고, 오래된 것은 정리한다 */

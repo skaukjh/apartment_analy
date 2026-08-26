@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { formatPct } from '@/lib/format';
+import type { PeriodDelta } from '@/lib/types';
 
 /** 대시보드 섹션 공통 껍데기 */
 export function SectionCard({
@@ -41,12 +42,15 @@ export function Delta({
   value,
   digits = 2,
   suffix = '',
+  unit,
   className,
   invert = false,
 }: {
   value: number | undefined;
   digits?: number;
   suffix?: string;
+  /** '%' 가 아닌 단위(점·건 등)를 쓸 때. 주면 퍼센트 표기 대신 이 단위를 붙인다 */
+  unit?: string;
   className?: string;
   /** true면 값이 클수록 나쁜 지표(금리 등) */
   invert?: boolean;
@@ -63,8 +67,54 @@ export function Delta({
         : 'text-fall';
   return (
     <span className={cn('tabular font-medium', color, className)}>
-      {formatPct(value, digits)}
-      {suffix}
+      {unit ? `${value > 0 ? '+' : ''}${value.toFixed(digits)}${unit}` : formatPct(value, digits)}
+      {unit ? '' : suffix}
+    </span>
+  );
+}
+
+/**
+ * 전월·전분기 대비 한 줄.
+ *
+ * 지표마다 다른 문법으로 적으면 "이 −0.3이 지난달 대비인지 작년 대비인지"를
+ * 매번 다시 읽어야 한다. 모든 지표가 같은 순서·같은 표기를 쓰도록 여기로 모은다.
+ */
+export function PeriodCompare({
+  delta,
+  digits = 1,
+  unit,
+  invert = false,
+  className,
+}: {
+  delta?: PeriodDelta;
+  digits?: number;
+  /** '%' 가 아닌 단위(점 등) */
+  unit?: string;
+  invert?: boolean;
+  className?: string;
+}) {
+  if (!delta || (delta.mom === undefined && delta.qoq === undefined)) return null;
+  // 값 자체가 %인 지표는 차이를 %p 로 적는다 (2.50 → 2.75 를 "+10%" 로 쓰면 오해를 부른다)
+  const suffix = delta.pointDiff ? 'p' : '';
+  return (
+    <span
+      className={cn(
+        'text-muted-foreground inline-flex flex-wrap items-center gap-x-1.5',
+        className,
+      )}
+    >
+      {delta.mom !== undefined ? (
+        <span>
+          전월{' '}
+          <Delta value={delta.mom} digits={digits} suffix={suffix} unit={unit} invert={invert} />
+        </span>
+      ) : null}
+      {delta.qoq !== undefined ? (
+        <span>
+          전분기{' '}
+          <Delta value={delta.qoq} digits={digits} suffix={suffix} unit={unit} invert={invert} />
+        </span>
+      ) : null}
     </span>
   );
 }

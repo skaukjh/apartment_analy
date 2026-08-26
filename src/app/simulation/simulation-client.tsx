@@ -1,6 +1,8 @@
 'use client';
 
 import { tradePriceOf } from '@/lib/analysis/price-basis';
+import { activeTargets, targetDisabledReason } from '@/lib/analysis/target-pool';
+import { LONG_TERM_MIN_YEARS, longTermMilestone, twoYearMilestone } from '@/lib/tax/capital-gains';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -15,7 +17,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import type { PriceQuote, UserConfig } from '@/lib/types';
+import type { PriceQuote, TargetApartment, UserConfig } from '@/lib/types';
 import {
   DOWNTURN_SCENARIOS,
   breakEvenDrop,
@@ -82,14 +84,28 @@ const VERDICT_CLASS: Record<string, string> = {
 export function SimulationClient({ config, quotes }: Props) {
   const params = useSearchParams();
 
+  /* 제외 표시한 단지와 최근 6개월 실거래가 없는 단지는 후보에서 뺀다.
+     갭 카드와 같은 기준(target-pool)을 쓰지 않으면 두 화면의 목록이 어긋난다. */
+  const candidates = useMemo(
+    () => activeTargets(config).filter((t) => tradePriceOf(quotes[t.id]) > 0),
+    [config, quotes],
+  );
+  const dropped = useMemo(
+    () =>
+      config.targets
+        .map((t) => ({ target: t, reason: targetDisabledReason(t, quotes[t.id]) }))
+        .filter((x): x is { target: TargetApartment; reason: string } => Boolean(x.reason)),
+    [config.targets, quotes],
+  );
+
   const [holdingId, setHoldingId] = useState(params.get('holding') ?? config.holdings[0]?.id ?? '');
-  const [targetId, setTargetId] = useState(params.get('target') ?? config.targets[0]?.id ?? '');
+  const [targetId, setTargetId] = useState(params.get('target') ?? candidates[0]?.id ?? '');
 
   const holding = config.holdings.find((h) => h.id === holdingId) ?? config.holdings[0];
-  const target = config.targets.find((t) => t.id === targetId) ?? config.targets[0];
+  const target = candidates.find((t) => t.id === targetId) ?? candidates[0];
 
-  // 목표 드롭다운은 가격 낮은 순 — 시세 없는(0원) 항목은 뒤로 보낸다
-  const targetsByPrice = [...config.targets].sort((a, b) => {
+  // 목표 드롭다운은 가격 낮은 순
+  const targetsByPrice = [...candidates].sort((a, b) => {
     const pa = tradePriceOf(quotes[a.id]) || Number.MAX_SAFE_INTEGER;
     const pb = tradePriceOf(quotes[b.id]) || Number.MAX_SAFE_INTEGER;
     return pa - pb;
@@ -156,20 +172,34 @@ export function SimulationClient({ config, quotes }: Props) {
      이미 2년 이상이면 null — 화면에 나오지 않는다. */
   const twoYear = useMemo(() => {
     if (!base || !holding?.acquiredAt) return null;
-    const d = new Date(holding.acquiredAt);
-    d.setFullYear(d.getFullYear() + 2);
-    d.setDate(d.getDate() + 1);
-    const dateStr = d.toISOString().slice(0, 10);
-    if (todayKst() >= dateStr) return null;
-    return { date: dateStr, result: simulateSwitch({ ...base, soldAt: dateStr }) };
+    const m = twoYearMilestone({ acquiredAt: holding.acquiredAt, today: todayKst() });
+    if (!m) return null;
+    return { ...m, result: simulateSwitch({ ...base, soldAt: m.date }) };
   }, [base, holding]);
 
-  /* 시나리오 표·차트의 매도 시점 — 2년 미만 보유자만 전환 버튼이 보인다 */
-  const [sellTiming, setSellTiming] = useState<'now' | 'twoYear'>('now');
-  const effectiveBase = useMemo(
-    () => (base && twoYear && sellTiming === 'twoYear' ? { ...base, soldAt: twoYear.date } : base),
-    [base, twoYear, sellTiming],
-  );
+  /* 장기보유특별공제는 비과세(2년 보유)와 별개 요건이다.
+     2년을 채워 비과세가 돼도 3년을 못 채우면 공제율은 0%이고, 반대로 비과세가 아니어도
+     3년을 채우면 공제가 붙는다. 그래서 시점도 토글도 2년과 따로 둔다. */
+  const longTerm = useMemo(() => {
+    if (!base || !holding?.acquiredAt) return null;
+    const m = longTermMilestone({
+      acquiredAt: holding.acquiredAt,
+      residenceMonths: holding.residenceMonths,
+      isOneHouseExempt: config.household.ownedHouseCount <= 1,
+      today: todayKst(),
+    });
+    if (!m) return null;
+    return { ...m, result: simulateSwitch({ ...base, soldAt: m.date }) };
+  }, [base, holding, config.household.ownedHouseCount]);
+
+  /* 시나리오 표·차트의 매도 시점 — 요건을 아직 못 채운 보유자에게만 전환 버튼이 보인다 */
+  const [sellTiming, setSellTiming] = useState<'now' | 'twoYear' | 'longTerm'>('now');
+  const effectiveBase = useMemo(() => {
+    if (!base) return base;
+    if (sellTiming === 'longTerm' && longTerm) return { ...base, soldAt: longTerm.date };
+    if (sellTiming === 'twoYear' && twoYear) return { ...base, soldAt: twoYear.date };
+    return base;
+  }, [base, twoYear, longTerm, sellTiming]);
   const matrix = useMemo(
     () => (effectiveBase ? runScenarioMatrix(effectiveBase) : []),
     [effectiveBase],
@@ -179,7 +209,11 @@ export function SimulationClient({ config, quotes }: Props) {
     [effectiveBase],
   );
   const timingBadge =
-    twoYear && sellTiming === 'twoYear' ? (
+    longTerm && sellTiming === 'longTerm' ? (
+      <Badge className="bg-sky-500/15 font-normal text-sky-700 dark:text-sky-400">
+        {LONG_TERM_MIN_YEARS}년 도달({longTerm.date}) 후 매도 · 장특공 {longTerm.longTermRate}%
+      </Badge>
+    ) : twoYear && sellTiming === 'twoYear' ? (
       <Badge className="bg-emerald-500/15 font-normal text-emerald-700 dark:text-emerald-400">
         2년 도달({twoYear.date}) 후 매도 기준
       </Badge>
@@ -190,6 +224,15 @@ export function SimulationClient({ config, quotes }: Props) {
       <div className="mx-auto max-w-4xl px-4 py-10">
         <EmptyHint>
           <p className="mb-3">보유 아파트와 목표 아파트를 먼저 등록해야 시뮬레이션이 가능합니다.</p>
+          {dropped.length > 0 ? (
+            <ul className="mx-auto mb-3 max-w-lg space-y-1 text-left text-[11px]">
+              {dropped.map((x) => (
+                <li key={x.target.id}>
+                  · {x.target.complexName} — {x.reason}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <Button render={<Link href="/settings" />} nativeButton={false} size="sm">
             설정으로 이동
           </Button>
@@ -265,7 +308,7 @@ export function SimulationClient({ config, quotes }: Props) {
               onValueChange={(raw) => {
                 const v = String(raw ?? '');
                 setTargetId(v);
-                const t = config.targets.find((x) => x.id === v);
+                const t = candidates.find((x) => x.id === v);
                 setBuyPrice(t ? tradePriceOf(quotes[t.id]) : 0);
               }}
             >
@@ -438,6 +481,72 @@ export function SimulationClient({ config, quotes }: Props) {
           })()
         : null}
 
+      {/* 장기보유특별공제 요건 미달일 때 — 3년 채우고 팔면 얼마나 달라지는가 */}
+      {baseline && longTerm
+        ? (() => {
+            const r3 = longTerm.result;
+            const saving = baseline.capitalGainsTax.total - r3.capitalGainsTax.total;
+            const need3 = Math.max(0, r3.totalNeeded - r3.netFromSale);
+            const byLoan3 = loanLimit ? Math.min(loanLimit.result.limit, need3) : 0;
+            return (
+              <div className="rounded-lg border border-sky-500/40 bg-sky-500/10 p-4">
+                <div className="mb-2 text-sm font-semibold text-sky-700 dark:text-sky-400">
+                  📐 장기보유특별공제 {LONG_TERM_MIN_YEARS}년 요건 도달({longTerm.date}) 후 매도 시
+                  — 매도·매수가 동일 가정 · {longTerm.monthsLeft}개월 남음
+                </div>
+                <div className="grid gap-3 text-sm sm:grid-cols-4">
+                  <div>
+                    <div className="text-muted-foreground text-xs">장기보유특별공제</div>
+                    <div className="tabular font-semibold">{r3.capitalGainsTax.longTermRate}%</div>
+                    <div className="text-xs text-sky-700 dark:text-sky-400">
+                      {formatKrw(r3.capitalGainsTax.longTermDeduction, { compact: true })} 공제 ·
+                      지금은 {baseline.capitalGainsTax.longTermRate}%
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground text-xs">양도세 (팔 때)</div>
+                    <div className="tabular font-semibold">
+                      {r3.capitalGainsTax.exempt || r3.capitalGainsTax.total === 0
+                        ? '비과세'
+                        : formatKrw(r3.capitalGainsTax.total, { compact: true })}
+                    </div>
+                    <div className="text-xs text-sky-700 dark:text-sky-400">
+                      지금보다 −{formatKrw(saving, { compact: true })}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground text-xs">실소요 자금</div>
+                    <div className="tabular font-semibold">
+                      {formatKrw(need3, { compact: true })}
+                    </div>
+                    <div className="text-muted-foreground text-xs">
+                      현재{' '}
+                      {formatKrw(Math.max(0, baseline.totalNeeded - baseline.netFromSale), {
+                        compact: true,
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground text-xs">💰 내가 준비할 현금</div>
+                    <div className="tabular text-primary text-lg font-extrabold">
+                      {formatKrw(Math.max(0, need3 - byLoan3), { compact: true })}
+                    </div>
+                    <div className="text-muted-foreground text-xs">
+                      대출 {formatKrw(byLoan3, { compact: true })}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-muted-foreground mt-2 text-[11px] leading-relaxed">
+                  {longTerm.longTermNote}. 장기보유특별공제는 1세대1주택 비과세(2년 보유)와 별개
+                  요건이라, 2년을 채워도 {LONG_TERM_MIN_YEARS}년을 못 채우면 공제율은 0%입니다. 거주
+                  개월 수는 지금 입력값 그대로 가정했습니다 — 그 사이 계속 거주하면 공제율이 더
+                  커집니다.
+                </p>
+              </div>
+            );
+          })()
+        : null}
+
       {/* 대출 한도 · 규제 */}
       {loanLimit ? (
         <SectionCard
@@ -598,8 +707,9 @@ export function SimulationClient({ config, quotes }: Props) {
         </Alert>
       ) : null}
 
-      {/* 시나리오 매도 시점 전환 — 2년 미만 보유자만 */}
-      {twoYear ? (
+      {/* 시나리오 매도 시점 전환 — 아직 못 채운 요건만 버튼으로 나온다.
+          2년(비과세)과 3년(장기보유특별공제)은 별개 요건이라 버튼도 따로 둔다. */}
+      {twoYear || longTerm ? (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-muted-foreground text-xs">아래 시나리오의 매도 시점:</span>
           <Button
@@ -607,15 +717,27 @@ export function SimulationClient({ config, quotes }: Props) {
             variant={sellTiming === 'now' ? 'default' : 'outline'}
             onClick={() => setSellTiming('now')}
           >
-            지금 매도 (단기세율 60%)
+            지금 매도
           </Button>
-          <Button
-            size="sm"
-            variant={sellTiming === 'twoYear' ? 'default' : 'outline'}
-            onClick={() => setSellTiming('twoYear')}
-          >
-            2년 도달 후 매도 ({twoYear.date} · 비과세)
-          </Button>
+          {twoYear ? (
+            <Button
+              size="sm"
+              variant={sellTiming === 'twoYear' ? 'default' : 'outline'}
+              onClick={() => setSellTiming('twoYear')}
+            >
+              2년 도달 후 매도 ({twoYear.date} · 비과세)
+            </Button>
+          ) : null}
+          {longTerm ? (
+            <Button
+              size="sm"
+              variant={sellTiming === 'longTerm' ? 'default' : 'outline'}
+              onClick={() => setSellTiming('longTerm')}
+            >
+              {LONG_TERM_MIN_YEARS}년 도달 후 매도 ({longTerm.date} · 장특공 {longTerm.longTermRate}
+              %)
+            </Button>
+          ) : null}
         </div>
       ) : null}
 

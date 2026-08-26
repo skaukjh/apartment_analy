@@ -97,6 +97,22 @@ export interface TargetApartment extends ApartmentRef {
   priority: number;
   /** 메모 */
   memo?: string;
+  /**
+   * 목표 후보로 쓸지 (없으면 켜진 것으로 본다).
+   *
+   * 끄면 지워지지 않고 갭·시뮬레이션·브리핑 계산에서만 빠진다 — 입력값을 보존해
+   * 언제든 다시 켤 수 있게 하기 위함이다. 최근 실거래가 오래된 단지는 시스템이
+   * 자동으로 끄지만, 목록에서 사라지지는 않는다.
+   */
+  enabled?: boolean;
+  /**
+   * 시스템이 자동으로 끈 시각 (ISO).
+   * 사용자가 다시 켜면 이 값이 남아 있어 같은 사유로 또 끄지 않는다 —
+   * 켤 때마다 다시 꺼지면 사용자와 시스템이 싸우는 꼴이 된다.
+   */
+  autoDisabledAt?: string;
+  /** 자동으로 끈 이유 (화면에 그대로 보여준다) */
+  autoDisabledReason?: string;
 }
 
 /** 관심 지역 */
@@ -161,6 +177,26 @@ export interface UserConfig {
 /* 시세 · 실거래 데이터                                                 */
 /* ------------------------------------------------------------------ */
 
+/**
+ * 직전 월 · 직전 분기 대비 비교.
+ *
+ * 화면의 모든 지표를 같은 문법으로 읽게 하려고 한 타입으로 통일한다.
+ * 값의 단위는 지표를 따른다 — 값 자체가 %인 지표(금리·비중)는 %p 차이,
+ * 그 외 지표(지수·금액·건수)는 변동률(%)이다.
+ */
+export interface PeriodDelta {
+  /** 직전 월 대비 */
+  mom?: number;
+  /** 직전 분기(3개월 전) 대비 */
+  qoq?: number;
+  /** 전월 비교에 쓴 기준 시점 (YYYY-MM 또는 YYYY-MM-DD) */
+  momBasePeriod?: string;
+  /** 전분기 비교에 쓴 기준 시점 */
+  qoqBasePeriod?: string;
+  /** 값이 %p 차이인지 (%면 true), 변동률(%)인지 */
+  pointDiff?: boolean;
+}
+
 /** 국토교통부 아파트 매매 실거래 1건 */
 export interface TradeRecord {
   /** 거래일 (YYYY-MM-DD) */
@@ -207,6 +243,17 @@ export interface PriceQuote {
   low?: number;
   /** 직전 대비 변동률 (%) */
   changeRate?: number;
+  /** 전월·전분기 대비 변동률 (%) — 월별 실거래 중앙값 기준 */
+  compare?: PeriodDelta;
+  /**
+   * 대표가를 "지금 값"으로 볼 수 있는 기간(개월).
+   * 목표 아파트는 6개월 — 그보다 오래된 체결가는 지금 살 수 있는 값이라고 보기 어렵다.
+   */
+  freshnessMonths?: number;
+  /** 그 기간에 거래가 없어 대표가가 오래됐는지 (값은 여전히 마지막 체결가) */
+  stale?: boolean;
+  /** 마지막 실거래 이후 경과 개월 (거래 이력이 아예 없으면 undefined) */
+  monthsSinceLastDeal?: number;
 }
 
 /** 지역 월별 가격 시계열 포인트 */
@@ -234,6 +281,8 @@ export interface ReboundAnalysis {
   changeSinceBase: number;
   /** 최근 3개월 변동률 (%) */
   recent3mChange: number;
+  /** 최근 1개월 변동률 (%) */
+  recent1mChange: number;
   /** 반등 단계 분류 */
   stage: 'leading' | 'spreading' | 'lagging' | 'no-rebound' | 'insufficient-data';
   /** 거래 표본 수 */
@@ -265,6 +314,8 @@ export interface DongStat {
   changeSinceBase: number;
   /** 최근 3개월 변동률 (%) */
   recent3mChange: number;
+  /** 최근 1개월 변동률 (%) */
+  recent1mChange?: number;
   /** 저점 대비 반등률 (%) */
   reboundFromTrough: number;
   sampleSize: number;
@@ -306,6 +357,8 @@ export interface MacroIndicator {
   change: number;
   /** 전년 동기 대비 변동률 (%) */
   yoy?: number;
+  /** 전월·전분기 대비 */
+  compare?: PeriodDelta;
   series: MacroSeriesPoint[];
   source: string;
   sourceUrl: string;
@@ -328,6 +381,16 @@ export interface MarketSentiment {
   heatScore: number;
   /** 과열 단계 */
   heatLevel: 'cold' | 'cooling' | 'neutral' | 'warming' | 'overheated';
+  /**
+   * 주요 수치의 전월·전분기 대비.
+   * 같은 산식을 과거 시점에 그대로 다시 돌려 만든 값이라 최신값과 직접 비교할 수 있다.
+   */
+  compare?: {
+    heatScore: PeriodDelta;
+    supplyDemandIndex: PeriodDelta;
+    newHighRatio: PeriodDelta;
+    monthlyVolume: PeriodDelta;
+  };
   asOf: string;
   notes: string[];
 }
@@ -636,10 +699,18 @@ export interface GapSummary {
   gap: number;
   /** 배율 (목표/보유) */
   ratio: number;
-  /** 3개월 전 갭 (원) */
+  /** 직전 주(7일 전) 갭 (원) */
   gapBefore?: number;
   /** 갭 변화 (원, 음수면 갭 축소 = 갈아타기 유리) */
   gapDelta?: number;
+  /** 한 달 전 갭 (원) */
+  gapMonthAgo?: number;
+  /** 한 달 전 대비 갭 변화 (원) */
+  gapMomDelta?: number;
+  /** 한 분기(3개월) 전 갭 (원) */
+  gapQuarterAgo?: number;
+  /** 한 분기 전 대비 갭 변화 (원) */
+  gapQoqDelta?: number;
   /** 세후 실제 필요 자금 (원) — 기존 대출·보증금 상환은 뺀 순 기준 */
   realCashNeeded: number;
   /** 목표 주택 기준 대출 한도 (원) */

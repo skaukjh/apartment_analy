@@ -22,6 +22,7 @@ export interface ComplexStat {
   /** 기준월 대비 변동률 (%) */
   changeSinceBase: number;
   recent3mChange: number;
+  recent1mChange: number;
   /** 직전 실거래가 (원) — 가장 최근 체결 1건 */
   latestPrice: number;
   /** 그 거래의 ㎡당 가격 (원) */
@@ -215,6 +216,7 @@ export async function GET(request: Request) {
         dong: entry.dong,
         changeSinceBase: analysis.changeSinceBase,
         recent3mChange: analysis.recent3mChange,
+        recent1mChange: analysis.recent1mChange,
         /* 예전에는 거래가와 ㎡당 가격을 각각 따로 중앙값으로 냈다.
            면적이 섞인 단지에서는 두 값이 서로 다른 거래에서 나와
            "13.2억 ÷ 2,520만 = 52.4㎡" 처럼 존재하지 않는 면적이 계산됐다.

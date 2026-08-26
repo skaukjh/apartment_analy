@@ -6,6 +6,7 @@ import type { ApartmentRef, UserConfig } from '@/lib/types';
 import type { NearbySummary } from '@/lib/sources/place';
 import type { BankRate } from '@/lib/sources/bank-rates';
 import { formatArea } from '@/lib/format';
+import { activeTargets } from '@/lib/analysis/target-pool';
 import { EmptyHint, SectionCard } from '@/components/ui-bits';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -97,7 +98,7 @@ export function AiAdvisor({
   const priceOf = (id: string) => quotes?.[id]?.price || Number.MAX_SAFE_INTEGER;
   const apartments: ApartmentRef[] = [
     ...config.holdings,
-    ...[...config.targets].sort((a, b) => priceOf(a.id) - priceOf(b.id)),
+    ...[...activeTargets(config)].sort((a, b) => priceOf(a.id) - priceOf(b.id)),
   ];
   const [apartmentId, setApartmentId] = useState(apartments[0]?.id ?? '');
 

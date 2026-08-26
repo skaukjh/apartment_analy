@@ -23,6 +23,17 @@ export function formatKrw(won: number, opts: { compact?: boolean } = {}): string
   return `${sign}${eok.toLocaleString('ko-KR')}억 ${man.toLocaleString('ko-KR')}만`;
 }
 
+/**
+ * 부호를 붙인 금액 — 증감 표시용.
+ * formatKrw 는 양수에 +를 붙이지 않아 "갭 1.2억 변동"이 늘어난 건지 준 건지 알 수 없다.
+ */
+export function formatSignedKrw(won: number, opts: { compact?: boolean } = {}): string {
+  if (!Number.isFinite(won)) return '-';
+  const rounded = Math.round(won);
+  if (rounded === 0) return '변동 없음';
+  return `${rounded > 0 ? '+' : '-'}${formatKrw(Math.abs(rounded), opts)}`;
+}
+
 /** 억 단위 소수 표기 (차트 축 등) */
 export function formatEok(won: number, digits = 1): string {
   if (!Number.isFinite(won)) return '-';

@@ -17,6 +17,8 @@ import { naverSearchRaw, stripTags, searchNews } from '@/lib/sources/news';
 import { fetchOfficialPress } from '@/lib/sources/gov';
 import type { DashboardData, NewsItem } from '@/lib/types';
 import { formatArea } from '@/lib/format';
+import { compareLabel } from '@/lib/analysis/period-compare';
+import { activeTargets, targetDisabledReason } from '@/lib/analysis/target-pool';
 
 export interface OutlookSource {
   kind: 'official' | 'news' | 'blog' | 'cafe';
@@ -262,22 +264,38 @@ function renderNumbers(data: DashboardData): string {
     );
   }
 
-  lines.push('', '## 목표 아파트');
-  for (const t of data.config.targets) {
+  /* 목표는 후보로 살아 있는 것만 넘긴다 — 제외했거나 최근 6개월 실거래가 없는 단지를
+     같이 주면 AI 가 이미 후보가 아닌 집을 놓고 답한다. */
+  lines.push('', '## 목표 아파트 (후보)');
+  for (const t of activeTargets(data.config)) {
     const q = data.quotes[t.id];
+    const reason = targetDisabledReason(t, q);
+    if (reason) continue;
     lines.push(
       `- ${t.complexName} ${formatArea(t.areaM2)} (${t.sigungu} ${t.dong}): 시세 ${
         q?.price ? `${(q.price / 1e8).toFixed(2)}억` : '미확보'
-      }`,
+      }${q?.compare ? ` (${compareLabel(q.compare)})` : ''}`,
+    );
+  }
+  const dropped = data.config.targets
+    .map((t) => ({ t, reason: targetDisabledReason(t, data.quotes[t.id]) }))
+    .filter((x) => x.reason);
+  if (dropped.length > 0) {
+    lines.push(
+      `- 후보에서 꺼짐: ${dropped.map((x) => `${x.t.complexName}(${x.reason})`).join(', ')}`,
     );
   }
 
   lines.push('', '## 갈아타기 갭');
   for (const g of data.gaps ?? []) {
+    const moves = [
+      g.gapMomDelta !== undefined ? `전월 ${(g.gapMomDelta / 1e8).toFixed(2)}억` : '',
+      g.gapQoqDelta !== undefined ? `전분기 ${(g.gapQoqDelta / 1e8).toFixed(2)}억` : '',
+    ].filter(Boolean);
     lines.push(
       `- ${g.holdingName} → ${g.targetName}: 시세갭 ${(g.gap / 1e8).toFixed(2)}억, 실소요 ${(
         g.realCashNeeded / 1e8
-      ).toFixed(2)}억`,
+      ).toFixed(2)}억${moves.length > 0 ? ` · 갭 변화 ${moves.join(' / ')}` : ''}`,
     );
   }
 

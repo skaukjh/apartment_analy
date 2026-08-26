@@ -6,8 +6,8 @@ import { isConfigEmpty } from '@/lib/store/config';
 import { HEAT_META } from '@/lib/analysis/market-signals';
 import { regulationOf } from '@/lib/analysis/regulation';
 import { calcLoanLimit } from '@/lib/tax/loan-limit';
-import { formatEok, formatKrw } from '@/lib/format';
-import { Stat } from '@/components/ui-bits';
+import { formatEok, formatKrw, formatSignedKrw } from '@/lib/format';
+import { PeriodCompare, Stat } from '@/components/ui-bits';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { GapSection } from '@/components/dashboard/gap-section';
@@ -118,9 +118,29 @@ export default async function HomePage() {
           label="현재 시세 갭"
           value={primaryGap ? formatKrw(primaryGap.gap, { compact: true }) : '-'}
           sub={
-            primaryGap
-              ? `${primaryGap.ratio.toFixed(2)}배 · ${primaryGap.targetName}`
-              : '아파트 미등록'
+            primaryGap ? (
+              <>
+                <div>
+                  {primaryGap.ratio.toFixed(2)}배 · {primaryGap.targetName}
+                </div>
+                {/* 갭은 절대금액보다 "지난달·지난 분기보다 줄었나"가 실행 신호다 */}
+                {primaryGap.gapMomDelta !== undefined || primaryGap.gapQoqDelta !== undefined ? (
+                  <div>
+                    {primaryGap.gapMomDelta !== undefined
+                      ? `전월 ${formatSignedKrw(primaryGap.gapMomDelta, { compact: true })}`
+                      : ''}
+                    {primaryGap.gapMomDelta !== undefined && primaryGap.gapQoqDelta !== undefined
+                      ? ' · '
+                      : ''}
+                    {primaryGap.gapQoqDelta !== undefined
+                      ? `전분기 ${formatSignedKrw(primaryGap.gapQoqDelta, { compact: true })}`
+                      : ''}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              '아파트 미등록'
+            )
           }
           tone="rise"
         />
@@ -138,7 +158,15 @@ export default async function HomePage() {
         <Stat
           label="시장 과열도"
           value={`${data.sentiment.heatScore} · ${heat.label}`}
-          sub={`수급 ${data.sentiment.supplyDemandIndex} · 신고가 ${data.sentiment.newHighRatio.toFixed(1)}%`}
+          sub={
+            <>
+              <div>
+                수급 {data.sentiment.supplyDemandIndex} · 신고가{' '}
+                {data.sentiment.newHighRatio.toFixed(1)}%
+              </div>
+              <PeriodCompare delta={data.sentiment.compare?.heatScore} digits={1} unit="점" />
+            </>
+          }
         />
         <Stat
           label="상승 확산률"

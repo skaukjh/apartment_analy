@@ -368,7 +368,11 @@ export function SpreadMap({ rebound: initialRebound, kakaoJsKey }: Props) {
                   value={formatPct(selected.changeSinceBase, 1)}
                 />
                 <Row label="저점 대비 반등" value={formatPct(selected.reboundFromTrough, 1)} />
-                <Row label="최근 3개월" value={formatPct(selected.recent3mChange, 2)} />
+                <Row label="최근 1개월 (전월 대비)" value={formatPct(selected.recent1mChange, 2)} />
+                <Row
+                  label="최근 3개월 (전분기 대비)"
+                  value={formatPct(selected.recent3mChange, 2)}
+                />
                 <Row label="최신 데이터" value={selected.latestMonth} />
                 <Row
                   label="분석 거래 표본"

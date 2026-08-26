@@ -29,6 +29,7 @@ import {
 } from '@/lib/types';
 import type { SigunguInfo } from '@/lib/regions';
 import { SectionCard, EmptyHint } from '@/components/ui-bits';
+import { isTargetEnabled } from '@/lib/analysis/target-pool';
 import { Field, ItemHeader, MoneyInput, RegionPicker } from '@/components/form-bits';
 import { ComplexSearch, type ComplexPick } from '@/components/settings/complex-search';
 import { PolicyAlertBanner } from '@/components/settings/policy-alert-banner';
@@ -575,6 +576,7 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
           lawdCd: '',
           areaM2: 84.98,
           priority: config.targets.length + 1,
+          enabled: true,
         },
       ],
     });
@@ -1062,7 +1064,7 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
       {/* 목표 아파트 */}
       <SectionCard
         title="목표 (갈아타기 대상) 아파트"
-        description="여러 곳을 등록하면 실소요 자금이 적은 순으로 정렬해 보여줍니다. 호가를 비우면 최근 실거래 중앙값을 씁니다."
+        description="여러 곳을 등록하면 실소요 자금이 적은 순으로 정렬해 보여줍니다. 목표 시세는 마지막 실거래가를 씁니다. 6개월 넘게 거래가 없으면 '목표 후보로 사용' 스위치가 자동으로 꺼지지만 카드는 남아 있어, 사유를 보고 직접 다시 켤 수 있습니다."
         action={
           <div className="flex gap-2">
             <Button
@@ -1128,7 +1130,33 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                   <Badge variant="outline" className="text-[10px]">
                     {t.priority}순위
                   </Badge>
+                  {!isTargetEnabled(t) ? (
+                    <Badge variant="secondary" className="text-[10px]">
+                      꺼짐
+                    </Badge>
+                  ) : null}
+                  {/* 지우면 취득가·면적 입력이 사라진다. 계산에서만 빼고 입력은 남긴다.
+                      최근 실거래가 6개월 넘게 없으면 이 스위치가 자동으로 꺼지는데,
+                      그때도 카드는 목록에 남으므로 사유를 보고 직접 다시 켤 수 있다. */}
+                  <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs">
+                    <Switch
+                      checked={isTargetEnabled(t)}
+                      onCheckedChange={(v) =>
+                        /* 손으로 켜고 끈 순간부터는 자동 사유 문구를 지운다.
+                           autoDisabledAt 은 남긴다 — 그게 있어야 같은 사유로 또 끄지 않는다. */
+                        updateTarget(t.id, { enabled: v, autoDisabledReason: undefined })
+                      }
+                      aria-label="목표 후보로 사용"
+                    />
+                    <span className="text-muted-foreground">목표 후보로 사용</span>
+                  </label>
                 </div>
+                {t.autoDisabledReason ? (
+                  <p className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-2.5 py-1.5 text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
+                    {t.autoDisabledReason}. 그래도 후보로 쓰려면 위 스위치를 다시 켜세요 — 마지막
+                    체결가를 그대로 씁니다.
+                  </p>
+                ) : null}
                 <div className="mb-3 space-y-2">
                   <ComplexSearch lawdCd={t.lawdCd} onPick={(pick) => applyTargetPick(t.id, pick)} />
                   <Button
@@ -1851,8 +1879,11 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
       <div className="bg-background/95 fixed inset-x-0 bottom-0 z-30 border-t backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
           <span className="text-muted-foreground text-xs">
-            보유 {config.holdings.length} · 목표 {config.targets.length} · 관심지역{' '}
-            {config.watchRegions.length}
+            보유 {config.holdings.length} · 목표 {config.targets.filter(isTargetEnabled).length}
+            {config.targets.some((t) => !isTargetEnabled(t))
+              ? ` (꺼짐 ${config.targets.filter((t) => !isTargetEnabled(t)).length})`
+              : ''}{' '}
+            · 관심지역 {config.watchRegions.length}
           </span>
           <Button onClick={save} disabled={saving}>
             {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}

@@ -8,6 +8,7 @@
 import { env } from '@/lib/env';
 import type { MacroIndicator, MacroSeriesPoint } from '@/lib/types';
 import { nowKst } from '@/lib/format';
+import { comparePeriods } from '@/lib/analysis/period-compare';
 import { SOURCE_TTL } from '@/lib/refresh-policy';
 import { bumpApiUsage } from '@/lib/store/api-usage';
 
@@ -151,6 +152,8 @@ export async function fetchMacroIndicator(spec: EcosSpec): Promise<MacroIndicato
         ? latest.value - yearAgo.value
         : ((latest.value - yearAgo.value) / yearAgo.value) * 100
       : undefined,
+    // 전월·전분기 대비 — 전년비만으로는 최근 방향 전환이 안 보인다
+    compare: comparePeriods(series, { pointDiff: spec.unit === '%' }),
     series,
     source: '한국은행 ECOS',
     sourceUrl: `https://ecos.bok.or.kr/#/Short/${spec.statCode}`,

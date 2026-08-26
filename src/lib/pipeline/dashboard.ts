@@ -18,7 +18,8 @@ import type {
 import { fetchCommunityPosts } from '@/lib/sources/community';
 import { configuredRssFeeds, fetchOfficialPress } from '@/lib/sources/gov';
 import { fetchNetMigration, hasKosis } from '@/lib/sources/kosis';
-import { analysisTargets, loadConfig } from '@/lib/store/config';
+import { analysisTargets, loadConfig, saveTargetSwitches } from '@/lib/store/config';
+import { activeTargets, autoDisableStaleTargets } from '@/lib/analysis/target-pool';
 import { loadRegionMonthly, loadTradeCache } from '@/lib/store/market-data';
 import { loadSnapshotBefore } from '@/lib/store/market-data';
 import { analyzeRebound, summarizeSpread } from '@/lib/analysis/rebound';
@@ -39,7 +40,8 @@ import { featureFlags } from '@/lib/env';
 import { maybeRefreshTrades } from './lazy-refresh';
 import { loadDashboardCache, saveDashboardCache } from './dashboard-cache';
 import { formatArea, median, todayKst } from '@/lib/format';
-import { tradePriceOf } from '@/lib/analysis/price-basis';
+import { TARGET_FRESHNESS_MONTHS, tradePriceOf } from '@/lib/analysis/price-basis';
+import { comparePeriods, monthlyMedianSeries } from '@/lib/analysis/period-compare';
 import { calcAcquisitionTaxFor } from '@/lib/tax/acquisition';
 import { calcTransactionCost } from '@/lib/tax/transaction-costs';
 import { calcCapitalGainsTax } from '@/lib/tax/capital-gains';
@@ -50,13 +52,45 @@ import { regulationOf } from '@/lib/analysis/regulation';
 /* 시세 산출                                                            */
 /* ------------------------------------------------------------------ */
 
+interface QuoteOptions {
+  /** 사용자가 설정에 입력한 호가 */
+  manualPrice?: number;
+  /** 법정동 — 같은 시군구 안 동명이 단지를 갈라내는 데 쓴다 */
+  dong?: string;
+  /**
+   * 대표가로 인정할 최근 실거래 기간(개월).
+   * 목표 아파트는 6개월 — 그보다 오래된 체결가는 "지금 살 수 있는 값"이 아니라서
+   * 갭·시뮬레이션의 기준으로 쓰면 안 된다. 이 기간에 거래가 없으면 대표가를 내지 않는다.
+   * 생략하면 같은 6개월 창을 쓰되, 창 밖이어도 마지막 체결가를 대표가로 쓴다 (보유 아파트용).
+   */
+  freshnessMonths?: number;
+}
+
+/** n개월 전 날짜 (YYYY-MM-DD) */
+function monthsAgoIso(months: number): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() - months);
+  return d.toISOString().slice(0, 10);
+}
+
+/** 두 날짜(YYYY-MM-DD) 사이 개월 수 — 마지막 거래가 얼마나 오래됐는지 표시용 */
+function monthsSince(dealDate: string): number {
+  const a = new Date(dealDate);
+  const b = new Date();
+  if (Number.isNaN(a.getTime())) return 0;
+  let months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+  if (b.getDate() < a.getDate()) months -= 1;
+  return Math.max(0, months);
+}
+
 function quoteFromTrades(
   trades: TradeRecord[],
   complexName: string,
   areaM2: number,
-  manualPrice?: number,
-  dong?: string,
+  options: QuoteOptions = {},
 ): PriceQuote {
+  const { manualPrice, dong, freshnessMonths } = options;
+
   // 직거래(가족 간 저가 이전 등)는 시세로 쓰지 않는다 — 실제 왜곡 사례가 있었다
   const byName = filterComplex(trades, complexName, areaM2).filter((t) => !t.directDeal);
 
@@ -70,51 +104,54 @@ function quoteFromTrades(
 
   if (matched.length === 0) {
     return manualPrice
-      ? { price: manualPrice, basis: 'manual', sampleSize: 0 }
-      : { price: 0, basis: 'unknown', sampleSize: 0 };
+      ? { price: manualPrice, basis: 'manual', sampleSize: 0, freshnessMonths }
+      : { price: 0, basis: 'unknown', sampleSize: 0, freshnessMonths };
   }
 
-  // 최근 6개월 거래 우선, 없으면 전체
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - 6);
-  const cutoffIso = cutoff.toISOString().slice(0, 10);
-  const recent = matched.filter((t) => t.dealDate >= cutoffIso);
-  const pool = recent.length > 0 ? recent : matched.slice(0, 6);
-
-  const prices = pool.map((t) => t.price);
-  const tradePrice = Math.round(median(prices));
-
-  // 직전 6개월 대비 변동률
-  const prevCutoff = new Date();
-  prevCutoff.setMonth(prevCutoff.getMonth() - 12);
-  const prevPool = matched.filter(
-    (t) => t.dealDate < cutoffIso && t.dealDate >= prevCutoff.toISOString().slice(0, 10),
-  );
-  const changeRate =
-    prevPool.length > 0
-      ? ((tradePrice - median(prevPool.map((t) => t.price))) /
-          median(prevPool.map((t) => t.price))) *
-        100
-      : undefined;
-
-  // 직전 실거래가 — 가장 최근 체결가. 대표 시세의 기준으로 삼는다.
   const sortedByDate = [...matched].sort((a, b) => b.dealDate.localeCompare(a.dealDate));
-  const latestPrice = sortedByDate[0]?.price ?? tradePrice;
+  const lastDeal = sortedByDate[0];
+  const elapsed = monthsSince(lastDeal.dealDate);
+
+  /* 전월·전분기 대비 — 단지 월별 실거래 중앙값 기준.
+     한 달에 한두 건뿐인 단지가 많아 단발 고가 거래에 흔들리므로 중앙값을 쓴다. */
+  const compare = comparePeriods(monthlyMedianSeries(matched));
+
+  const windowMonths = freshnessMonths ?? 6;
+  const cutoffIso = monthsAgoIso(windowMonths);
+  const recent = matched.filter((t) => t.dealDate >= cutoffIso);
+
+  /* 신선도 기준(목표 6개월) 밖이면 "오래됨" 표시만 하고 값은 그대로 돌려준다.
+     값을 0으로 만들어 목록에서 지워 버리면 사용자는 자기 단지가 왜 사라졌는지 모른다 —
+     대신 target-pool 이 그 표시를 보고 on/off 스위치를 자동으로 끄고 사유를 남긴다.
+     호가로 메우지는 않는다. 사용자가 그 숫자를 실거래로 읽기 때문이다. */
+  const stale = freshnessMonths !== undefined && recent.length === 0;
+  const pool = recent.length > 0 ? recent : matched.slice(0, 6);
+  const tradePrice = Math.round(median(pool.map((t) => t.price)));
+
+  // 직전 동일 기간 대비 변동률
+  const prevCutoff = monthsAgoIso(windowMonths * 2);
+  const prevPool = matched.filter((t) => t.dealDate < cutoffIso && t.dealDate >= prevCutoff);
+  const prevMedian = prevPool.length > 0 ? median(prevPool.map((t) => t.price)) : 0;
+  const changeRate = prevMedian > 0 ? ((tradePrice - prevMedian) / prevMedian) * 100 : undefined;
 
   return {
     // 실제로 체결된 가장 최근 가격을 쓴다.
     // 호가(manualPrice)는 검증할 방법이 없어 실거래가 있으면 실거래를 우선한다.
-    price: latestPrice,
+    price: lastDeal.price,
     basis: 'recent-trade',
     sampleSize: pool.length,
-    lastDealDate: sortedByDate[0]?.dealDate,
-    /** 최근 6개월 중앙값 — 단발 고가/저가 거래에 흔들리지 않는 참고값 */
+    lastDealDate: lastDeal.dealDate,
+    monthsSinceLastDeal: elapsed,
+    /** 창 기간(6개월) 중앙값 — 단발 고가/저가 거래에 흔들리지 않는 참고값 */
     medianPrice: tradePrice,
     /** 사용자가 설정에 입력한 호가 (있으면 화면에서 비교용으로 보여준다) */
     askingPrice: manualPrice,
     high: Math.max(...matched.map((t) => t.price)),
     low: Math.min(...matched.map((t) => t.price)),
     changeRate: changeRate !== undefined ? Math.round(changeRate * 10) / 10 : undefined,
+    compare,
+    freshnessMonths,
+    stale,
   };
 }
 
@@ -129,7 +166,9 @@ function buildGaps(config: UserConfig, quotes: Record<string, PriceQuote>): GapS
     // 갭·세금 계산은 실거래가만 쓴다. 호가로 계산하면 근거 없는 숫자가 나온다.
     const holdingPrice = tradePriceOf(quotes[holding.id]);
 
-    for (const target of [...config.targets].sort((a, b) => a.priority - b.priority)) {
+    /* 제외 표시한 목표와 최근 6개월 실거래가 없는 목표는 후보에서 빠진다
+       (tradePriceOf 가 0을 돌려주므로 아래 가드에서 자동으로 걸린다). */
+    for (const target of activeTargets(config)) {
       const targetPrice = tradePriceOf(quotes[target.id]);
       if (holdingPrice <= 0 || targetPrice <= 0) continue;
 
@@ -233,7 +272,7 @@ export async function buildDashboardCached(
 export async function buildDashboard(options: BuildDashboardOptions = {}): Promise<DashboardData> {
   const generatedAt = new Date().toISOString();
   const sourceStatus: SourceStatus[] = [];
-  const config = await loadConfig(options.userId);
+  let config = await loadConfig(options.userId);
 
   /* 실거래 집계가 3시간 넘게 낡았으면 최근월만 백그라운드로 다시 긁는다 (응답은 기다리지 않음).
      userId 를 반드시 넘긴다 — 안 넘기면 누가 열든 default 설정의 지역만 갱신된다. */
@@ -302,40 +341,70 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
 
   const quotes: Record<string, PriceQuote> = {};
   for (const h of config.holdings) {
-    quotes[h.id] = quoteFromTrades(
-      tradesByRegion.get(h.lawdCd) ?? [],
-      h.complexName,
-      h.areaM2,
-      h.manualPrice,
-      h.dong,
+    quotes[h.id] = quoteFromTrades(tradesByRegion.get(h.lawdCd) ?? [], h.complexName, h.areaM2, {
+      manualPrice: h.manualPrice,
+      dong: h.dong,
+    });
+  }
+  /* 목표 아파트는 최근 6개월 실거래만 대표가로 인정한다.
+     그보다 오래된 체결가로 갭을 계산하면 이미 사라진 가격을 목표로 삼게 된다. */
+  for (const t of config.targets) {
+    quotes[t.id] = quoteFromTrades(tradesByRegion.get(t.lawdCd) ?? [], t.complexName, t.areaM2, {
+      manualPrice: t.manualPrice,
+      dong: t.dong,
+      freshnessMonths: TARGET_FRESHNESS_MONTHS,
+    });
+  }
+
+  /* 대표가가 6개월 넘게 묵은 목표는 스위치를 자동으로 끈다.
+     목록에서 지우지 않고 끄기만 하므로 사용자가 사유를 보고 다시 켤 수 있다.
+     상태가 실제로 바뀐 경우에만 저장한다 — 매 조립마다 쓰면 DB 를 헛되이 두드린다. */
+  const auto = autoDisableStaleTargets(config.targets, quotes, generatedAt);
+  if (auto.changed) {
+    config = { ...config, targets: auto.targets };
+    await saveTargetSwitches(options.userId, auto.targets).catch((e) =>
+      console.error('[dashboard] 목표 스위치 저장 실패:', (e as Error).message),
     );
   }
-  for (const t of config.targets) {
-    quotes[t.id] = quoteFromTrades(
-      tradesByRegion.get(t.lawdCd) ?? [],
-      t.complexName,
-      t.areaM2,
-      t.manualPrice,
-      t.dong,
-    );
+  if (auto.disabled.length > 0) {
+    sourceStatus.push({
+      name: '목표 아파트 자동 비활성화',
+      url: '/settings',
+      status: 'stale',
+      message: auto.disabled.map((c) => `${c.complexName}: ${c.reason}`).join(' / '),
+      fetchedAt: generatedAt,
+    });
   }
 
   const gaps = buildGaps(config, quotes);
 
-  /* 갭 변화(전주 대비) — 브리핑 발송 때 저장해 둔 스냅샷과 비교한다.
-     타입에 gapBefore/gapDelta 가 정의만 있고 채우는 곳이 없어
-     "갭 축소/확대" 문구가 영영 안 나가던 것을 여기서 살린다. */
+  /* 갭 변화 — 브리핑 발송 때 저장해 둔 스냅샷과 비교한다.
+     전주(브리핑 문구용)에 더해 전월·전분기까지 채운다: 주 단위 변화는 실거래 한 건에도
+     출렁여서 방향을 읽기 어렵고, 갈아타기는 월·분기 단위로 판단하는 일이라서다. */
   try {
-    const before = (await loadSnapshotBefore(7)) as { gaps?: GapSummary[] } | null;
-    if (before?.gaps?.length) {
-      for (const g of gaps) {
-        const prev = before.gaps.find(
-          (b) => b.holdingId === g.holdingId && b.targetId === g.targetId,
-        );
-        if (prev && prev.gap > 0) {
-          g.gapBefore = prev.gap;
-          g.gapDelta = g.gap - prev.gap;
-        }
+    const [weekAgo, monthAgo, quarterAgo] = await Promise.all([
+      loadSnapshotBefore(7) as Promise<{ gaps?: GapSummary[] } | null>,
+      loadSnapshotBefore(30) as Promise<{ gaps?: GapSummary[] } | null>,
+      loadSnapshotBefore(90) as Promise<{ gaps?: GapSummary[] } | null>,
+    ]);
+    const findPrev = (snapshot: { gaps?: GapSummary[] } | null, g: GapSummary) =>
+      snapshot?.gaps?.find((b) => b.holdingId === g.holdingId && b.targetId === g.targetId);
+
+    for (const g of gaps) {
+      const w = findPrev(weekAgo, g);
+      if (w && w.gap > 0) {
+        g.gapBefore = w.gap;
+        g.gapDelta = g.gap - w.gap;
+      }
+      const m = findPrev(monthAgo, g);
+      if (m && m.gap > 0) {
+        g.gapMonthAgo = m.gap;
+        g.gapMomDelta = g.gap - m.gap;
+      }
+      const q = findPrev(quarterAgo, g);
+      if (q && q.gap > 0) {
+        g.gapQuarterAgo = q.gap;
+        g.gapQoqDelta = g.gap - q.gap;
       }
     }
   } catch {
@@ -390,6 +459,8 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
     monthly: mergedMonthly,
     supplyDemandIndex: nationalSupplyDemand?.[nationalSupplyDemand.length - 1]?.value,
     supplyDemandPrev: nationalSupplyDemand?.[nationalSupplyDemand.length - 2]?.value,
+    // 전월·전분기 과열 점수를 같은 출처로 다시 계산하려면 원본 시계열이 필요하다
+    supplyDemandSeries: nationalSupplyDemand ?? undefined,
     weeklyPriceChange: weeklyChange,
     asOf: todayKst(),
   });

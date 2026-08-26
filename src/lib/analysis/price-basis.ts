@@ -12,6 +12,16 @@
 import type { PriceQuote } from '@/lib/types';
 
 /**
+ * 목표 아파트 대표가로 인정하는 최근 실거래 기간(개월).
+ *
+ * 갈아탈 집의 가격은 "지금 그 값에 살 수 있는가"가 전부라, 오래된 체결가로 갭을
+ * 계산하면 이미 사라진 가격을 목표로 삼게 된다. 그렇다고 너무 짧게 끊으면
+ * 거래가 뜸한 평형이 한 달 걸러 후보에서 들락날락해서 6개월로 잡는다.
+ * 이 기간에 거래가 없는 단지는 목표 후보에서 자동으로 빠진다.
+ */
+export const TARGET_FRESHNESS_MONTHS = 6;
+
+/**
  * 계산에 쓸 실거래가. 실거래가 없으면 0.
  *
  * 0을 돌려주는 건 의도적이다. 호가로 슬쩍 메우면 사용자는 그 숫자가
@@ -25,6 +35,11 @@ export function tradePriceOf(quote: PriceQuote | undefined): number {
 /** 실거래가가 있는지 */
 export function hasTradePrice(quote: PriceQuote | undefined): boolean {
   return tradePriceOf(quote) > 0;
+}
+
+/** 신선도 기준(목표 6개월) 안에 거래가 없어 대표가를 내지 못한 상태인지 */
+export function isStaleQuote(quote: PriceQuote | undefined): boolean {
+  return quote?.stale === true;
 }
 
 /** 참고용 호가 (사용자가 설정에 직접 입력한 값) */

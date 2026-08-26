@@ -5,8 +5,18 @@
  * 값의 구간별 의미 + 최근 변화 방향(추세) + 갈아타기 관점의 시사점을 함께 만든다.
  */
 
-import type { MarketSentiment } from '@/lib/types';
+import type { MarketSentiment, PeriodDelta } from '@/lib/types';
 import { formatPct } from '@/lib/format';
+import { compareLabel } from './period-compare';
+
+/**
+ * 추세 설명 뒤에 붙일 "전월·전분기 대비" 한 문장.
+ * 주간 변화는 실거래 한두 건에도 출렁여서, 월·분기 비교가 있어야 방향을 믿을 수 있다.
+ */
+function periodSentence(delta: PeriodDelta | undefined, unit?: string): string {
+  const label = compareLabel(delta, unit ? { unit } : {});
+  return label ? ` (${label})` : '';
+}
 
 export interface MetricGuide {
   /** 구간 이름 (예: "매수우위") */
@@ -67,7 +77,7 @@ export function supplyDemandGuide(s: MarketSentiment): MetricGuide {
   return {
     level,
     meaning,
-    trend,
+    trend: trend + periodSentence(s.compare?.supplyDemandIndex, 'p'),
     implication,
     position: Math.max(0, Math.min(1, (v - 70) / 60)),
     scale: '70(극심한 매도우위) ─ 100(균형) ─ 130(극심한 매수우위)',
@@ -117,7 +127,7 @@ export function newHighGuide(s: MarketSentiment): MetricGuide {
   return {
     level,
     meaning,
-    trend,
+    trend: trend + periodSentence(s.compare?.newHighRatio),
     implication,
     position: Math.max(0, Math.min(1, v / 30)),
     scale: '0% ─ 10%(상승 확산) ─ 20%(과열) ─ 30%+',
@@ -167,7 +177,7 @@ export function volumeGuide(s: MarketSentiment): MetricGuide {
   return {
     level,
     meaning,
-    trend,
+    trend: trend + periodSentence(s.compare?.monthlyVolume),
     implication,
     position: Math.max(0, Math.min(1, (yoy + 50) / 130)),
     scale: '-50%(절벽) ─ 0%(보합) ─ +80%(급증)',
@@ -249,7 +259,7 @@ export function heatScoreGuide(s: MarketSentiment): MetricGuide {
   return {
     level,
     meaning,
-    trend,
+    trend: trend + periodSentence(s.compare?.heatScore, '점'),
     implication,
     position: v / 100,
     scale: '0(침체) ─ 50(중립) ─ 100(극과열)',

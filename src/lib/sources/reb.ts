@@ -15,6 +15,7 @@
 import { env } from '@/lib/env';
 import type { MacroIndicator, MacroSeriesPoint } from '@/lib/types';
 import { SOURCE_TTL } from '@/lib/refresh-policy';
+import { comparePeriods } from '@/lib/analysis/period-compare';
 import { bumpApiUsage } from '@/lib/store/api-usage';
 
 const BASE = 'https://www.reb.or.kr/r-one/openapi/SttsApiTblData.do';
@@ -286,6 +287,7 @@ async function fetchRebMonthlyIndicator(
     latestPeriod: latest.period,
     change: prev ? Math.round((latest.value - prev.value) * 100) / 100 : 0,
     yoy: yearAgo ? ((latest.value - yearAgo.value) / yearAgo.value) * 100 : undefined,
+    compare: comparePeriods(series, { pointDiff: spec.unit === '%' }),
     series,
     source: '한국부동산원 R-ONE',
     sourceUrl: 'https://www.reb.or.kr/r-one/',

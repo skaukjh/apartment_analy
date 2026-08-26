@@ -12,6 +12,7 @@
 
 import type { MacroIndicator, MacroSeriesPoint } from '@/lib/types';
 import { SOURCE_TTL } from '@/lib/refresh-policy';
+import { comparePeriods } from '@/lib/analysis/period-compare';
 import { bumpApiUsage } from '@/lib/store/api-usage';
 
 function apiKey(): string | undefined {
@@ -93,6 +94,7 @@ export async function fetchNetMigration(): Promise<MacroIndicator> {
       yearAgo && yearAgo.value !== 0
         ? ((latest.value - yearAgo.value) / Math.abs(yearAgo.value)) * 100
         : undefined,
+    compare: comparePeriods(series),
     series,
     source: '통계청 KOSIS 국내인구이동통계',
     sourceUrl: 'https://kosis.kr/statHtml/statHtml.do?orgId=101&tblId=DT_1B26001_A01',

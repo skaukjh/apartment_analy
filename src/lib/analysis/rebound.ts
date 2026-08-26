@@ -76,6 +76,7 @@ export function analyzeRebound(
     reboundFromTrough: 0,
     changeSinceBase: 0,
     recent3mChange: 0,
+    recent1mChange: 0,
     stage: 'insufficient-data',
     sampleSize: rawSeries.reduce((s, p) => s + p.count, 0),
     series: [],
@@ -120,6 +121,11 @@ export function analyzeRebound(
   const idx3mAgo = values[Math.max(0, values.length - 4)];
   const recent3mChange = ((indexNow - idx3mAgo) / idx3mAgo) * 100;
 
+  /* 전월 대비 — 분기 모멘텀만 보면 최근 한 달의 방향 전환(꺾임)이 묻힌다.
+     3개월 이동 중앙값으로 평활한 지수라 한 달치도 단발 거래에 덜 흔들린다. */
+  const idx1mAgo = values[Math.max(0, values.length - 2)];
+  const recent1mChange = ((indexNow - idx1mAgo) / idx1mAgo) * 100;
+
   const thinSample = medianOf(filtered.map((p) => p.count)) < 30;
 
   /* 월별 중앙값 단가의 전월 대비 변동률(절대값) 중앙값이 8% 이상이면 "구성 편향" 지역.
@@ -153,6 +159,7 @@ export function analyzeRebound(
     reboundFromTrough: Math.round(reboundFromTrough * 10) / 10,
     changeSinceBase: Math.round(changeSinceBase * 10) / 10,
     recent3mChange: Math.round(recent3mChange * 100) / 100,
+    recent1mChange: Math.round(recent1mChange * 100) / 100,
     stage,
     thinSample,
     volatileMix,

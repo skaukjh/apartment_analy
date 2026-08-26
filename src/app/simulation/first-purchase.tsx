@@ -1,6 +1,7 @@
 'use client';
 
 import { tradePriceOf } from '@/lib/analysis/price-basis';
+import { activeTargets } from '@/lib/analysis/target-pool';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Info, Wallet } from 'lucide-react';
@@ -51,8 +52,8 @@ interface Props {
  * 취득세·중개보수·법무비·이사비까지 포함한 "목표 집까지 필요한 현금"을 보여준다.
  */
 export function FirstPurchasePanel({ config, quotes }: Props) {
-  // 드롭다운은 가격 낮은 순 — 시세 없는(0원) 항목은 뒤로
-  const targets = [...config.targets].sort((a, b) => {
+  // 드롭다운은 가격 낮은 순 — 제외 표시한 단지는 빼고, 시세 없는(0원) 항목은 뒤로
+  const targets = [...activeTargets(config)].sort((a, b) => {
     const pa = tradePriceOf(quotes[a.id]) || Number.MAX_SAFE_INTEGER;
     const pb = tradePriceOf(quotes[b.id]) || Number.MAX_SAFE_INTEGER;
     return pa - pb;

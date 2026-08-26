@@ -36,6 +36,7 @@ export async function GET(request: Request) {
           name,
           changeSinceBase: a.changeSinceBase,
           recent3mChange: a.recent3mChange,
+          recent1mChange: a.recent1mChange,
           reboundFromTrough: a.reboundFromTrough,
           sampleSize: series.reduce((s, p) => s + p.count, 0),
           stage: a.stage,

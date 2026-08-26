@@ -14,10 +14,12 @@ import {
   formatKrw,
   formatPct,
   formatShortDate,
+  formatSignedKrw,
   supplyPyeong,
   nowKst,
   todayKst,
 } from '@/lib/format';
+import { compareLabel } from '@/lib/analysis/period-compare';
 import type { KakaoTemplate } from './client';
 
 export interface BriefingSection {
@@ -54,6 +56,15 @@ export function buildBriefing(data: DashboardData): Briefing {
         `내가 모아야 할 돈: ${formatKrw(primaryGap.cashNeeded, { compact: true })} (은행 대출 ${formatKrw(primaryGap.loanLimit ?? 0, { compact: true })} 받는다고 가정)`,
       );
     }
+    /* 갭은 절대금액보다 "지난달·지난 분기보다 줄었나"가 실행 신호다.
+       주 단위 변화는 실거래 한 건에도 출렁여 방향을 읽기 어렵다. */
+    const gapMoves: string[] = [];
+    if (primaryGap.gapMomDelta !== undefined)
+      gapMoves.push(`전월 ${formatSignedKrw(primaryGap.gapMomDelta, { compact: true })}`);
+    if (primaryGap.gapQoqDelta !== undefined)
+      gapMoves.push(`전분기 ${formatSignedKrw(primaryGap.gapQoqDelta, { compact: true })}`);
+    if (gapMoves.length > 0) lines.push(`가격 차이 변화: ${gapMoves.join(' · ')}`);
+
     if (data.gaps.length > 1) {
       /* 차순위 후보도 배율을 함께 — 금액만으로는 상급지 체감이 안 온다 */
       const others = data.gaps.slice(1);
@@ -78,6 +89,16 @@ export function buildBriefing(data: DashboardData): Briefing {
       `${heat.label} · 과열점수 ${data.sentiment.heatScore}/100`,
       `매매수급 ${data.sentiment.supplyDemandIndex} (${formatPct(data.sentiment.supplyDemandChange, 1)})`,
       `신고가 비중 ${data.sentiment.newHighRatio.toFixed(1)}% · 거래량 YoY ${formatPct(data.sentiment.volumeYoy, 0)}`,
+      ...(data.sentiment.compare
+        ? (
+            [
+              ['과열점수', compareLabel(data.sentiment.compare.heatScore, { unit: '점' })],
+              ['거래량', compareLabel(data.sentiment.compare.monthlyVolume)],
+            ] as Array<[string, string]>
+          )
+            .filter(([, v]) => v.length > 0)
+            .map(([label, v]) => `${label} ${v}`)
+        : []),
       heat.advice,
     ],
   });
@@ -90,9 +111,12 @@ export function buildBriefing(data: DashboardData): Briefing {
     ];
     if (spread.topMomentum.length > 0) {
       lines.push(
-        `모멘텀 상위: ${spread.topMomentum
+        `모멘텀 상위(전분기/전월): ${spread.topMomentum
           .slice(0, 3)
-          .map((r) => `${r.regionName} ${formatPct(r.recent3mChange, 1)}`)
+          .map(
+            (r) =>
+              `${r.regionName} ${formatPct(r.recent3mChange, 1)}/${formatPct(r.recent1mChange, 1)}`,
+          )
           .join(', ')}`,
       );
     }

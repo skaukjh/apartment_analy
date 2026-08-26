@@ -2,15 +2,32 @@
 
 import { useMemo, useState } from 'react';
 import { ArrowRight, ChevronDown, Info } from 'lucide-react';
-import type { PriceQuote, UserConfig } from '@/lib/types';
-import { complexSpecLine, formatArea, formatKrw, formatPct, todayKst } from '@/lib/format';
-import { askingPremiumPct, tradePriceOf } from '@/lib/analysis/price-basis';
+import type { Holding, PriceQuote, TargetApartment, UserConfig } from '@/lib/types';
+import {
+  complexSpecLine,
+  formatArea,
+  formatKrw,
+  formatPct,
+  formatSignedKrw,
+  todayKst,
+} from '@/lib/format';
+import {
+  TARGET_FRESHNESS_MONTHS,
+  askingPremiumPct,
+  tradePriceOf,
+} from '@/lib/analysis/price-basis';
+import { activeTargets, staleQuoteWarning, targetDisabledReason } from '@/lib/analysis/target-pool';
 import { calcAcquisitionTaxFor } from '@/lib/tax/acquisition';
-import { calcCapitalGainsTax } from '@/lib/tax/capital-gains';
+import {
+  LONG_TERM_MIN_YEARS,
+  calcCapitalGainsTax,
+  longTermMilestone,
+  twoYearMilestone,
+} from '@/lib/tax/capital-gains';
 import { calcTransactionCost } from '@/lib/tax/transaction-costs';
 import { calcLoanLimit } from '@/lib/tax/loan-limit';
 import { regulationOf } from '@/lib/analysis/regulation';
-import { SectionCard, EmptyHint, Delta } from '@/components/ui-bits';
+import { SectionCard, EmptyHint, Delta, PeriodCompare } from '@/components/ui-bits';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -47,73 +64,73 @@ function AskingHint({ quote }: { quote?: PriceQuote }) {
   );
 }
 
+/** 한 시점(매도일 가정)의 갈아타기 비용 묶음 — 지금/2년 도달/3년 도달을 같은 산식으로 만든다 */
+interface Scenario {
+  cgt: ReturnType<typeof calcCapitalGainsTax>;
+  netFromSale: number;
+  realCashNeeded: number;
+  friction: number;
+  /** 기존 대출·보증금 상환까지 포함해 실제로 조달해야 하는 총액 */
+  grossNeed: number;
+  grossByLoan: number;
+  grossByCash: number;
+}
+
+interface Pair extends Scenario {
+  key: string;
+  holding: Holding;
+  target: TargetApartment;
+  holdingPrice: number;
+  targetPrice: number;
+  gap: number;
+  ratio: number;
+  acq: ReturnType<typeof calcAcquisitionTaxFor>;
+  sellCost: ReturnType<typeof calcTransactionCost>;
+  buyCost: ReturnType<typeof calcTransactionCost>;
+  /** 목표 주택 기준 대출 한도 (기존 주택 처분 전제) */
+  loanLimit: number;
+  /** 1세대1주택 비과세 요건(2년 보유) 도달 가정 — 이미 채웠으면 null */
+  twoYear: { date: string; monthsLeft: number; scenario: Scenario } | null;
+  /** 장기보유특별공제 최소 요건(3년 보유) 도달 가정 — 이미 채웠으면 null */
+  longTerm: {
+    date: string;
+    monthsLeft: number;
+    rate: number;
+    note: string;
+    scenario: Scenario;
+  } | null;
+}
+
 export function GapSection({ config, quotes }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
-  /* 2년 보유 도달 가정으로 전체 수치를 바꿔 보는 토글 — 2년 미만 보유자만 노출 */
+  /* 2년 보유(비과세)와 3년 보유(장기보유특별공제)는 서로 다른 요건이라 토글도 따로 둔다.
+     둘 다 켜면 더 늦은 시점인 3년 도달이 기준이 된다 — 3년을 채우면 2년은 당연히 채운다. */
   const [applyTwoYear, setApplyTwoYear] = useState(false);
+  const [applyLongTerm, setApplyLongTerm] = useState(false);
+
+  /** 계산에서 빠진 목표와 그 이유 — 왜 목록에 없는지 화면에서 설명해야 한다 */
+  const disabled = useMemo(
+    () =>
+      config.targets
+        .map((t) => ({ target: t, reason: targetDisabledReason(t, quotes[t.id]) }))
+        .filter((x): x is { target: TargetApartment; reason: string } => x.reason !== null),
+    [config.targets, quotes],
+  );
 
   const pairs = useMemo(() => {
-    const out: Array<{
-      key: string;
-      holding: UserConfig['holdings'][number];
-      target: UserConfig['targets'][number];
-      holdingPrice: number;
-      targetPrice: number;
-      gap: number;
-      ratio: number;
-      cgt: ReturnType<typeof calcCapitalGainsTax>;
-      /** 2년 보유를 채우고 팔 때의 양도세 (이미 2년 이상이면 null) */
-      cgt2y: ReturnType<typeof calcCapitalGainsTax> | null;
-      twoYearDate: string;
-      acq: ReturnType<typeof calcAcquisitionTaxFor>;
-      sellCost: ReturnType<typeof calcTransactionCost>;
-      buyCost: ReturnType<typeof calcTransactionCost>;
-      netFromSale: number;
-      realCashNeeded: number;
-      friction: number;
-      /** 목표 주택 기준 대출 한도 (기존 주택 처분 전제) */
-      loanLimit: number;
-      /** 기존 대출·보증금 상환 포함 총 필요액의 대출/현금 분해.
-          "내 돈"은 항상 이 기준 하나만 쓴다 — 순 기준 분해를 같이 보여줬더니
-          "내 돈"이 두 값으로 나와 헷갈린다는 피드백이 있었다. */
-      grossNeed: number;
-      grossByLoan: number;
-      grossByCash: number;
-      /** 2년 보유 도달 가정의 수치 (2년 미만일 때만) — 토글로 전환해 본다 */
-      alt: {
-        cgt: ReturnType<typeof calcCapitalGainsTax>;
-        netFromSale: number;
-        realCashNeeded: number;
-        friction: number;
-        grossNeed: number;
-        grossByLoan: number;
-        grossByCash: number;
-      } | null;
-    }> = [];
+    const out: Pair[] = [];
+    const today = todayKst();
 
     for (const holding of config.holdings) {
       const holdingPrice = tradePriceOf(quotes[holding.id]);
       if (holdingPrice <= 0) continue;
 
-      for (const target of [...config.targets].sort((a, b) => a.priority - b.priority)) {
+      for (const target of activeTargets(config)) {
         const targetPrice = tradePriceOf(quotes[target.id]);
         if (targetPrice <= 0) continue;
 
         // 매도 중개보수는 양도세 필요경비 — 서버(buildGaps)와 같은 순서로 먼저 계산
         const sellCost = calcTransactionCost({ price: holdingPrice, side: 'sell' });
-
-        const cgt = calcCapitalGainsTax({
-          salePrice: holdingPrice,
-          acquisitionPrice: holding.acquisitionPrice,
-          expenses: holding.acquisitionCost + holding.capitalExpenditure + sellCost.brokerFee,
-          acquiredAt: holding.acquiredAt,
-          soldAt: todayKst(),
-          residenceMonths: holding.residenceMonths,
-          isOneHouseExempt: config.household.ownedHouseCount <= 1,
-          multiHouseSurcharge: false,
-          isRegulated: config.household.holdingIsRegulated,
-          usedBasicDeduction: 0,
-        });
         const acq = calcAcquisitionTaxFor(targetPrice, target.areaM2, config.household, {
           replacesExisting: true,
         });
@@ -122,35 +139,6 @@ export function GapSection({ config, quotes }: Props) {
           side: 'buy',
           withMortgage: true,
         });
-
-        const netFromSale = holdingPrice - cgt.total - sellCost.total;
-        const realCashNeeded = targetPrice + acq.total + buyCost.total - netFromSale;
-
-        /* 보유 2년 미만이면 "2년 채우고 팔면 얼마나 달라지는지"를 함께 계산한다.
-           단기양도세 60%와 1세대1주택 비과세의 차이가 수억이라, 지금 파는 것과
-           기다렸다 파는 것의 비교가 실질적인 의사결정 정보다. 매도가는 현재가 유지 가정. */
-        let cgt2y: ReturnType<typeof calcCapitalGainsTax> | null = null;
-        let twoYearDate = '';
-        if (holding.acquiredAt) {
-          const d = new Date(holding.acquiredAt);
-          d.setFullYear(d.getFullYear() + 2);
-          d.setDate(d.getDate() + 1);
-          twoYearDate = d.toISOString().slice(0, 10);
-          if (todayKst() < twoYearDate) {
-            cgt2y = calcCapitalGainsTax({
-              salePrice: holdingPrice,
-              acquisitionPrice: holding.acquisitionPrice,
-              expenses: holding.acquisitionCost + holding.capitalExpenditure + sellCost.brokerFee,
-              acquiredAt: holding.acquiredAt,
-              soldAt: twoYearDate,
-              residenceMonths: holding.residenceMonths,
-              isOneHouseExempt: config.household.ownedHouseCount <= 1,
-              multiHouseSurcharge: false,
-              isRegulated: config.household.holdingIsRegulated,
-              usedBasicDeduction: 0,
-            });
-          }
-        }
 
         /* 목표 주택 기준 대출 한도 — 실소요를 "대출로 충당 / 현금으로 준비"로 나눠 보여준다.
            갈아타기는 기존 주택 처분 전제이므로 보유 주택 수 0으로 계산한다. */
@@ -165,26 +153,48 @@ export function GapSection({ config, quotes }: Props) {
           otherDebtAnnualPayment: config.household.otherDebtAnnualPayment,
           rate: holding.loanRate || 4,
         }).limit;
-        const grossNeed = realCashNeeded + holding.loanBalance + holding.leaseDeposit;
-        const grossByLoan = Math.min(loanLimit, Math.max(0, grossNeed));
 
-        /* 2년 도달 가정의 전체 수치 — 토글로 카드 전체를 이 기준으로 바꿔 볼 수 있게 */
-        let alt: (typeof out)[number]['alt'] = null;
-        if (cgt2y) {
-          const netFromSale2 = holdingPrice - cgt2y.total - sellCost.total;
-          const realCashNeeded2 = targetPrice + acq.total + buyCost.total - netFromSale2;
-          const grossNeed2 = realCashNeeded2 + holding.loanBalance + holding.leaseDeposit;
-          const grossByLoan2 = Math.min(loanLimit, Math.max(0, grossNeed2));
-          alt = {
-            cgt: cgt2y,
-            netFromSale: netFromSale2,
-            realCashNeeded: realCashNeeded2,
-            friction: cgt2y.total + acq.total + sellCost.total + buyCost.total,
-            grossNeed: grossNeed2,
-            grossByLoan: grossByLoan2,
-            grossByCash: Math.max(0, grossNeed2 - grossByLoan2),
+        /** 매도일 가정 하나로 카드 수치 한 벌을 만든다 (지금 / 2년 도달 / 3년 도달) */
+        const scenarioAt = (soldAt: string): Scenario => {
+          const cgt = calcCapitalGainsTax({
+            salePrice: holdingPrice,
+            acquisitionPrice: holding.acquisitionPrice,
+            expenses: holding.acquisitionCost + holding.capitalExpenditure + sellCost.brokerFee,
+            acquiredAt: holding.acquiredAt,
+            soldAt,
+            residenceMonths: holding.residenceMonths,
+            isOneHouseExempt: config.household.ownedHouseCount <= 1,
+            multiHouseSurcharge: false,
+            isRegulated: config.household.holdingIsRegulated,
+            usedBasicDeduction: 0,
+          });
+          const netFromSale = holdingPrice - cgt.total - sellCost.total;
+          const realCashNeeded = targetPrice + acq.total + buyCost.total - netFromSale;
+          const grossNeed = realCashNeeded + holding.loanBalance + holding.leaseDeposit;
+          const grossByLoan = Math.min(loanLimit, Math.max(0, grossNeed));
+          return {
+            cgt,
+            netFromSale,
+            realCashNeeded,
+            friction: cgt.total + acq.total + sellCost.total + buyCost.total,
+            grossNeed,
+            grossByLoan,
+            grossByCash: Math.max(0, grossNeed - grossByLoan),
           };
-        }
+        };
+
+        /* 보유 2년 미만이면 "2년 채우고 팔면 얼마나 달라지는지"를 함께 계산한다.
+           단기양도세 60%와 1세대1주택 비과세의 차이가 수억이라, 지금 파는 것과
+           기다렸다 파는 것의 비교가 실질적인 의사결정 정보다. 매도가는 현재가 유지 가정. */
+        const two = twoYearMilestone({ acquiredAt: holding.acquiredAt, today });
+        /* 장기보유특별공제는 비과세와 별개 요건(3년)이다. 2년을 채워 비과세가 돼도
+           3년을 못 채우면 공제율은 0%이므로 도달 시점을 따로 보여준다. */
+        const lt = longTermMilestone({
+          acquiredAt: holding.acquiredAt,
+          residenceMonths: holding.residenceMonths,
+          isOneHouseExempt: config.household.ownedHouseCount <= 1,
+          today,
+        });
 
         out.push({
           key: `${holding.id}-${target.id}`,
@@ -194,25 +204,31 @@ export function GapSection({ config, quotes }: Props) {
           targetPrice,
           gap: targetPrice - holdingPrice,
           ratio: targetPrice / holdingPrice,
-          cgt,
-          cgt2y,
-          twoYearDate,
           acq,
           sellCost,
           buyCost,
-          netFromSale,
-          realCashNeeded,
-          friction: cgt.total + acq.total + sellCost.total + buyCost.total,
           loanLimit,
-          grossNeed,
-          grossByLoan,
-          grossByCash: Math.max(0, grossNeed - grossByLoan),
-          alt,
+          ...scenarioAt(today),
+          twoYear: two
+            ? { date: two.date, monthsLeft: two.monthsLeft, scenario: scenarioAt(two.date) }
+            : null,
+          longTerm: lt
+            ? {
+                date: lt.date,
+                monthsLeft: lt.monthsLeft,
+                rate: lt.longTermRate,
+                note: lt.longTermNote,
+                scenario: scenarioAt(lt.date),
+              }
+            : null,
         });
       }
     }
     return out.sort((a, b) => a.realCashNeeded - b.realCashNeeded);
   }, [config, quotes]);
+
+  const twoYearDate = pairs.find((p) => p.twoYear)?.twoYear?.date;
+  const longTermInfo = pairs.find((p) => p.longTerm)?.longTerm;
 
   if (pairs.length === 0) {
     return (
@@ -221,7 +237,20 @@ export function GapSection({ config, quotes }: Props) {
         description="보유 아파트와 목표 아파트를 등록하면 실거래 기준 갭과 세후 실소요 자금을 계산합니다."
       >
         <EmptyHint>
-          <p className="mb-3">아직 등록된 아파트가 없습니다.</p>
+          <p className="mb-3">
+            {disabled.length > 0
+              ? '등록한 목표 아파트의 스위치가 모두 꺼져 있습니다. 설정에서 다시 켤 수 있습니다.'
+              : '아직 등록된 아파트가 없습니다.'}
+          </p>
+          {disabled.length > 0 ? (
+            <ul className="mx-auto mb-3 max-w-lg space-y-1 text-left text-[11px]">
+              {disabled.map((x) => (
+                <li key={x.target.id}>
+                  · {x.target.complexName} — {x.reason}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <Button render={<Link href="/settings" />} nativeButton={false} size="sm">
             설정에서 아파트 등록하기
           </Button>
@@ -244,7 +273,11 @@ export function GapSection({ config, quotes }: Props) {
       }
       badge={
         <div className="flex items-center gap-2">
-          {applyTwoYear ? (
+          {applyLongTerm && longTermInfo ? (
+            <Badge className="bg-sky-500/15 font-normal text-sky-700 dark:text-sky-400">
+              3년 도달 후 매도 기준 (장특공 {longTermInfo.rate}%)
+            </Badge>
+          ) : applyTwoYear && twoYearDate ? (
             <Badge className="bg-emerald-500/15 font-normal text-emerald-700 dark:text-emerald-400">
               2년 도달 후 매도 기준
             </Badge>
@@ -253,26 +286,59 @@ export function GapSection({ config, quotes }: Props) {
         </div>
       }
     >
-      {pairs.some((p) => p.alt) ? (
-        <label className="mb-3 flex cursor-pointer flex-wrap items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
-          <Switch
-            checked={applyTwoYear}
-            onCheckedChange={setApplyTwoYear}
-            aria-label="2년 보유 도달 가정으로 보기"
-          />
-          <span className="text-sm font-medium">
-            2년 보유 도달({pairs.find((p) => p.alt)?.twoYearDate}) 가정으로 보기
-          </span>
-          <span className="text-muted-foreground text-xs">
-            — 1세대1주택 비과세 적용, 시세는 현재와 동일 가정
-          </span>
-        </label>
-      ) : null}
+      <div className="mb-3 space-y-2">
+        {twoYearDate ? (
+          <label className="flex cursor-pointer flex-wrap items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
+            <Switch
+              checked={applyTwoYear}
+              onCheckedChange={setApplyTwoYear}
+              aria-label="2년 보유 도달 가정으로 보기"
+            />
+            <span className="text-sm font-medium">2년 보유 도달({twoYearDate}) 가정으로 보기</span>
+            <span className="text-muted-foreground text-xs">
+              — 1세대1주택 비과세 적용, 시세는 현재와 동일 가정
+            </span>
+          </label>
+        ) : null}
+
+        {/* 장기보유특별공제는 비과세(2년)와 별개 요건이라 토글도 따로 둔다.
+            3년을 못 채우면 공제율이 0%이므로, 채웠을 때의 공제율로 바꿔 볼 수 있게 한다. */}
+        {longTermInfo ? (
+          <label className="flex cursor-pointer flex-wrap items-center gap-2 rounded-md border border-sky-500/30 bg-sky-500/5 px-3 py-2">
+            <Switch
+              checked={applyLongTerm}
+              onCheckedChange={setApplyLongTerm}
+              aria-label="장기보유특별공제 3년 요건 도달 가정으로 보기"
+            />
+            <span className="text-sm font-medium">
+              장기보유특별공제 {LONG_TERM_MIN_YEARS}년 요건 도달({longTermInfo.date}) 가정으로 보기
+            </span>
+            <span className="text-muted-foreground text-xs">
+              — 공제율 {longTermInfo.rate}% 적용 · {longTermInfo.monthsLeft}개월 남음
+            </span>
+          </label>
+        ) : null}
+
+        {disabled.length > 0 ? (
+          <div className="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-[11px] leading-relaxed">
+            <span className="text-foreground font-medium">계산에서 빠진 목표</span> —{' '}
+            {disabled.map((x) => `${x.target.complexName}(${x.reason})`).join(' · ')} · 설정에서
+            스위치를 켜면 다시 들어옵니다.
+          </div>
+        ) : null}
+      </div>
 
       <div className="space-y-3">
         {pairs.map((p0) => {
-          // 토글이 켜져 있으면 카드 전체 수치를 2년 도달 가정으로 바꿔 보여준다
-          const p = applyTwoYear && p0.alt ? { ...p0, ...p0.alt } : p0;
+          /* 토글이 켜져 있으면 카드 전체 수치를 그 가정으로 바꿔 보여준다.
+             둘 다 켜져 있으면 더 늦은 시점(3년 도달)이 이긴다. */
+          const assumed =
+            applyLongTerm && p0.longTerm
+              ? p0.longTerm.scenario
+              : applyTwoYear && p0.twoYear
+                ? p0.twoYear.scenario
+                : null;
+          const p: Pair = assumed ? { ...p0, ...assumed } : p0;
           const open = openId === p.key;
           const hq = quotes[p.holding.id];
           const tq = quotes[p.target.id];
@@ -317,6 +383,7 @@ export function GapSection({ config, quotes }: Props) {
                     <div className="tabular font-semibold">{formatKrw(p.holdingPrice)}</div>
                     <div className="text-muted-foreground text-[11px]">
                       {basisLabel(hq?.basis ?? 'unknown')}
+                      {hq?.lastDealDate ? ` · ${hq.lastDealDate}` : ''}
                       {hq?.changeRate !== undefined ? (
                         <>
                           {' '}
@@ -324,6 +391,8 @@ export function GapSection({ config, quotes }: Props) {
                         </>
                       ) : null}
                     </div>
+                    {/* 시세도 다른 지표와 같은 문법으로 전월·전분기를 읽게 한다 */}
+                    <PeriodCompare delta={hq?.compare} digits={1} className="text-[11px]" />
                     <AskingHint quote={hq} />
                     {complexSpecLine(p.holding) ? (
                       <div className="text-muted-foreground text-[11px]">
@@ -339,6 +408,7 @@ export function GapSection({ config, quotes }: Props) {
                     </div>
                     <div className="text-muted-foreground text-[11px]">
                       {basisLabel(tq?.basis ?? 'unknown')}
+                      {tq?.lastDealDate ? ` · ${tq.lastDealDate}` : ''}
                       {tq?.changeRate !== undefined ? (
                         <>
                           {' '}
@@ -346,6 +416,13 @@ export function GapSection({ config, quotes }: Props) {
                         </>
                       ) : null}
                     </div>
+                    <PeriodCompare delta={tq?.compare} digits={1} className="text-[11px]" />
+                    {/* 스위치를 직접 켜 둔 단지는 대표가가 묵었을 수 있다 — 그 사실을 숨기지 않는다 */}
+                    {staleQuoteWarning(tq) ? (
+                      <div className="text-[11px] text-amber-600 dark:text-amber-400">
+                        ⚠ {staleQuoteWarning(tq)}
+                      </div>
+                    ) : null}
                     <AskingHint quote={tq} />
                     {complexSpecLine(p.target) ? (
                       <div className="text-muted-foreground text-[11px]">
@@ -427,6 +504,17 @@ export function GapSection({ config, quotes }: Props) {
                           p.netFromSale - p.holding.loanBalance - p.holding.leaseDeposit,
                         ]}
                       />
+                      {/* 장특공은 현금흐름이 아니라 과세표준을 깎는 공제라 표와 따로 보여준다 */}
+                      <div className="mt-2 rounded-md border px-2.5 py-2 text-[11px] leading-relaxed">
+                        <span className="font-medium">장기보유특별공제</span>{' '}
+                        <span className="tabular">
+                          {p.cgt.longTermRate}% · {formatKrw(p.cgt.longTermDeduction)} 공제
+                        </span>
+                        <div className="text-muted-foreground mt-0.5">
+                          1세대1주택 비과세(2년 보유)와는 별개 요건입니다 — 보유{' '}
+                          {LONG_TERM_MIN_YEARS}년을 채워야 공제가 시작됩니다.
+                        </div>
+                      </div>
                       <NoteList
                         notes={[
                           p.cgt.exempt
@@ -435,28 +523,27 @@ export function GapSection({ config, quotes }: Props) {
                           ...p.cgt.notes.slice(0, 2),
                         ]}
                       />
-                      {!applyTwoYear && p.cgt2y ? (
-                        <div className="mt-2 rounded-md border border-emerald-500/40 bg-emerald-500/5 p-2.5 text-[11px] leading-relaxed">
-                          <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-                            🕐 2년 보유 도달({p.twoYearDate}) 후 매도 시
-                          </span>
-                          <div className="mt-1">
-                            양도세{' '}
-                            <span className="tabular font-medium">{formatKrw(p.cgt2y.total)}</span>
-                            {p.cgt2y.exempt ? ' (1세대1주택 비과세, 12억 초과분만 과세)' : ''} —
-                            지금 매도 대비{' '}
-                            <span className="tabular font-semibold text-emerald-700 dark:text-emerald-400">
-                              {formatKrw(p.cgt.total - p.cgt2y.total)} 절감
-                            </span>
-                            , 실소요{' '}
-                            <span className="tabular font-medium">
-                              {formatKrw(p.realCashNeeded - (p.cgt.total - p.cgt2y.total))}
-                            </span>
-                          </div>
-                          <div className="text-muted-foreground mt-0.5">
-                            매도가가 지금과 같다고 가정한 비교입니다.
-                          </div>
-                        </div>
+                      {!applyTwoYear && !applyLongTerm && p0.twoYear ? (
+                        <MilestoneNote
+                          tone="emerald"
+                          title={`🕐 2년 보유 도달(${p0.twoYear.date}) 후 매도 시`}
+                          now={p0}
+                          later={p0.twoYear.scenario}
+                          extra={
+                            p0.twoYear.scenario.cgt.exempt
+                              ? '1세대1주택 비과세, 12억 초과분만 과세'
+                              : undefined
+                          }
+                        />
+                      ) : null}
+                      {!applyLongTerm && p0.longTerm ? (
+                        <MilestoneNote
+                          tone="sky"
+                          title={`📐 장기보유특별공제 ${LONG_TERM_MIN_YEARS}년 요건 도달(${p0.longTerm.date}) 후 매도 시`}
+                          now={p0}
+                          later={p0.longTerm.scenario}
+                          extra={p0.longTerm.note}
+                        />
                       ) : null}
                     </div>
 
@@ -483,7 +570,12 @@ export function GapSection({ config, quotes }: Props) {
                         ]}
                       />
                       <NoteList
-                        notes={[...p.acq.notes.slice(0, 2), ...p.buyCost.notes.slice(0, 1)]}
+                        notes={[
+                          staleQuoteWarning(tq) ??
+                            `대표가는 마지막 실거래${tq?.lastDealDate ? ` (${tq.lastDealDate})` : ''}이며, 최근 ${TARGET_FRESHNESS_MONTHS}개월 안의 값입니다.`,
+                          ...p.acq.notes.slice(0, 2),
+                          ...p.buyCost.notes.slice(0, 1),
+                        ]}
                       />
                     </div>
                   </div>
@@ -564,6 +656,52 @@ export function GapSection({ config, quotes }: Props) {
         })}
       </div>
     </SectionCard>
+  );
+}
+
+/**
+ * "요건을 채우고 팔면 얼마나 달라지는가" 안내 블록.
+ * 2년(비과세)·3년(장기보유특별공제) 두 요건이 같은 형식으로 읽히도록 한 컴포넌트로 묶는다.
+ */
+function MilestoneNote({
+  tone,
+  title,
+  now,
+  later,
+  extra,
+}: {
+  tone: 'emerald' | 'sky';
+  title: string;
+  now: Scenario;
+  later: Scenario;
+  extra?: string;
+}) {
+  const saving = now.cgt.total - later.cgt.total;
+  const toneClass =
+    tone === 'emerald'
+      ? 'border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400'
+      : 'border-sky-500/40 bg-sky-500/5 text-sky-700 dark:text-sky-400';
+
+  return (
+    <div className={cn('mt-2 rounded-md border p-2.5 text-[11px] leading-relaxed', toneClass)}>
+      <span className="font-semibold">{title}</span>
+      <div className="text-foreground mt-1">
+        양도세 <span className="tabular font-medium">{formatKrw(later.cgt.total)}</span>
+        {extra ? ` (${extra})` : ''} · 장특공{' '}
+        <span className="tabular font-medium">
+          {later.cgt.longTermRate}% · {formatKrw(later.cgt.longTermDeduction)}
+        </span>{' '}
+        — 지금 매도 대비{' '}
+        <span className={cn('tabular font-semibold', saving > 0 ? 'text-rise' : 'text-fall')}>
+          {formatSignedKrw(-saving)}
+        </span>
+        , 내가 준비할 현금{' '}
+        <span className="tabular font-medium">{formatKrw(later.grossByCash)}</span>
+      </div>
+      <div className="text-muted-foreground mt-0.5">
+        매도가가 지금과 같고 거주 개월 수도 그대로라고 가정한 비교입니다.
+      </div>
+    </div>
   );
 }
 

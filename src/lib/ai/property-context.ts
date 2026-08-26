@@ -148,7 +148,9 @@ export async function buildPropertyContext(
         '\n' +
         line('저점 대비 반등', formatPct(region.reboundFromTrough, 1)) +
         '\n' +
-        line('최근 3개월', formatPct(region.recent3mChange, 2)) +
+        line('최근 3개월 (전분기 대비)', formatPct(region.recent3mChange, 2)) +
+        '\n' +
+        line('최근 1개월 (전월 대비)', formatPct(region.recent1mChange, 2)) +
         '\n' +
         line(
           '반등 단계',

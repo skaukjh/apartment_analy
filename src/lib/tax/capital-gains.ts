@@ -34,6 +34,14 @@ export interface CapitalGainsInput {
 
 /** 1세대1주택 고가주택 기준선 */
 const HIGH_VALUE_THRESHOLD = 1_200_000_000;
+
+/**
+ * 장기보유특별공제 최소 보유 연한 (소득세법 제95조 제2항).
+ *
+ * 1세대1주택 비과세의 "2년 보유"와는 별개의 요건이다 — 2년을 채워 비과세가 되어도
+ * 3년을 못 채우면 장특공은 0%이고, 반대로 비과세가 아니어도 3년을 채우면 장특공은 붙는다.
+ */
+export const LONG_TERM_MIN_YEARS = 3;
 /** 양도소득 기본공제 */
 const BASIC_DEDUCTION = 2_500_000;
 
@@ -63,7 +71,7 @@ function progressiveTax(taxBase: number): { tax: number; rate: number } {
  * - 1세대1주택 고가주택: 보유 연 4%(최대 40%) + 거주 연 4%(최대 40%) = 최대 80%
  * - 그 외: 보유 3년 이상부터 연 2%, 최대 30%
  */
-function longTermRate(
+export function longTermRate(
   holdingMonths: number,
   residenceMonths: number,
   isOneHouseExempt: boolean,
@@ -248,4 +256,69 @@ export function calcCapitalGainsTax(input: CapitalGainsInput): CapitalGainsTaxRe
     holdingMonths,
     notes,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* 보유 요건 도달 시점                                                   */
+/* ------------------------------------------------------------------ */
+
+/** 취득일로부터 n년 요건을 채우는 날 (YYYY-MM-DD). 취득일이 없으면 null */
+export function holdingMilestoneDate(acquiredAt: string, years: number): string | null {
+  if (!acquiredAt) return null;
+  const d = new Date(acquiredAt);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setFullYear(d.getFullYear() + years);
+  // 요건은 "n년 이상 보유"이므로 하루를 더해 그날부터 충족으로 본다
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+export interface HoldingMilestone {
+  /** 요건을 채우는 날 (YYYY-MM-DD) */
+  date: string;
+  /** 그날 기준 보유 연수 */
+  holdYears: number;
+  /** 오늘 기준 남은 개월 수 */
+  monthsLeft: number;
+  /** 그 시점에 적용될 장기보유특별공제율 (%) */
+  longTermRate: number;
+  /** 공제율 산출 근거 한 줄 */
+  longTermNote: string;
+}
+
+/**
+ * 장기보유특별공제 최소 요건(3년) 도달 시점.
+ *
+ * 이미 3년을 넘겼으면 null — 그때는 공제가 이미 적용되고 있어 가정 토글이 필요 없다.
+ * 거주 개월 수는 지금 입력값 그대로 가정한다 (그 사이 계속 거주하면 표2 공제율이 더 커진다).
+ */
+export function longTermMilestone(input: {
+  acquiredAt: string;
+  residenceMonths: number;
+  isOneHouseExempt: boolean;
+  today: string;
+}): HoldingMilestone | null {
+  const date = holdingMilestoneDate(input.acquiredAt, LONG_TERM_MIN_YEARS);
+  if (!date || input.today >= date) return null;
+
+  const holdingMonths = LONG_TERM_MIN_YEARS * 12;
+  const r = longTermRate(holdingMonths, input.residenceMonths, input.isOneHouseExempt);
+
+  return {
+    date,
+    holdYears: LONG_TERM_MIN_YEARS,
+    monthsLeft: monthsBetween(input.today, date),
+    longTermRate: r.rate,
+    longTermNote: r.note,
+  };
+}
+
+/** 1세대1주택 비과세 요건(2년 보유) 도달 시점. 이미 채웠으면 null */
+export function twoYearMilestone(input: {
+  acquiredAt: string;
+  today: string;
+}): { date: string; monthsLeft: number } | null {
+  const date = holdingMilestoneDate(input.acquiredAt, 2);
+  if (!date || input.today >= date) return null;
+  return { date, monthsLeft: monthsBetween(input.today, date) };
 }
