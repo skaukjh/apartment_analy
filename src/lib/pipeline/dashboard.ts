@@ -44,7 +44,7 @@ import { TARGET_FRESHNESS_MONTHS, tradePriceOf } from '@/lib/analysis/price-basi
 import { comparePeriods, monthlyMedianSeries } from '@/lib/analysis/period-compare';
 import { calcAcquisitionTaxFor } from '@/lib/tax/acquisition';
 import { calcTransactionCost } from '@/lib/tax/transaction-costs';
-import { calcCapitalGainsTax } from '@/lib/tax/capital-gains';
+import { calcCapitalGainsTax, residenceMonthsAt } from '@/lib/tax/capital-gains';
 import { calcLoanLimit } from '@/lib/tax/loan-limit';
 import { regulationOf } from '@/lib/analysis/regulation';
 
@@ -186,7 +186,7 @@ function buildGaps(config: UserConfig, quotes: Record<string, PriceQuote>): GapS
         expenses: holding.acquisitionCost + holding.capitalExpenditure + sellCost.brokerFee,
         acquiredAt: holding.acquiredAt,
         soldAt: todayKst(),
-        residenceMonths: holding.residenceMonths,
+        residenceMonths: residenceMonthsAt(holding, todayKst()),
         isOneHouseExempt: config.household.ownedHouseCount <= 1,
         multiHouseSurcharge: false,
         isRegulated: config.household.holdingIsRegulated,

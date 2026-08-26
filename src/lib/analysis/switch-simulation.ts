@@ -14,7 +14,7 @@ import type {
   TargetApartment,
 } from '@/lib/types';
 import { calcAcquisitionTaxFor } from '@/lib/tax/acquisition';
-import { calcCapitalGainsTax } from '@/lib/tax/capital-gains';
+import { calcCapitalGainsTax, residenceMonthsAt } from '@/lib/tax/capital-gains';
 import { calcTransactionCost } from '@/lib/tax/transaction-costs';
 import { todayKst, isOver85 } from '@/lib/format';
 
@@ -23,6 +23,7 @@ export function simulateSwitch(
   scenarioLabel = '기준 시나리오',
 ): SwitchSimulationResult {
   const { holding, household, sellPrice, buyPrice } = input;
+  const soldAt = input.soldAt ?? todayKst();
 
   // 1) 매도 부대비용 — 중개보수는 양도세 필요경비이므로 양도세보다 먼저 계산한다
   //    (대시보드 갭 카드(buildGaps·GapSection)와 같은 순서 — 다르면 두 화면 수치가 어긋난다)
@@ -35,8 +36,10 @@ export function simulateSwitch(
     acquisitionPrice: holding.acquisitionPrice,
     expenses: holding.acquisitionCost + holding.capitalExpenditure + sellCost.brokerFee,
     acquiredAt: holding.acquiredAt,
-    soldAt: input.soldAt ?? todayKst(),
-    residenceMonths: holding.residenceMonths,
+    soldAt,
+    /* 매도 시점 기준으로 거주기간을 다시 센다 — "2년 뒤에 팔면" 을 볼 때
+       거주기간만 오늘 값으로 굳어 있으면 공제율이 실제보다 낮게 나온다. */
+    residenceMonths: residenceMonthsAt(holding, soldAt),
     isOneHouseExempt: isOneHouse,
     multiHouseSurcharge:
       household.applyMultiHouseSurcharge && household.ownedHouseCount >= 3

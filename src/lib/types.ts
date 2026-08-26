@@ -76,8 +76,20 @@ export interface Holding extends ApartmentRef {
   acquisitionCost: number;
   /** 자본적 지출 (원) — 확장·새시 등 필요경비 인정분 */
   capitalExpenditure: number;
-  /** 실거주 개월 수 */
+  /**
+   * 실거주 개월 수 (레거시).
+   * residenceSince 가 있으면 그쪽을 쓴다 — 이 값은 저장된 시점에 멈춰 있어
+   * 시간이 지나도 늘지 않는다. 예전에 입력한 설정과의 호환을 위해 남긴다.
+   */
   residenceMonths: number;
+  /**
+   * 거주를 시작한 날 (YYYY-MM-DD).
+   *
+   * 개월 수를 저장하면 화면을 열 때마다 낡는다 — 거주 2년을 채우는 순간
+   * 장기보유특별공제가 표1(3년 6%)에서 표2(3년 20%)로 뛰는데, 멈춰 있는
+   * 숫자로는 그 순간이 영영 오지 않는다. 날짜로 두면 매번 다시 센다.
+   */
+  residenceSince?: string;
   /** 남은 대출 잔액 (원) */
   loanBalance: number;
   /** 대출 금리 (%) */

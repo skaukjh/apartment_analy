@@ -156,16 +156,20 @@ export function autoFillHolding(
     skipped.push('취득가액과 전용면적을 입력해야 취득 부대비용을 계산할 수 있습니다.');
   }
 
-  // 2) 실거주 개월 수 — 취득일부터 지금까지 거주했다고 가정
+  /* 2) 거주 시작일 — 취득일부터 계속 거주했다고 가정.
+     개월 수가 아니라 날짜를 채운다. 개월 수는 저장된 순간 멈춰 있어서,
+     거주 2년을 채우는 시점(표1 6% → 표2 20%)이 영영 오지 않는다. */
   if (holding.acquiredAt) {
-    if (overwrite || isEmpty(holding.residenceMonths)) {
+    if (overwrite || !holding.residenceSince) {
       const months = monthsBetween(holding.acquiredAt, todayKst());
+      values.residenceSince = holding.acquiredAt;
       values.residenceMonths = months;
       filled.push({
-        field: 'residenceMonths',
-        label: '실거주 개월 수',
+        field: 'residenceSince',
+        label: '거주 시작일',
         value: months,
-        basis: `취득일(${holding.acquiredAt})부터 오늘까지 ${months}개월. 실제 거주하지 않은 기간이 있으면 줄이세요 (1세대1주택 장기보유특별공제에 영향).`,
+        text: `${holding.acquiredAt} (현재 ${months}개월)`,
+        basis: `취득일부터 계속 거주한 것으로 봤습니다. 실제로 나중에 입주했다면 그 날짜로 고치세요 (1세대1주택 장기보유특별공제의 거주기간에 반영됩니다).`,
       });
     }
   } else {

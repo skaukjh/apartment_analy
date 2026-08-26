@@ -17,7 +17,7 @@ import {
   Unplug,
   Wand2,
 } from 'lucide-react';
-import { formatArea, formatKrw } from '@/lib/format';
+import { formatArea, formatKrw, monthsBetween, todayKst } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { REGULATION_AS_OF, regulationOf } from '@/lib/analysis/regulation';
 import {
@@ -950,7 +950,32 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                       onChange={(e) => updateHolding(h.id, { acquiredAt: e.target.value })}
                     />
                   </Field>
-                  <Field label="실거주 개월 수" hint="1세대1주택 장기보유특별공제(거주)에 반영">
+                  {/* 개월 수 대신 날짜를 받는다 — 개월 수는 저장한 순간 멈춰 있어
+                      거주 2년을 채우는 시점(공제율 6% → 20%)이 영영 오지 않는다. */}
+                  <Field
+                    label="거주 시작일"
+                    hint={
+                      h.residenceSince
+                        ? `오늘 기준 ${monthsBetween(h.residenceSince > h.acquiredAt ? h.residenceSince : h.acquiredAt, todayKst())}개월 거주 · 매달 저절로 늘어납니다`
+                        : '이 집에 들어와 산 날. 비우면 아래 개월 수를 그대로 씁니다'
+                    }
+                  >
+                    <Input
+                      type="date"
+                      value={h.residenceSince ?? ''}
+                      onChange={(e) =>
+                        updateHolding(h.id, { residenceSince: e.target.value || undefined })
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label="실거주 개월 수"
+                    hint={
+                      h.residenceSince
+                        ? '거주 시작일을 넣어 두면 이 값은 쓰지 않습니다'
+                        : '1세대1주택 장기보유특별공제(거주)에 반영'
+                    }
+                  >
                     <Input
                       type="number"
                       value={h.residenceMonths}

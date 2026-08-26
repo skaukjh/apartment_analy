@@ -279,6 +279,25 @@ export function calcCapitalGainsTax(input: CapitalGainsInput): CapitalGainsTaxRe
  * 초일산입 해석 기준으로는 하루 보수적이다 — 날짜가 빠듯하면 실제 매도 전
  * 홈택스 모의계산으로 확인해야 한다.
  */
+/**
+ * 어느 시점 기준의 실거주 개월 수.
+ *
+ * 거주 시작일이 있으면 그 날부터 센다. 다만 **취득 전 거주는 세지 않는다** —
+ * 장기보유특별공제 표2 의 거주기간은 "보유기간 중 거주한 기간"이라, 전세로
+ * 살다가 그 집을 산 경우 매수 전 기간은 인정되지 않는다.
+ *
+ * 거주 시작일이 없으면 예전처럼 저장된 개월 수를 그대로 쓴다 (하위호환).
+ */
+export function residenceMonthsAt(
+  holding: { acquiredAt: string; residenceMonths?: number; residenceSince?: string },
+  asOf: string,
+): number {
+  if (!holding.residenceSince) return holding.residenceMonths ?? 0;
+  const start =
+    holding.residenceSince > holding.acquiredAt ? holding.residenceSince : holding.acquiredAt;
+  return monthsBetween(start, asOf);
+}
+
 export function holdingMilestoneDate(acquiredAt: string, years: number): string | null {
   if (!acquiredAt) return null;
   const d = new Date(acquiredAt);
@@ -309,6 +328,8 @@ export interface HoldingMilestone {
 export function longTermMilestone(input: {
   acquiredAt: string;
   residenceMonths: number;
+  /** 거주 시작일 — 있으면 그 시점의 거주기간을 다시 세서 공제율을 매긴다 */
+  residenceSince?: string;
   isOneHouseExempt: boolean;
   today: string;
 }): HoldingMilestone | null {
@@ -316,7 +337,10 @@ export function longTermMilestone(input: {
   if (!date || input.today >= date) return null;
 
   const holdingMonths = LONG_TERM_MIN_YEARS * 12;
-  const r = longTermRate(holdingMonths, input.residenceMonths, input.isOneHouseExempt);
+  /* 그날의 거주기간으로 매긴다. 지금 개월 수를 그대로 쓰면 계속 거주 중인
+     사람도 표1(6%)에 머물러, 실제로 받을 표2(20%)를 3분의 1로 낮춰 보여준다. */
+  const residence = residenceMonthsAt(input, date);
+  const r = longTermRate(holdingMonths, residence, input.isOneHouseExempt);
 
   return {
     date,
@@ -361,6 +385,8 @@ export interface LongTermStep {
 export function longTermLadder(input: {
   acquiredAt: string;
   residenceMonths: number;
+  /** 거주 시작일 — 있으면 연차마다 그때의 거주기간으로 공제율을 매긴다 */
+  residenceSince?: string;
   isOneHouseExempt: boolean;
   today: string;
   /** 보여줄 연차 (기본 3~10년) */
@@ -372,7 +398,9 @@ export function longTermLadder(input: {
   for (const holdYears of years) {
     const date = holdingMilestoneDate(input.acquiredAt, holdYears);
     if (!date) continue;
-    const { rate } = longTermRate(holdYears * 12, input.residenceMonths, input.isOneHouseExempt);
+    // 연차마다 거주기간도 함께 늘어난다 — 거주 2년을 넘는 칸부터 표2로 뛴다
+    const residence = residenceMonthsAt(input, date);
+    const { rate } = longTermRate(holdYears * 12, residence, input.isOneHouseExempt);
     out.push({ holdYears, date, rate, reached: input.today >= date });
   }
   return out;

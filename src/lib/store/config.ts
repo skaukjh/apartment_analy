@@ -39,6 +39,10 @@ export const holdingSchema = apartmentRefSchema.extend({
   acquisitionCost: z.number().nonnegative().default(0),
   capitalExpenditure: z.number().nonnegative().default(0),
   residenceMonths: z.number().nonnegative().default(0),
+  residenceSince: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, '거주 시작일 형식은 YYYY-MM-DD 입니다')
+    .optional(),
   loanBalance: z.number().nonnegative().default(0),
   loanRate: z.number().nonnegative().default(0),
   leaseDeposit: z.number().nonnegative().default(0),

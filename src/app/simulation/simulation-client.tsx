@@ -190,6 +190,7 @@ export function SimulationClient({ config, quotes }: Props) {
     const m = longTermMilestone({
       acquiredAt: holding.acquiredAt,
       residenceMonths: holding.residenceMonths,
+      residenceSince: holding.residenceSince,
       isOneHouseExempt: config.household.ownedHouseCount <= 1,
       today: todayKst(),
     });
@@ -204,6 +205,7 @@ export function SimulationClient({ config, quotes }: Props) {
     return longTermLadder({
       acquiredAt: holding.acquiredAt,
       residenceMonths: holding.residenceMonths,
+      residenceSince: holding.residenceSince,
       isOneHouseExempt: config.household.ownedHouseCount <= 1,
       today: todayKst(),
     });

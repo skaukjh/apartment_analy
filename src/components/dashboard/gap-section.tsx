@@ -22,6 +22,7 @@ import {
   LONG_TERM_MIN_YEARS,
   calcCapitalGainsTax,
   longTermMilestone,
+  residenceMonthsAt,
   twoYearMilestone,
 } from '@/lib/tax/capital-gains';
 import { calcTransactionCost } from '@/lib/tax/transaction-costs';
@@ -162,7 +163,9 @@ export function GapSection({ config, quotes }: Props) {
             expenses: holding.acquisitionCost + holding.capitalExpenditure + sellCost.brokerFee,
             acquiredAt: holding.acquiredAt,
             soldAt,
-            residenceMonths: holding.residenceMonths,
+            /* 매도 시점 기준으로 거주기간을 다시 센다 — 오늘 값으로 굳혀 두면
+               "3년 뒤에 팔면" 을 볼 때 공제율이 실제보다 낮게 나온다. */
+            residenceMonths: residenceMonthsAt(holding, soldAt),
             isOneHouseExempt: config.household.ownedHouseCount <= 1,
             multiHouseSurcharge: false,
             isRegulated: config.household.holdingIsRegulated,
@@ -192,6 +195,7 @@ export function GapSection({ config, quotes }: Props) {
         const lt = longTermMilestone({
           acquiredAt: holding.acquiredAt,
           residenceMonths: holding.residenceMonths,
+          residenceSince: holding.residenceSince,
           isOneHouseExempt: config.household.ownedHouseCount <= 1,
           today,
         });
