@@ -350,13 +350,28 @@ export async function saveSnapshot(payload: unknown): Promise<void> {
   if (error) console.error('[store] 스냅샷 저장 실패:', error.message);
 }
 
-/** n일 전 스냅샷 (갭 변화 비교용) */
-export async function loadSnapshotBefore(days: number): Promise<unknown | null> {
+/**
+ * n일 전 스냅샷 (갭 변화 비교용).
+ *
+ * userId 를 반드시 넘긴다. 스냅샷은 사용자별로 저장되는데 조회에서 안 가리면
+ * 다른 사용자의 최신 스냅샷 한 줄이 잡히고, 아파트 id 가 하나도 안 겹쳐
+ * 갭 변화가 조용히 사라진다 — 사용자가 둘 이상이면 뒤에 있는 사람은
+ * "전주/전월/전분기 대비" 를 영영 못 본다.
+ */
+export async function loadSnapshotBefore(
+  days: number,
+  userId: string = 'default',
+): Promise<unknown | null> {
   const before = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   const client = getAdminClient();
 
   if (!client) {
-    return memoryState().snapshots.find((s) => s.capturedAt <= before)?.payload ?? null;
+    return (
+      memoryState().snapshots.find(
+        (s) =>
+          s.capturedAt <= before && (s.payload as { userId?: string } | null)?.userId === userId,
+      )?.payload ?? null
+    );
   }
 
   /* dashboard_snapshot 은 여러 용도가 공유한다 (AI 요약 캐시·정책 확인 표시·
@@ -367,6 +382,7 @@ export async function loadSnapshotBefore(days: number): Promise<unknown | null> 
     .select('payload')
     .lte('captured_at', before)
     .not('payload->gaps', 'is', null)
+    .eq('payload->>userId', userId)
     .order('captured_at', { ascending: false })
     .limit(1)
     .maybeSingle();

@@ -382,10 +382,11 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
      전주(브리핑 문구용)에 더해 전월·전분기까지 채운다: 주 단위 변화는 실거래 한 건에도
      출렁여서 방향을 읽기 어렵고, 갈아타기는 월·분기 단위로 판단하는 일이라서다. */
   try {
+    const snapshotUser = options.userId ?? 'default';
     const [weekAgo, monthAgo, quarterAgo] = await Promise.all([
-      loadSnapshotBefore(7) as Promise<{ gaps?: GapSummary[] } | null>,
-      loadSnapshotBefore(30) as Promise<{ gaps?: GapSummary[] } | null>,
-      loadSnapshotBefore(90) as Promise<{ gaps?: GapSummary[] } | null>,
+      loadSnapshotBefore(7, snapshotUser) as Promise<{ gaps?: GapSummary[] } | null>,
+      loadSnapshotBefore(30, snapshotUser) as Promise<{ gaps?: GapSummary[] } | null>,
+      loadSnapshotBefore(90, snapshotUser) as Promise<{ gaps?: GapSummary[] } | null>,
     ]);
     const findPrev = (snapshot: { gaps?: GapSummary[] } | null, g: GapSummary) =>
       snapshot?.gaps?.find((b) => b.holdingId === g.holdingId && b.targetId === g.targetId);
