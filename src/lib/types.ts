@@ -182,6 +182,14 @@ export interface UserConfig {
   briefingFormat: 'summary' | 'full' | 'image';
   /** 개인 OpenAI 키 (BYOK). 있으면 AI 기능을 자기 비용으로 쓴다. 서버에서만 사용. */
   openaiApiKey?: string;
+  /**
+   * 목표 아파트에 쓸 예산 상한 (원). 비우면 상한 없음.
+   *
+   * 갈아탈 집을 고를 때 정작 흔들리는 건 예산이다 — 등록할 때는 상한 안이었어도
+   * 몇 달 뒤 실거래가 올라 조용히 넘어가 있곤 한다. 이 값을 두면 화면을 열 때
+   * 넘어선 목표를 짚어주고, 같은 단지에서 아직 상한 안에 있는 평형을 제안한다.
+   */
+  targetBudgetCap?: number;
   updatedAt: string;
 }
 
@@ -696,8 +704,34 @@ export interface DashboardData {
   /** 요구사항 8 */
   macro: MacroIndicator[];
   schedule: ScheduleEvent[];
+  /** 예산 상한을 넘어선 목표 아파트 (상한 미설정이면 빈 배열) */
+  budgetAlerts: BudgetCapAlert[];
   /** 데이터 소스 상태 */
   sourceStatus: SourceStatus[];
+}
+
+/** 예산 상한 안에 아직 남아 있는 같은 단지의 다른 평형 */
+export interface BudgetAlternativeArea {
+  areaM2: number;
+  /** 가장 최근 실거래가 (원) */
+  price: number;
+  lastDealDate: string;
+  /** 최근 6개월 거래 건수 — 표본이 얇으면 화면에서 그렇게 밝힌다 */
+  recentTradeCount: number;
+}
+
+/** 목표 아파트가 예산 상한을 넘었다는 알림 */
+export interface BudgetCapAlert {
+  targetId: string;
+  complexName: string;
+  areaM2: number;
+  /** 현재 대표가 = 가장 최근 실거래가 (원) */
+  price: number;
+  lastDealDate?: string;
+  /** 상한 초과액 (원) */
+  over: number;
+  /** 상한 안에 있는 같은 단지의 평형 — 큰 평형부터 */
+  alternatives: BudgetAlternativeArea[];
 }
 
 export interface GapSummary {

@@ -47,6 +47,7 @@ import { calcTransactionCost } from '@/lib/tax/transaction-costs';
 import { calcCapitalGainsTax, residenceMonthsAt } from '@/lib/tax/capital-gains';
 import { calcLoanLimit } from '@/lib/tax/loan-limit';
 import { regulationOf } from '@/lib/analysis/regulation';
+import { findBudgetCapAlerts } from '@/lib/analysis/budget-cap';
 
 /* ------------------------------------------------------------------ */
 /* 시세 산출                                                            */
@@ -616,6 +617,14 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
   /* --- 8) 주요 일정 --- */
   const schedule = buildSchedule(60);
 
+  /* --- 9) 예산 상한 초과 목표 ---
+     같은 tradesByRegion 을 넘겨 같은 단지의 더 작은 평형을 함께 찾는다. */
+  const budgetAlerts = findBudgetCapAlerts(
+    config,
+    quotes,
+    (lawdCd) => tradesByRegion.get(lawdCd) ?? [],
+  );
+
   return {
     generatedAt,
     config,
@@ -630,6 +639,7 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
     extremes,
     macro,
     schedule,
+    budgetAlerts,
     sourceStatus,
   };
 }

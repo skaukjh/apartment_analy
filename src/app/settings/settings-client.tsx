@@ -1468,6 +1468,15 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
               }
             />
           </Field>
+          <Field
+            label="목표 아파트 예산 상한"
+            hint="이 값을 넘은 목표는 홈 화면에서 경고하고, 같은 단지의 더 작은 평형을 제안합니다. 0이면 상한 없음"
+          >
+            <MoneyInput
+              value={config.targetBudgetCap ?? 0}
+              onChange={(v) => patch({ targetBudgetCap: v > 0 ? v : undefined })}
+            />
+          </Field>
         </div>
 
         {regulationHits.length > 0 ? (

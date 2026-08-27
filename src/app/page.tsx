@@ -14,6 +14,7 @@ import { GapSection } from '@/components/dashboard/gap-section';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { AiAdvisor } from '@/components/dashboard/ai-advisor';
 import { DemoNotice } from '@/components/demo-notice';
+import { BudgetCapAlertBanner } from '@/components/dashboard/budget-cap-alert';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -83,6 +84,9 @@ export default async function HomePage() {
       </div>
 
       {sessionUser ? null : <DemoNotice />}
+
+      {/* 예산 상한을 넘은 목표 — 화면을 열자마자 보이도록 맨 위에 */}
+      <BudgetCapAlertBanner alerts={data.budgetAlerts} cap={data.config.targetBudgetCap} />
 
       {empty ? (
         <Alert>

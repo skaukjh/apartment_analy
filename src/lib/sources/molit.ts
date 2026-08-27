@@ -439,12 +439,24 @@ export function filterComplex(
 ): TradeRecord[] {
   const key = looseNameKey(complexName);
   if (!key) return [];
-  return trades
-    .filter((t) => {
-      const name = looseNameKey(t.complexName);
-      return (
-        (name.includes(key) || key.includes(name)) && Math.abs(t.areaM2 - areaM2) <= areaTolerance
-      );
-    })
-    .sort((a, b) => b.dealDate.localeCompare(a.dealDate));
+
+  const inArea = trades.filter((t) => Math.abs(t.areaM2 - areaM2) <= areaTolerance);
+
+  /* 이름이 정확히 같은 거래가 있으면 그것만 쓴다.
+     괄호를 떼는 규칙 탓에 서로 다른 단지가 한 키로 뭉개지는 곳이 있다 —
+     분당 정자동 "상록마을(우성)1 · (임광) · (보성) · (라이프2차)"는 전부 "상록마을"이
+     되어 부분일치로 한 덩어리가 된다. 같은 85㎡가 우성1은 23.8억, 보성은 18.2억이라
+     섞이면 대표가가 통째로 어긋난다.
+     완전일치가 없을 때만 예전처럼 부분일치로 물러선다 — 사람이 부르는 이름과 등록명이
+     다른 경우("상계주공7단지↔상계주공7(고층)", "자양우성2차↔우성2")를 잡기 위함이다. */
+  const exact = inArea.filter((t) => looseNameKey(t.complexName) === key);
+  const matched =
+    exact.length > 0
+      ? exact
+      : inArea.filter((t) => {
+          const name = looseNameKey(t.complexName);
+          return name.includes(key) || key.includes(name);
+        });
+
+  return matched.sort((a, b) => b.dealDate.localeCompare(a.dealDate));
 }

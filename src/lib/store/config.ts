@@ -126,6 +126,7 @@ export const draftConfigSchema = z.object({
   briefingHour: z.number().int().min(0).max(23).default(8),
   briefingFormat: z.enum(['summary', 'full', 'image']).default('summary'),
   openaiApiKey: z.string().trim().max(200).optional(),
+  targetBudgetCap: z.number().nonnegative().optional(),
   updatedAt: z.string().default(() => new Date().toISOString()),
 });
 
@@ -140,6 +141,7 @@ export const userConfigSchema = z.object({
   briefingHour: z.number().int().min(0).max(23).default(8),
   briefingFormat: z.enum(['summary', 'full', 'image']).default('summary'),
   openaiApiKey: z.string().trim().max(200).optional(),
+  targetBudgetCap: z.number().nonnegative().optional(),
   updatedAt: z.string().default(() => new Date().toISOString()),
 });
 
