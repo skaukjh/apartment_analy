@@ -9,6 +9,7 @@ import {
   LineChart,
   LogIn,
   Moon,
+  Newspaper,
   Settings,
   Sun,
   Sparkles,
@@ -30,6 +31,7 @@ const NAV = [
   { href: '/', label: '내 갈아타기', short: '갈아타기', icon: Building2 },
   { href: '/simulation', label: '시뮬레이션', short: '시뮬', icon: LineChart },
   { href: '/market', label: '시장 동향', short: '시장', icon: TrendingUp },
+  { href: '/complex-news', label: '단지 소식', short: '단지', icon: Newspaper },
   { href: '/policy', label: '정책·뉴스', short: '정책', icon: Landmark },
   { href: '/settings', label: '설정', short: '설정', icon: Settings },
 ];

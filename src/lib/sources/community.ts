@@ -31,7 +31,7 @@ interface NaverCafeItem {
 const AD_PATTERN =
   /(분양\s*문의|상담\s*문의|상담\s*환영|모델\s*하우스|견본\s*주택|홍보관|사전\s*예약|프리미엄\s*안내|동\s*호수\s*지정|잔여\s*세대|☎|📞|010[-.\s]?\d{3,4}[-.\s]?\d{4}|공인중개사\s*사무소|매물\s*접수)/;
 
-function isAd(title: string, summary: string): boolean {
+export function isAd(title: string, summary: string): boolean {
   const text = `${title} ${summary}`;
   if (AD_PATTERN.test(text)) return true;
   // "분양"이 과도하게 반복되면 홍보 글일 확률이 높다
