@@ -1,7 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ExternalLink, Loader2, MessageSquare, Newspaper, Plus, Search, X } from 'lucide-react';
+import {
+  ExternalLink,
+  Filter,
+  Loader2,
+  MessageSquare,
+  Newspaper,
+  Plus,
+  Search,
+  X,
+} from 'lucide-react';
 import type { ComplexFeed, ComplexFeedItem } from '@/lib/sources/complex-feed';
 import { EmptyHint, SectionCard } from '@/components/ui-bits';
 import { Badge } from '@/components/ui/badge';
@@ -152,10 +161,10 @@ function ComplexCard({ feed }: { feed: ComplexFeed }) {
           <TabsTrigger value="news">기사 {feed.news.length}</TabsTrigger>
         </TabsList>
         <TabsContent value="blog" className="mt-2">
-          <FeedList items={feed.blogs} empty="최근 블로그 글이 없습니다." />
+          <FeedList items={feed.blogs} empty="주제에 맞는 최근 블로그 글이 없습니다." />
         </TabsContent>
         <TabsContent value="cafe" className="mt-2">
-          <FeedList items={feed.cafes} empty="최근 카페 글이 없습니다." />
+          <FeedList items={feed.cafes} empty="주제에 맞는 최근 카페 글이 없습니다." />
           {feed.cafes.length > 0 ? (
             <p className="text-muted-foreground mt-2 text-[11px]">
               카페 글은 네이버가 작성일을 주지 않아 날짜를 표시하지 않습니다. 순서는 최신순입니다.
@@ -163,9 +172,15 @@ function ComplexCard({ feed }: { feed: ComplexFeed }) {
           ) : null}
         </TabsContent>
         <TabsContent value="news" className="mt-2">
-          <FeedList items={feed.news} empty="최근 기사가 없습니다." />
+          <FeedList items={feed.news} empty="주제에 맞는 최근 기사가 없습니다." />
         </TabsContent>
       </Tabs>
+      {feed.dropped > 0 ? (
+        <p className="text-muted-foreground mt-3 flex items-center gap-1 border-t pt-2 text-[11px]">
+          <Filter className="size-3" />
+          단지 이름만 스쳐 간 글(맛집·인테리어·학원 등) {feed.dropped}건은 제외했습니다.
+        </p>
+      ) : null}
     </SectionCard>
   );
 }
@@ -175,6 +190,9 @@ function ComplexCard({ feed }: { feed: ComplexFeed }) {
  *
  * 지켜보는 단지 이름을 목록으로 넣어두면 단지마다 블로그·카페·기사를
  * 최신순 10건씩 모아 보여준다. 목록은 브라우저에 저장돼 다음에도 그대로 뜬다.
+ *
+ * 결과는 **한 번에 한 단지만** 펼친다. 단지를 아래로 죽 늘어놓으면 열 단지째에는
+ * 어느 단지 글인지 확인하려고 계속 위로 올라가야 한다. 단지 칩이 곧 선택 버튼이다.
  */
 export function ComplexNewsClient({ suggestions }: { suggestions: string[] }) {
   const rawNames = useSyncExternalStore(subscribe, readSnapshot, serverSnapshot);
@@ -182,6 +200,7 @@ export function ComplexNewsClient({ suggestions }: { suggestions: string[] }) {
 
   const [draft, setDraft] = useState('');
   const [feeds, setFeeds] = useState<ComplexFeed[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
@@ -190,6 +209,7 @@ export function ComplexNewsClient({ suggestions }: { suggestions: string[] }) {
   const run = useCallback(async (targets: string[]) => {
     if (targets.length === 0) {
       setFeeds([]);
+      setSelected(null);
       return;
     }
     setLoading(true);
@@ -198,7 +218,15 @@ export function ComplexNewsClient({ suggestions }: { suggestions: string[] }) {
       const res = await fetch(`/api/complex/feed?names=${encodeURIComponent(targets.join(','))}`);
       const json = (await res.json()) as FeedResponse;
       if (!json.ok) throw new Error(json.error ?? '소식을 가져오지 못했습니다.');
-      setFeeds(json.feeds ?? []);
+      const next = json.feeds ?? [];
+      setFeeds(next);
+      /* 보던 단지가 결과에 그대로 있으면 유지하고, 없으면 첫 단지를 연다.
+         모으자마자 빈 화면을 보여주면 한 번 더 눌러야 한다. */
+      setSelected((prev) =>
+        prev && next.some((f) => nameKey(f.name) === nameKey(prev))
+          ? prev
+          : (next[0]?.name ?? null),
+      );
       setFetchedAt(json.generatedAt ?? new Date().toISOString());
     } catch (e) {
       setError((e as Error).message);
@@ -235,12 +263,27 @@ export function ComplexNewsClient({ suggestions }: { suggestions: string[] }) {
   const removeName = useCallback(
     (name: string) => {
       writeNames(names.filter((n) => n !== name));
-      setFeeds((prev) => prev.filter((f) => f.name !== name));
+      setFeeds((prev) => {
+        const next = prev.filter((f) => f.name !== name);
+        // 보고 있던 단지를 지웠으면 남은 첫 단지로 옮긴다
+        setSelected((cur) =>
+          cur && nameKey(cur) === nameKey(name) ? (next[0]?.name ?? null) : cur,
+        );
+        return next;
+      });
     },
     [names],
   );
 
   const unused = suggestions.filter((s) => !names.some((n) => nameKey(n) === nameKey(s)));
+
+  /** 칩에 건수를 붙이고 선택된 단지를 찾는 데 쓴다 */
+  const feedByName = useMemo(() => {
+    const map = new Map<string, ComplexFeed>();
+    feeds.forEach((f) => map.set(nameKey(f.name), f));
+    return map;
+  }, [feeds]);
+  const selectedFeed = selected ? feedByName.get(nameKey(selected)) : undefined;
 
   return (
     <div className="space-y-6">
@@ -250,7 +293,7 @@ export function ComplexNewsClient({ suggestions }: { suggestions: string[] }) {
             <Newspaper className="size-4" /> 지켜볼 단지
           </>
         }
-        description="단지명을 넣고 [소식 모으기]를 누르면 단지마다 블로그·카페·기사를 최신순 10건씩 모읍니다. 목록은 이 브라우저에 저장됩니다."
+        description="단지명을 넣고 [소식 모으기]를 누르면 단지마다 블로그·카페·기사를 최신순 10건씩 모읍니다. 재건축·단지 분석·거래 이야기만 남기고 맛집·인테리어 같은 생활 정보는 걸러냅니다. 아래에서 단지를 누르면 그 단지 소식만 펼쳐집니다. 목록은 이 브라우저에 저장됩니다."
         badge={
           <Badge variant="outline">
             {names.length} / {MAX_NAMES}
@@ -291,22 +334,45 @@ export function ComplexNewsClient({ suggestions }: { suggestions: string[] }) {
 
           {names.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
-              {names.map((n) => (
-                <span
-                  key={n}
-                  className="bg-secondary text-secondary-foreground inline-flex items-center gap-1 rounded-full py-1 pr-1 pl-2.5 text-sm"
-                >
-                  {n}
-                  <button
-                    type="button"
-                    aria-label={`${n} 제거`}
-                    onClick={() => removeName(n)}
-                    className="hover:bg-background/70 rounded-full p-0.5"
+              {names.map((n) => {
+                const feed = feedByName.get(nameKey(n));
+                const active = Boolean(selected) && nameKey(selected ?? '') === nameKey(n);
+                const count = feed
+                  ? feed.blogs.length + feed.cafes.length + feed.news.length
+                  : undefined;
+                return (
+                  <span
+                    key={n}
+                    className={cn(
+                      'inline-flex items-center gap-0.5 rounded-full py-0.5 pr-1 pl-0.5 text-sm transition-colors',
+                      active
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-secondary-foreground',
+                    )}
                   >
-                    <X className="size-3.5" />
-                  </button>
-                </span>
-              ))}
+                    <button
+                      type="button"
+                      onClick={() => setSelected(n)}
+                      aria-pressed={active}
+                      title={feed ? `${n} 소식 보기` : `${n} — 아직 모으지 않았습니다`}
+                      className="hover:bg-background/40 rounded-full px-2 py-0.5"
+                    >
+                      {n}
+                      {count !== undefined ? (
+                        <span className="tabular ml-1 opacity-70">{count}</span>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${n} 제거`}
+                      onClick={() => removeName(n)}
+                      className="hover:bg-background/70 rounded-full p-0.5"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </span>
+                );
+              })}
             </div>
           ) : (
             <p className="text-muted-foreground text-sm">
@@ -350,12 +416,13 @@ export function ComplexNewsClient({ suggestions }: { suggestions: string[] }) {
         </EmptyHint>
       ) : null}
 
-      {feeds.length > 0 ? (
-        <div className="grid gap-6 xl:grid-cols-2">
-          {feeds.map((f) => (
-            <ComplexCard key={f.name} feed={f} />
-          ))}
-        </div>
+      {selectedFeed ? <ComplexCard key={selectedFeed.name} feed={selectedFeed} /> : null}
+
+      {!loading && !selectedFeed && feeds.length > 0 ? (
+        <EmptyHint>
+          <MessageSquare className="mx-auto mb-2 size-5" />위 목록에서 단지를 누르면 그 단지 소식만
+          여기에 표시됩니다.
+        </EmptyHint>
       ) : null}
 
       {!loading && feeds.length === 0 && names.length > 0 ? (

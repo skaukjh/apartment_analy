@@ -26,7 +26,8 @@ export default async function ComplexNewsPage() {
         <h1 className="text-2xl font-bold tracking-tight">단지 소식</h1>
         <p className="text-muted-foreground text-sm">
           단지명을 넣으면 그 단지의 블로그·카페 글과 기사를 최신순으로 모읍니다 — 네이버 검색 API
-          기반. 개인 글은 분위기 참고용이며 수치 판단에는 쓰지 않습니다.
+          기반. 재건축 현황·단지 분석·거래 소식만 남기고 맛집·인테리어 같은 생활 정보는 걸러냅니다.
+          개인 글은 분위기 참고용이며 수치 판단에는 쓰지 않습니다.
         </p>
       </div>
 
