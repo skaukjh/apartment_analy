@@ -15,6 +15,18 @@ const CONFIG_ID = 'default';
 /* 스키마 검증                                                          */
 /* ------------------------------------------------------------------ */
 
+/**
+ * 호가를 본 날 (YYYY-MM-DD).
+ *
+ * 호가는 사람이 넣는 값이고 자동으로 낡는다. 값만 저장하면 21.5억이 어제 본
+ * 값인지 반년 전 값인지 구분할 수 없어, 실제로 "이 호가 어디서 온 거냐"를
+ * 되짚어야 했다. 날짜를 함께 저장해 화면이 나이를 밝히게 한다.
+ */
+const askingPriceAtSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, '호가 입력일 형식은 YYYY-MM-DD 입니다')
+  .optional();
+
 const apartmentRefSchema = z.object({
   id: z.string().min(1),
   complexName: z.string().min(1, '단지명을 입력하세요'),
@@ -47,11 +59,13 @@ export const holdingSchema = apartmentRefSchema.extend({
   loanRate: z.number().nonnegative().default(0),
   leaseDeposit: z.number().nonnegative().default(0),
   manualPrice: z.number().nonnegative().optional(),
+  askingPriceAt: askingPriceAtSchema,
 });
 
 export const targetSchema = apartmentRefSchema.extend({
   kind: z.literal('target'),
   manualPrice: z.number().nonnegative().optional(),
+  askingPriceAt: askingPriceAtSchema,
   priority: z.number().int().min(1).default(1),
   memo: z.string().optional(),
   /* 목표 후보 on/off — 끈 단지도 입력값은 남기고 계산에서만 빠진다 */

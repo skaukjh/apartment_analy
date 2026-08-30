@@ -402,6 +402,19 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
       ],
     });
 
+  /**
+   * 호가를 바꿀 때 붙일 값 묶음.
+   *
+   * 호가와 "그 호가를 본 날"을 따로 두면 값만 고치고 날짜는 옛날 것이 남는다 —
+   * 그러면 날짜가 오히려 거짓말을 한다. 항상 같이 바꾸도록 한 곳에 묶는다.
+   * 호가를 비우면 날짜도 지운다 (없는 값의 입력일은 의미가 없다).
+   */
+  function askingPricePatch(price: number | undefined) {
+    return price
+      ? { manualPrice: price, askingPriceAt: todayKst() }
+      : { manualPrice: undefined, askingPriceAt: undefined };
+  }
+
   const updateHolding = (id: string, p: Partial<Holding>) =>
     patch({ holdings: config.holdings.map((h) => (h.id === id ? { ...h, ...p } : h)) });
 
@@ -890,7 +903,7 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                         savedAt,
                         summary: `${item.complexName || '(이름 없음)'} ${formatArea(item.areaM2)} · 취득가 ${
                           item.acquisitionPrice > 0 ? formatKrw(item.acquisitionPrice) : '미입력'
-                        } · 호가 ${item.manualPrice ? formatKrw(item.manualPrice) : '실거래 기준'} · 대출 ${
+                        } · 호가 ${item.manualPrice ? `${formatKrw(item.manualPrice)}${item.askingPriceAt ? ` (${item.askingPriceAt})` : ''}` : '실거래 기준'} · 대출 ${
                           item.loanBalance > 0 ? formatKrw(item.loanBalance) : '없음'
                         }`,
                         restore: () => {
@@ -1003,10 +1016,13 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                       onChange={(v) => updateHolding(h.id, { capitalExpenditure: v })}
                     />
                   </Field>
-                  <Field label="현재 호가" hint="비우면 최근 실거래 중앙값을 사용합니다">
+                  <Field
+                    label="현재 호가"
+                    hint="비우면 직전 실거래가를 사용합니다. 저장하면 오늘 날짜가 '호가를 본 날'로 함께 기록됩니다"
+                  >
                     <MoneyInput
                       value={h.manualPrice ?? 0}
-                      onChange={(v) => updateHolding(h.id, { manualPrice: v || undefined })}
+                      onChange={(v) => updateHolding(h.id, askingPricePatch(v || undefined))}
                     />
                   </Field>
                   <Field label="남은 대출 잔액">
@@ -1206,7 +1222,9 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                       rows={cardVersions((c) => c.targets, t.id).map(({ savedAt, item }) => ({
                         savedAt,
                         summary: `${item.complexName || '(이름 없음)'} ${formatArea(item.areaM2)} · 호가 ${
-                          item.manualPrice ? formatKrw(item.manualPrice) : '실거래 기준'
+                          item.manualPrice
+                            ? `${formatKrw(item.manualPrice)}${item.askingPriceAt ? ` (${item.askingPriceAt})` : ''}`
+                            : '실거래 기준'
                         } · 우선순위 ${item.priority}`,
                         restore: () => {
                           updateTarget(t.id, item);
@@ -1246,7 +1264,7 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                       onPick={(p) => {
                         updateTarget(t.id, {
                           areaM2: p.areaM2,
-                          manualPrice: p.price || undefined,
+                          ...askingPricePatch(p.price || undefined),
                           builtYear: p.builtYear ?? t.builtYear,
                           dong: p.dong ?? t.dong,
                         });
@@ -1256,10 +1274,13 @@ export function SettingsClient({ initialConfig, kakao, account, flags }: Props) 
                       }}
                     />
                   </Field>
-                  <Field label="현재 호가" hint="비우면 최근 실거래 중앙값을 사용합니다">
+                  <Field
+                    label="현재 호가"
+                    hint="비우면 직전 실거래가를 사용합니다. 저장하면 오늘 날짜가 '호가를 본 날'로 함께 기록됩니다"
+                  >
                     <MoneyInput
                       value={t.manualPrice ?? 0}
-                      onChange={(v) => updateTarget(t.id, { manualPrice: v || undefined })}
+                      onChange={(v) => updateTarget(t.id, askingPricePatch(v || undefined))}
                     />
                   </Field>
                   <Field label="우선순위" hint="1이 가장 높음">

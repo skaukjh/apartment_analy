@@ -109,24 +109,52 @@ export async function loadRegionMonthly(
     return result;
   }
 
-  // PostgREST 기본 상한(1,000행) 때문에 페이지를 넘겨가며 전부 받는다
+  /* PostgREST 기본 상한(1,000행) 때문에 페이지를 넘겨가며 전부 받는다.
+     지역 181개 × 4년이면 8~9페이지인데, 순차로 넘기면 왕복이 그대로 쌓여
+     이 함수 하나가 3.9초를 먹었다. 먼저 개수를 세어 페이지 수를 알아낸 뒤
+     전부 동시에 받는다 — 왕복 9회가 사실상 2회가 된다. */
   const PAGE = 1000;
-  const rows: Array<Record<string, unknown>> = [];
-  for (let offset = 0; ; offset += PAGE) {
-    let query = client
+  const pageQuery = (offset: number) => {
+    let q = client
       .from('region_monthly')
       .select('lawd_cd, month, price_per_m2, trade_count')
       .gte('month', fromMonth)
+      /* 정렬 키를 (month, lawd_cd) 로 못박는다. month 만으로는 같은 달 안에서
+         순서가 정해지지 않아, 페이지 경계에서 행이 겹치거나 빠질 수 있다.
+         (lawd_cd, month) 가 PK 라 이 둘이면 순서가 유일하게 결정된다. */
       .order('month', { ascending: true })
+      .order('lawd_cd', { ascending: true })
       .range(offset, offset + PAGE - 1);
+    if (lawdCodes && lawdCodes.length > 0) q = q.in('lawd_cd', lawdCodes);
+    return q;
+  };
 
-    if (lawdCodes && lawdCodes.length > 0) query = query.in('lawd_cd', lawdCodes);
+  let countQuery = client
+    .from('region_monthly')
+    .select('lawd_cd', { count: 'exact', head: true })
+    .gte('month', fromMonth);
+  if (lawdCodes && lawdCodes.length > 0) countQuery = countQuery.in('lawd_cd', lawdCodes);
 
-    const { data, error } = await query;
+  const { count, error: countError } = await countQuery;
+  if (countError) throw new Error(`region_monthly 개수 조회 실패: ${countError.message}`);
+
+  const rows: Array<Record<string, unknown>> = [];
+  const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE));
+  const results = await Promise.all(Array.from({ length: pages }, (_, i) => pageQuery(i * PAGE)));
+  for (const { data, error } of results) {
     if (error) throw new Error(`region_monthly 조회 실패: ${error.message}`);
-
     rows.push(...(data ?? []));
-    if (!data || data.length < PAGE) break;
+  }
+
+  /* 개수를 센 뒤 행이 늘었을 수 있다 (백필이 도는 중). 마지막 페이지가 꽉 찼으면
+     뒤가 더 있다는 뜻이니 그때만 순차로 이어 받는다 — 평소에는 돌지 않는 길이다. */
+  if (results.at(-1)?.data?.length === PAGE) {
+    for (let offset = pages * PAGE; ; offset += PAGE) {
+      const { data, error } = await pageQuery(offset);
+      if (error) throw new Error(`region_monthly 조회 실패: ${error.message}`);
+      rows.push(...(data ?? []));
+      if (!data || data.length < PAGE) break;
+    }
   }
 
   const result: Record<string, RegionPricePoint[]> = {};

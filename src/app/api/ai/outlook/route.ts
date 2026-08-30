@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { buildDashboard } from '@/lib/pipeline/dashboard';
+import { buildDashboardCached } from '@/lib/pipeline/dashboard';
 import { buildMarketOutlook } from '@/lib/ai/market-outlook';
 import { loadCachedOutlook, saveOutlookCache, OUTLOOK_TTL_MS } from '@/lib/ai/outlook-cache';
 import { hasOpenAI } from '@/lib/ai/client';
@@ -76,7 +76,10 @@ export async function GET(request: Request) {
       });
     }
 
-    const data = await buildDashboard({ userId });
+    /* 대시보드는 캐시된 것을 쓴다. 여기서 buildDashboard 를 직접 부르면 페이지가
+       방금 만든 것과 똑같은 18~70초짜리 조립을 한 번 더 한다 — 재생성해야 하는 건
+       AI 요약이지 그 입력이 되는 지표가 아니다. */
+    const data = await buildDashboardCached(userId);
     // "다시 생성" 버튼은 강제 재생성이므로 중복 건너뛰기를 적용하지 않는다
     const outlook = await buildMarketOutlook(data, { apiKey: ai.key });
     if (!outlook) {

@@ -168,9 +168,10 @@ export async function GET(request: Request) {
       reason: (e as Error).message,
     }));
 
-    /* 3) AI 요약을 미리 만들어 캐시에 넣는다.
+    /* 3) 화면 캐시를 예열하고, 가능한 사용자는 AI 요약까지 미리 만든다.
        사용자가 페이지를 열 때 20~40초를 기다리지 않아도 되고,
-       호출 횟수가 시간당 1회로 고정돼 비용이 예측 가능해진다. */
+       OpenAI 호출 횟수가 시간당 1회로 고정돼 비용이 예측 가능해진다.
+       대시보드 캐시는 전원, AI 요약은 키가 있는 사용자만. */
     let outlookCached = 0;
     {
       /* 관리자 uid 는 개인 키 없이 운영자 키를 쓴다. 여기서 빼먹으면 관리자가
@@ -183,12 +184,18 @@ export async function GET(request: Request) {
              전가되지 않게. */
           const useEnvKey = uid === 'default' || adminIds.has(uid);
           const cfgKey = useEnvKey ? undefined : (await loadConfig(uid)).openaiApiKey;
+
+          /* 대시보드 캐시는 AI 키와 무관하게 모두 채운다.
+             예전에는 키 검사(continue)가 이 아래 저장보다 앞에 있어, 개인 OpenAI
+             키가 없는 회원은 AI 요약뿐 아니라 화면 캐시까지 통째로 건너뛰었다 —
+             그 회원은 페이지를 열 때마다 18초짜리 조립을 직접 기다렸다.
+             조립 비용은 우리 DB 조회뿐이라 남에게 전가되는 비용이 없다. */
+          const data = await buildDashboard({ userId: uid });
+          await saveDashboardCache(uid, data).catch(() => {});
+
+          // 여기부터는 OpenAI 를 부른다 — 키가 없으면 요약만 건너뛴다
           if (!useEnvKey && !cfgKey?.trim()) continue;
           if (useEnvKey && !hasOpenAI()) continue;
-
-          const data = await buildDashboard({ userId: uid });
-          // 페이지가 즉시 읽을 수 있게 대시보드 캐시도 여기서 채운다
-          await saveDashboardCache(uid, data).catch(() => {});
 
           // 전역 시황 코멘트 — 지표가 바뀌었을 때만 재생성 (default 1회)
           if (uid === 'default') await refreshSentimentNote(data).catch(() => null);

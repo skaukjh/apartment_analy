@@ -4,6 +4,7 @@
  * 개별 소스 실패는 전체를 죽이지 않고 sourceStatus 로 보고한다.
  */
 
+import { after } from 'next/server';
 import type {
   CommunityPost,
   DashboardData,
@@ -38,7 +39,7 @@ import { filterComplex } from '@/lib/sources/molit';
 import { DEFAULT_ANALYSIS_REGIONS } from '@/lib/regions';
 import { featureFlags } from '@/lib/env';
 import { maybeRefreshTrades } from './lazy-refresh';
-import { loadDashboardCache, saveDashboardCache } from './dashboard-cache';
+import { loadDashboardCacheEntry, saveDashboardCache } from './dashboard-cache';
 import { formatArea, median, todayKst } from '@/lib/format';
 import { TARGET_FRESHNESS_MONTHS, tradePriceOf } from '@/lib/analysis/price-basis';
 import { comparePeriods, monthlyMedianSeries } from '@/lib/analysis/period-compare';
@@ -56,6 +57,8 @@ import { findBudgetCapAlerts } from '@/lib/analysis/budget-cap';
 interface QuoteOptions {
   /** 사용자가 설정에 입력한 호가 */
   manualPrice?: number;
+  /** 그 호가를 본 날 (YYYY-MM-DD) */
+  askingPriceAt?: string;
   /** 법정동 — 같은 시군구 안 동명이 단지를 갈라내는 데 쓴다 */
   dong?: string;
   /**
@@ -90,7 +93,7 @@ function quoteFromTrades(
   areaM2: number,
   options: QuoteOptions = {},
 ): PriceQuote {
-  const { manualPrice, dong, freshnessMonths } = options;
+  const { manualPrice, askingPriceAt, dong, freshnessMonths } = options;
 
   // 직거래(가족 간 저가 이전 등)는 시세로 쓰지 않는다 — 실제 왜곡 사례가 있었다
   const byName = filterComplex(trades, complexName, areaM2).filter((t) => !t.directDeal);
@@ -105,7 +108,14 @@ function quoteFromTrades(
 
   if (matched.length === 0) {
     return manualPrice
-      ? { price: manualPrice, basis: 'manual', sampleSize: 0, freshnessMonths }
+      ? {
+          price: manualPrice,
+          basis: 'manual',
+          sampleSize: 0,
+          freshnessMonths,
+          askingPrice: manualPrice,
+          askingPriceAt,
+        }
       : { price: 0, basis: 'unknown', sampleSize: 0, freshnessMonths };
   }
 
@@ -147,6 +157,7 @@ function quoteFromTrades(
     medianPrice: tradePrice,
     /** 사용자가 설정에 입력한 호가 (있으면 화면에서 비교용으로 보여준다) */
     askingPrice: manualPrice,
+    askingPriceAt,
     high: Math.max(...matched.map((t) => t.price)),
     low: Math.min(...matched.map((t) => t.price)),
     changeRate: changeRate !== undefined ? Math.round(changeRate * 10) / 10 : undefined,
@@ -251,23 +262,60 @@ export interface BuildDashboardOptions {
 }
 
 /**
+ * 같은 사용자의 재조립이 겹치지 않게 하는 자물쇠.
+ *
+ * 낡은 캐시를 여러 사람이 동시에 열면 뒤쪽 갱신이 사람 수만큼 돈다.
+ * 하나가 도는 동안 나머지는 그 약속을 같이 기다린다.
+ */
+const rebuilding = new Map<string, Promise<DashboardData>>();
+
+function rebuildOnce(userId: string): Promise<DashboardData> {
+  const running = rebuilding.get(userId);
+  if (running) return running;
+
+  const task = buildDashboard({ userId })
+    .then(async (data) => {
+      await saveDashboardCache(userId, data).catch(() => {});
+      return data;
+    })
+    .finally(() => rebuilding.delete(userId));
+
+  rebuilding.set(userId, task);
+  return task;
+}
+
+/**
  * 캐시 우선 조회 — 페이지 렌더링용.
  *
  * 매시간 tick 이 buildDashboard 를 돌려 캐시를 채우므로, 페이지는
- * 대부분 저장된 결과(<1초)를 읽는다. 캐시가 없거나 낡았을 때만
- * 직접 조립하고 그 결과를 캐시에 넣는다.
+ * 대부분 저장된 결과(<1초)를 읽는다.
+ *
+ * 캐시가 만료됐어도 24시간 안쪽이면 **그 값을 먼저 돌려주고 갱신은 응답 뒤로
+ * 미룬다**(after). 예열 cron 이 걸러지는 날에도 화면은 1초 안에 뜨고, 다음
+ * 사람이 여는 화면은 방금 갱신된 값을 본다. 캐시가 아예 없을 때만 조립을
+ * 기다린다 — 첫 방문이라 보여줄 게 없으니 그 경우엔 도리가 없다.
  */
 export async function buildDashboardCached(
   userId: string,
   options: { fresh?: boolean } = {},
 ): Promise<DashboardData> {
   if (!options.fresh) {
-    const cached = await loadDashboardCache(userId);
-    if (cached) return cached;
+    const entry = await loadDashboardCacheEntry(userId);
+    if (entry && !entry.stale) return entry.data;
+
+    if (entry) {
+      /* 낡은 값을 쓰기로 했으니 갱신은 응답을 보낸 뒤에 돌린다.
+         after 는 요청 문맥 밖(스크립트·테스트)에서는 던지므로, 그때는
+         조용히 넘어가고 다음 요청이나 tick 이 채우게 둔다. */
+      try {
+        after(() => rebuildOnce(userId).catch(() => {}));
+      } catch {
+        /* 요청 문맥이 아니다 — 배경 갱신 없이 낡은 값만 돌려준다 */
+      }
+      return entry.data;
+    }
   }
-  const data = await buildDashboard({ userId });
-  await saveDashboardCache(userId, data).catch(() => {});
-  return data;
+  return rebuildOnce(userId);
 }
 
 export async function buildDashboard(options: BuildDashboardOptions = {}): Promise<DashboardData> {
@@ -284,6 +332,29 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
   /* --- 1) 실거래 집계 --- */
   const userCodes = analysisTargets(config);
   const analysisCodes = [...new Set([...DEFAULT_ANALYSIS_REGIONS, ...userCodes])];
+
+  /* 월 집계(1)와 원본 거래(3)는 서로 필요 없는 별개 조회인데 순차로 돌면
+     4초 + 3초가 그대로 더해진다. 여기서 둘 다 띄워 놓고 각자 필요한 자리에서
+     기다린다 — 사이에 낀 반등 분석은 월 집계만 쓴다. */
+  const tradeWindowStart = new Date();
+  tradeWindowStart.setMonth(tradeWindowStart.getMonth() - 24);
+  const tradeFromMonth = `${tradeWindowStart.getFullYear()}${String(tradeWindowStart.getMonth() + 1).padStart(2, '0')}`;
+
+  /* 시세 매칭은 반드시 그 아파트의 시군구 캐시 안에서만 한다.
+     전 지역을 합쳐 이름으로 찾으면 성동구 "옥수삼성"에 수서동·오금동의
+     "삼성"아파트 거래가 섞여 시세가 25.7억으로 뛰는 실제 사고가 있었다
+     (느슨한 이름 매칭이 "삼성" ⊂ "옥수삼성"을 허용하기 때문).
+
+     지역끼리도 서로 독립이라 한꺼번에 던진다 — 순차로 돌면 지역당 ~1초가
+     그대로 더해졌다 (지역 6개면 6초). 실패는 지역별로 따로 보고한다. */
+  const tradesPending = Promise.all(
+    userCodes.map((code) =>
+      loadTradeCache([code], tradeFromMonth).then(
+        (trades) => ({ code, trades, error: null as Error | null }),
+        (e: Error) => ({ code, trades: [] as TradeRecord[], error: e }),
+      ),
+    ),
+  );
 
   let seriesByRegion: Record<string, ReturnType<typeof mergeMonthlySeries>> = {};
   try {
@@ -316,27 +387,16 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
     .sort((a, b) => b.changeSinceBase - a.changeSinceBase);
 
   /* --- 3) 보유/목표 아파트 시세 (요구사항 1) --- */
-  const tradeWindowStart = new Date();
-  tradeWindowStart.setMonth(tradeWindowStart.getMonth() - 24);
-  const tradeFromMonth = `${tradeWindowStart.getFullYear()}${String(tradeWindowStart.getMonth() + 1).padStart(2, '0')}`;
-
-  /* 시세 매칭은 반드시 그 아파트의 시군구 캐시 안에서만 한다.
-     전 지역을 합쳐 이름으로 찾으면 성동구 "옥수삼성"에 수서동·오금동의
-     "삼성"아파트 거래가 섞여 시세가 25.7억으로 뛰는 실제 사고가 있었다
-     (느슨한 이름 매칭이 "삼성" ⊂ "옥수삼성"을 허용하기 때문). */
   const tradesByRegion = new Map<string, TradeRecord[]>();
-  for (const code of userCodes) {
-    try {
-      tradesByRegion.set(code, await loadTradeCache([code], tradeFromMonth));
-    } catch (e) {
-      tradesByRegion.set(code, []);
-      sourceStatus.push({
-        name: `실거래 원본 캐시 (${code})`,
-        url: '#',
-        status: 'error',
-        message: (e as Error).message,
-      });
-    }
+  for (const { code, trades, error } of await tradesPending) {
+    tradesByRegion.set(code, trades);
+    if (!error) continue;
+    sourceStatus.push({
+      name: `실거래 원본 캐시 (${code})`,
+      url: '#',
+      status: 'error',
+      message: error.message,
+    });
   }
   const userTrades: TradeRecord[] = [...tradesByRegion.values()].flat();
 
@@ -344,6 +404,7 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
   for (const h of config.holdings) {
     quotes[h.id] = quoteFromTrades(tradesByRegion.get(h.lawdCd) ?? [], h.complexName, h.areaM2, {
       manualPrice: h.manualPrice,
+      askingPriceAt: h.askingPriceAt,
       dong: h.dong,
     });
   }
@@ -352,6 +413,7 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
   for (const t of config.targets) {
     quotes[t.id] = quoteFromTrades(tradesByRegion.get(t.lawdCd) ?? [], t.complexName, t.areaM2, {
       manualPrice: t.manualPrice,
+      askingPriceAt: t.askingPriceAt,
       dong: t.dong,
       freshnessMonths: TARGET_FRESHNESS_MONTHS,
     });

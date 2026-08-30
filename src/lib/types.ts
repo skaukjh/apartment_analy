@@ -98,6 +98,8 @@ export interface Holding extends ApartmentRef {
   leaseDeposit: number;
   /** 사용자가 입력한 현재 호가/추정 시세 (원). 비우면 실거래가로 추정 */
   manualPrice?: number;
+  /** 그 호가를 본 날 (YYYY-MM-DD). 비어 있으면 언제 값인지 모른다는 뜻 */
+  askingPriceAt?: string;
 }
 
 /** 갈아타기 목표 아파트 */
@@ -105,6 +107,14 @@ export interface TargetApartment extends ApartmentRef {
   kind: 'target';
   /** 사용자가 파악한 현재 호가 (원). 비우면 실거래가로 추정 */
   manualPrice?: number;
+  /**
+   * 그 호가를 본 날 (YYYY-MM-DD).
+   *
+   * 호가는 자동으로 갱신되지 않는다 — 단지별 호가를 주는 공개 API 가 없어서
+   * 사람이 넣은 값이 그대로 남는다. 그래서 "얼마"만큼 "언제 본 값이냐"가 중요하다.
+   * 비어 있으면 화면이 "입력일 모름"으로 표시한다 (지우지는 않는다).
+   */
+  askingPriceAt?: string;
   /** 우선순위 (1이 가장 높음) */
   priority: number;
   /** 메모 */
@@ -251,6 +261,8 @@ export interface PriceQuote {
   medianPrice?: number;
   /** 사용자가 설정에 입력한 호가 (원) */
   askingPrice?: number;
+  /** 그 호가를 본 날 (YYYY-MM-DD) — 화면에서 나이를 함께 보여준다 */
+  askingPriceAt?: string;
   /** 시세 산출 근거 */
   basis: 'manual' | 'recent-trade' | 'region-index' | 'unknown';
   /** 참고한 실거래 건수 */

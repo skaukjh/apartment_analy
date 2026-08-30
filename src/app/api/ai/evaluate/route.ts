@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { configIdForRequest, getSessionUser, resolveOpenAIKey } from '@/lib/auth/server';
 import { loadConfig as loadUserConfig } from '@/lib/store/config';
 import { errorResponse } from '@/lib/api-auth';
-import { buildDashboard, buildDashboardCached } from '@/lib/pipeline/dashboard';
+import { buildDashboardCached } from '@/lib/pipeline/dashboard';
 import { loadEvaluation, saveEvaluation } from '@/lib/store/ai-evaluation';
 import { formatKrw } from '@/lib/format';
 import { buildPropertyContext } from '@/lib/ai/property-context';
@@ -68,9 +68,11 @@ export async function POST(request: Request) {
     const body = await request.json();
     const apartmentId = String(body?.apartmentId ?? '');
 
-    // 요청 사용자의 설정으로 조립해야 한다 — 기본값이면 익명(default) 설정을 읽어
-    // 로그인 사용자의 아파트 id 가 "등록되지 않은 아파트"로 404 나던 버그가 있었다
-    const data = await buildDashboard({ userId: configId });
+    /* 요청 사용자의 설정으로 조립해야 한다 — 기본값이면 익명(default) 설정을 읽어
+       로그인 사용자의 아파트 id 가 "등록되지 않은 아파트"로 404 나던 버그가 있었다.
+       캐시된 것을 쓴다 (아래 149행과 같은 이유): 여기서 필요한 건 설정과 시세라
+       18초짜리 재조립을 다시 할 이유가 없고, 설정을 저장하면 캐시는 무효화된다. */
+    const data = await buildDashboardCached(configId);
     const apartment: ApartmentRef | undefined =
       data.config.holdings.find((h) => h.id === apartmentId) ??
       data.config.targets.find((t) => t.id === apartmentId);

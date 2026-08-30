@@ -13,7 +13,10 @@ import {
 } from '@/lib/format';
 import {
   TARGET_FRESHNESS_MONTHS,
+  askingAgeDays,
+  askingGap,
   askingPremiumPct,
+  askingStaleWarning,
   tradePriceOf,
 } from '@/lib/analysis/price-basis';
 import { activeTargets, staleQuoteWarning, targetDisabledReason } from '@/lib/analysis/target-pool';
@@ -57,10 +60,37 @@ function basisLabel(basis: PriceQuote['basis']): string {
  */
 function AskingHint({ quote }: { quote?: PriceQuote }) {
   const premium = askingPremiumPct(quote);
-  if (premium === undefined) return null;
+  const gap = askingGap(quote);
+  if (premium === undefined || gap === undefined) return null;
+
+  /* 호가는 자동으로 갱신되지 않는다. 얼마인지만 보여주면 그게 어제 값인지
+     반년 전 값인지 알 수 없어, 언제 본 값인지를 같은 줄에 붙인다. */
+  const ageDays = askingAgeDays(quote);
+  const warning = askingStaleWarning(quote);
+
   return (
-    <div className="text-muted-foreground text-[11px]">
-      호가 {formatKrw(quote?.askingPrice ?? 0)} · 실거래 대비 {formatPct(premium, 1)}
+    <div className="text-[11px]">
+      <div className="text-muted-foreground">
+        호가 {formatKrw(quote?.askingPrice ?? 0)} ·{' '}
+        {gap === 0 ? (
+          '직전 실거래와 같음'
+        ) : (
+          <>
+            직전 실거래 대비 {formatSignedKrw(gap)} ({formatPct(premium, 1)})
+          </>
+        )}
+      </div>
+      <div className={warning ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}>
+        {quote?.askingPriceAt ? (
+          <>
+            {warning ? '⚠ ' : ''}
+            호가 입력 {quote.askingPriceAt}
+            {ageDays !== undefined ? ` (${ageDays === 0 ? '오늘' : `${ageDays}일 전`})` : ''}
+          </>
+        ) : (
+          <>⚠ 호가 입력일 기록 없음</>
+        )}
+      </div>
     </div>
   );
 }

@@ -59,10 +59,16 @@ DATA_GO_KR_SERVICE_KEY=<Decoding 인증키>
    - Region: **Northeast Asia (Seoul)** 권장
    - Database Password 는 따로 보관 (앱에서는 안 쓰지만 분실 시 곤란)
 2. 프로젝트 생성 후 좌측 **SQL Editor** → `New query`
-3. 아래 3개 파일 내용을 **순서대로** 붙여넣고 각각 `Run`
+3. 아래 파일 내용을 **순서대로** 붙여넣고 각각 `Run`
    - `supabase/migrations/0001_init.sql`
    - `supabase/migrations/0002_dong.sql`
    - `supabase/migrations/0003_kakao_recipients.sql`
+   - `supabase/migrations/0004_multi_user.sql`
+   - `supabase/migrations/0005_api_usage.sql`
+   - `supabase/migrations/0006_dashboard_snapshot_index.sql`
+
+   이미 쓰고 있는 프로젝트라면 아직 안 돌린 번호만 실행하면 된다.
+   전부 `if not exists` 라 다시 돌려도 안전하다.
 4. 좌측 **Project Settings → API** 에서 값 복사
 
 ```

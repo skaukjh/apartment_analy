@@ -6,7 +6,7 @@
  *
  * 자동 계산의 기준 시점은 항상 "지금"이다:
  *  - 세금·중개보수: 현행 세율표 (지방세법·소득세법·공인중개사법 시행규칙)
- *  - 시세: 최근 6개월 실거래 중앙값
+ *  - 시세: 직전 실거래가 (최근 6개월 중앙값은 참고로 함께 보여준다)
  *  - 대출금리: 한국은행 ECOS 예금은행 주택담보대출 신규취급 평균금리
  *  - 조정대상지역: 아래 목록 (정부 지정 변경 시 설정에서 직접 수정)
  */
@@ -21,7 +21,7 @@ import type {
 } from '@/lib/types';
 import { calcAcquisitionTax } from '@/lib/tax/acquisition';
 import { calcTransactionCost } from '@/lib/tax/transaction-costs';
-import { monthsBetween, todayKst } from '@/lib/format';
+import { formatKrw, monthsBetween, todayKst } from '@/lib/format';
 
 /**
  * 규제지역 판정은 analysis/regulation.ts 에 모아두고 여기서는 재수출만 한다.
@@ -183,16 +183,28 @@ export function autoFillHolding(
     filled.push({ field: 'loanRate', label: '대출 금리', value: rate, basis });
   }
 
-  // 4) 현재 호가 — 최근 실거래 중앙값
+  // 4) 현재 호가 — 직전 실거래가
   const quote = ctx.quotes[holding.id];
   if (quote && quote.basis === 'recent-trade' && quote.price > 0) {
     if (overwrite || isEmpty(holding.manualPrice)) {
       values.manualPrice = quote.price;
+      /* 자동으로 채운 값도 "언제 넣은 값이냐"가 남아야 한다.
+         날짜를 비워 두면 화면이 "입력일 기록 없음"으로 경고하는데,
+         방금 채운 값에 그 경고가 붙으면 읽는 사람만 헷갈린다. */
+      values.askingPriceAt = todayKst();
       filled.push({
         field: 'manualPrice',
         label: '현재 호가',
         value: quote.price,
-        basis: `최근 실거래 ${quote.sampleSize}건의 중앙값${quote.lastDealDate ? ` (최근 거래일 ${quote.lastDealDate})` : ''}. 호가는 보통 실거래보다 높으니 알고 있는 호가가 있으면 그 값을 쓰세요.`,
+        /* 넣는 값은 `quote.price` = 직전 실거래가다. 중앙값(`quote.medianPrice`)이 아니다.
+           예전에는 근거를 "최근 N건의 중앙값"이라 적어 놓고 실제로는 직전 체결가를
+           넣고 있었다 — 사용자가 화면의 설명을 믿고 숫자를 해석하므로, 문구는 넣는
+           값과 정확히 같아야 한다. 중앙값은 참고로 덧붙이기만 한다. */
+        basis: `직전 실거래가${quote.lastDealDate ? ` (${quote.lastDealDate} 체결)` : ''}${
+          quote.medianPrice
+            ? ` · 참고로 최근 ${quote.sampleSize}건 중앙값은 ${formatKrw(quote.medianPrice)}`
+            : ''
+        }. 호가는 보통 실거래보다 높으니 알고 있는 호가가 있으면 그 값을 쓰세요.`,
       });
     }
   } else {
@@ -219,11 +231,17 @@ export function autoFillTarget(
   if (quote && quote.basis === 'recent-trade' && quote.price > 0) {
     if (overwrite || !target.manualPrice) {
       values.manualPrice = quote.price;
+      values.askingPriceAt = todayKst();
       filled.push({
         field: 'manualPrice',
         label: '현재 호가',
         value: quote.price,
-        basis: `최근 실거래 ${quote.sampleSize}건의 중앙값${quote.lastDealDate ? ` (최근 거래일 ${quote.lastDealDate})` : ''}`,
+        // 위와 같은 이유 — 넣는 값은 직전 실거래가이므로 문구도 그렇게 적는다
+        basis: `직전 실거래가${quote.lastDealDate ? ` (${quote.lastDealDate} 체결)` : ''}${
+          quote.medianPrice
+            ? ` · 참고로 최근 ${quote.sampleSize}건 중앙값은 ${formatKrw(quote.medianPrice)}`
+            : ''
+        }`,
       });
     }
   } else {

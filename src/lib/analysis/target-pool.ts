@@ -59,6 +59,18 @@ export interface AutoDisableResult {
 }
 
 /**
+ * 자동 끄기를 켤지.
+ *
+ * 지금은 꺼 둔다. 예산에 맞춰 평형을 낮추면 거래가 뜸한 소형·중형으로 내려가는데,
+ * 그 평형은 6개월에 한 건도 안 나오는 달이 흔하다. 그때마다 스위치가 꺼지면
+ * 후보를 좁히려고 내린 평형이 오히려 목록에서 사라진다.
+ * 오래된 값이라는 사실은 화면의 ⚠ 문구(staleQuoteWarning)가 그대로 알려 준다.
+ *
+ * 다시 켜려면 이 값을 true 로 바꾸면 된다 — 아래 함수는 그대로 살아 있다.
+ */
+const AUTO_DISABLE_ENABLED = false;
+
+/**
  * 대표가가 오래된 목표의 스위치를 자동으로 끈다.
  *
  * 규칙은 둘뿐이다.
@@ -73,6 +85,10 @@ export function autoDisableStaleTargets(
   quotes: Record<string, PriceQuote>,
   now = new Date().toISOString(),
 ): AutoDisableResult {
+  // 꺼 둔 동안에는 아무것도 바꾸지 않는다 — 자동 기록 지우기까지 멈춘다.
+  // 사람이 켜 둔 스위치를 이 함수가 건드리지 않는다는 뜻이라야 "당분간 끄지 않는다"가 지켜진다.
+  if (!AUTO_DISABLE_ENABLED) return { targets, changed: false, disabled: [] };
+
   const disabled: AutoDisableResult['disabled'] = [];
   let changed = false;
 
