@@ -5,10 +5,11 @@
 
 다음 세션 시작점:
 
-0. **Supabase SQL Editor 에서 `supabase/migrations/0006_dashboard_snapshot_index.sql` 실행** —
-   화면 로딩 수정(E) 중 이것만 사람이 직접 돌려야 한다. 아직 안 돌렸다.
-1. **(8/29 저녁) 목표 평형 하향 세션의 남은 판단** — 3개 중 1개는 8/30 에 확인해 종료했고
-   2개(autoFillTarget 문구·값 불일치, 호가 수집 방법)가 남았다. 아래 절 참조.
+0. **배포된 프로덕션에서 첫 로딩 재측정** — 로컬에서 1.33초를 확인했으니 실제
+   환경에서도 재현되는지 본다. 마지막 tick 으로부터 65분이 지나 캐시가 만료된
+   상태에서 `/` 를 여는 것이 제대로 된 확인 방법이다 (그때도 1~2초여야 한다).
+1. ~~목표 평형 하향 세션의 남은 판단 3개~~ → 8/30 에 전부 종료 (호가 출처 확인 ·
+   autoFillTarget 문구 · 호가 수집 방법). 아래 절들 참조.
 2. 자정 백필 자동 재개가 돌았는지 확인 ($TEMP/backfill-2006-night.log) — 현재 57%
 3. 50지역 데이터 정합성 검증 (쿼터 리셋 후) — 재현법 아래 참조
 4. 남은 소소한 것: 네이버부동산 링크 교체, 화면 로딩 근본 개선, FSS 키(선택),
@@ -98,7 +99,19 @@
 - 월 집계(1)와 원본 거래(3)를 동시에 띄우고 각자 필요한 자리에서 기다리게 바꿨다.
 
 **E. 표현식 인덱스** — `supabase/migrations/0006_dashboard_snapshot_index.sql`.
-**아직 실행 안 함** — Supabase SQL Editor 에 붙여넣어야 한다 (앱이 DDL 을 못 돌린다).
+**2026-08-30 프로덕션에 적용 완료** (Supabase SQL Editor. 앱이 DDL 을 못 돌려 사람이 실행한다).
+캐시 조회가 실제로 이 인덱스를 타는 것까지 `explain analyze` 로 확인했다:
+
+```
+Index Scan using dashboard_snapshot_kind_user_idx
+  Index Cond: (payload->>'kind' = 'dashboard-cache')
+          AND (payload->>'userId' = '26522523-...')
+          AND (captured_at >= now() - '24:00:00')
+Execution Time: 1.441 ms
+```
+
+세 조건이 전부 Index Cond 로 들어갔다 — Filter 로 밀린 게 없으니 0.5MB 행마다
+JSONB 를 푸는 동작이 사라졌다.
 
 ### 확인 (로컬, dev 서버)
 
