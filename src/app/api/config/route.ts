@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { loadConfig, loadConfigHistory, saveConfig, isConfigEmpty } from '@/lib/store/config';
 import { getSessionUser, requireApprovedUser, ANON_CONFIG_ID } from '@/lib/auth/server';
 import { errorResponse } from '@/lib/api-auth';
 import { featureFlags } from '@/lib/env';
 import { invalidateDashboardCache } from '@/lib/pipeline/dashboard-cache';
+import { buildDashboardCached } from '@/lib/pipeline/dashboard';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,6 +51,9 @@ export async function PUT(request: Request) {
     const config = await saveConfig(body, user.id);
     // 설정이 바뀌었으니 이전 설정으로 조립된 대시보드 캐시는 버린다
     await invalidateDashboardCache(user.id).catch(() => {});
+    /* 그리고 응답 뒤에 바로 새 설정으로 다시 조립해 둔다. 버리기만 하면 다음에 요약 화면을
+       여는 순간 캐시가 없어 조립 전체(수십 초)를 서서 기다린다 — 목표를 고칠 때마다 그랬다. */
+    after(() => buildDashboardCached(user.id, { fresh: true }).catch(() => {}));
     return NextResponse.json({
       ok: true,
       config,

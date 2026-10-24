@@ -19,6 +19,7 @@
  * 최대 3시간이고, 호출량은 1/3 이다.
  */
 
+import { after } from 'next/server';
 import { refreshRecent } from './refresh';
 import { analysisTargets, loadConfig } from '@/lib/store/config';
 import { featureFlags } from '@/lib/env';
@@ -85,8 +86,7 @@ export function maybeRefreshTrades(userId: string = ANON_CONFIG_ID): LazyRefresh
   s.running = true;
   s.lastStartedAt = now;
 
-  // 응답을 지연시키지 않도록 기다리지 않는다
-  void (async () => {
+  const task = async () => {
     try {
       const config = await loadConfig(userId);
       const codes = analysisTargets(config);
@@ -106,7 +106,18 @@ export function maybeRefreshTrades(userId: string = ANON_CONFIG_ID): LazyRefresh
     } finally {
       s.running = false;
     }
-  })();
+  };
+
+  /* 응답을 지연시키지 않도록 기다리지 않는다.
+     그냥 던져 두면(void) Vercel 은 응답을 보낸 뒤 함수를 얼려 갱신이 중간에 끊긴다 —
+     실제로 tick 이 연 갱신이 일부 지역만 저장하고 멈춘 흔적이 있었다.
+     after() 로 넘기면 응답 뒤에도 끝까지 돈다. 요청 문맥 밖(스크립트)에서는 던지므로
+     그때만 예전처럼 그냥 띄운다. */
+  try {
+    after(task);
+  } catch {
+    void task();
+  }
 
   return { ...base, running: true, triggered: true, reason: '최근 실거래를 갱신하고 있습니다.' };
 }

@@ -39,6 +39,7 @@ import { filterComplex } from '@/lib/sources/molit';
 import { DEFAULT_ANALYSIS_REGIONS } from '@/lib/regions';
 import { featureFlags } from '@/lib/env';
 import { maybeRefreshTrades } from './lazy-refresh';
+import { cachedSource } from '@/lib/store/source-cache';
 import { loadDashboardCacheEntry, saveDashboardCache } from './dashboard-cache';
 import { formatArea, median, todayKst } from '@/lib/format';
 import { TARGET_FRESHNESS_MONTHS, tradePriceOf } from '@/lib/analysis/price-basis';
@@ -582,7 +583,17 @@ export async function buildDashboard(options: BuildDashboardOptions = {}): Promi
   // 매매·전세가격지수(동향조사), 공동주택 실거래가격지수, 미분양, 소비심리 —
   // 실거래 원본과 다른 공식 조사 지표라 시장을 교차 검증하는 데 쓴다.
   if (!options.skipLive && featureFlags.hasReb) {
-    const reb = await fetchRebMonthlyMacro().catch((e) => ({
+    /* 월 1회 바뀌는 숫자라 DB 에 6시간 저장해 두고, 7일 안쪽이면 낡은 값을 먼저 쓴다.
+       매번 받으면 표 5개 × 페이지 5장을 순서대로 받느라 재조립이 수십 초가 됐다. */
+    const reb = await cachedSource(
+      'reb-monthly-macro',
+      {
+        ttlMs: 6 * 60 * 60 * 1000,
+        staleMs: 7 * 24 * 60 * 60 * 1000,
+        shouldSave: (v) => v.indicators.length > 0,
+      },
+      fetchRebMonthlyMacro,
+    ).catch((e) => ({
       indicators: [] as MacroIndicator[],
       errors: [(e as Error).message],
     }));

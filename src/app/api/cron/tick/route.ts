@@ -14,6 +14,11 @@ import { loadLatestOutlook, saveOutlookCache } from '@/lib/ai/outlook-cache';
 import { saveDashboardCache } from '@/lib/pipeline/dashboard-cache';
 import { refreshSentimentNote } from '@/lib/ai/sentiment-note';
 import { markBriefingSent, wasBriefingSent } from '@/lib/store/briefing-mark';
+import {
+  loadTradeRefreshMark,
+  planTradeRefresh,
+  saveTradeRefreshMark,
+} from '@/lib/store/trade-refresh-mark';
 import { listAdminUserIds } from '@/lib/auth/server';
 import {
   buildPolicyDigest,
@@ -37,7 +42,7 @@ export const maxDuration = 300;
  *     정각 일치 방식은 GitHub Actions cron 이 밀리거나 한 시간을 통째로 거르면
  *     그 슬롯이 영영 빠진다 (실제로 11시 브리핑이 빠진 날이 있었다).
  *     따라잡기 방식이면 다음 실행에서 자동 복구되고, 발송 표시로 중복도 막는다.
- *  2. 03·15시 — 최근 실거래를 갱신한다 (오늘의 요약 페이지가 최신 데이터를 쓰도록)
+ *  2. 지난 갱신 후 11시간이 지났으면 최근 실거래를 갱신한다 (못 끝낸 지역은 다음 tick 이 잇는다)
  *  3. 매시간 — AI 시황·정책 요약을 미리 만들어 캐시에 넣는다
  *
  * ── 왜 발송이 맨 앞인가 ───────────────────────────────────────────
@@ -50,6 +55,7 @@ export const maxDuration = 300;
  *  /api/cron/tick?secret=…            지금 시각 기준으로 판단
  *  /api/cron/tick?secret=…&slot=night 슬롯을 강제로 지정해 발송 (테스트용)
  *  /api/cron/tick?secret=…&refreshOnly=1  갱신만 하고 발송하지 않음
+ *  /api/cron/tick?secret=…&refreshTrades=1 간격과 무관하게 실거래 새 바퀴를 연다
  */
 export async function GET(request: Request) {
   const denied = authorizeCron(request);
@@ -139,22 +145,53 @@ export async function GET(request: Request) {
 
     const anySent = perUser.some((r) => r.sent);
 
-    /* 2) 최근 실거래 갱신 — 12시간에 1번(03·15시 KST)만.
+    /* 2) 최근 실거래 갱신 — 지난 갱신 후 11시간이 지났으면 (하루 두 번 안팎).
        실거래는 하루 두 번이면 충분하다 (신고 기한 30일, 당일 체결 즉시 반영도 아님).
        뉴스·AI 요약은 아래에서 매시간 그대로 돈다.
 
-       ── 왜 발송 슬롯(04·10·17·21시)을 피하는가 ────────────────────
-       갱신은 최대 180초가 걸린다. 발송과 같은 실행에 몰리면 GitHub Actions 의
-       응답 대기(290초)를 넘겨 실패로 잡힌다. 발송 한 시간 전에 끝내 둔다. */
-    const isTradeRefreshHour =
-      hour === 3 || hour === 15 || url.searchParams.get('refreshTrades') === '1';
-    const refresh = isTradeRefreshHour
-      ? await refreshRecent([...codeSet], 2, {
-          budgetMs: 180_000,
-          // 원본 거래까지 저장해 단지 목록·검색·시세가 쿼터와 무관하게 뜨도록
-          cacheTradesFor: codeSet,
+       ── 왜 정각(03·15시)이 아닌가 ─────────────────────────────────
+       예전에는 03·15시 tick 에서만 돌았다. tick 을 부르는 GitHub Actions 무료 cron 이
+       하루 3~5번만 와서 그 두 시각을 자주 비켜 갔고, 그날 갱신은 통째로 빠졌다
+       (2026-10-22 15시 이후 사흘 가까이 서울 전역 갱신이 없었다).
+       브리핑처럼 "지났는데 안 한 것"을 따라잡게 바꿨다 — lib/store/trade-refresh-mark.ts.
+
+       ── 시간 배분 ────────────────────────────────────────────────
+       갱신은 최대 180초가 걸리고 함수 상한은 300초다. 이번 실행에서 발송까지 했으면
+       갱신 몫을 90초로 줄인다. 못 돈 지역은 남은 목록으로 저장돼 다음 tick 이 잇는다. */
+    const priorityCodes = new Set<string>();
+    for (const cfg of cfgByUser.values()) analysisTargets(cfg).forEach((c) => priorityCodes.add(c));
+    const refreshMark = await loadTradeRefreshMark().catch(() => null);
+    const refreshPlan = refreshMark
+      ? planTradeRefresh(refreshMark, [...codeSet], priorityCodes, {
+          force: url.searchParams.get('refreshTrades') === '1',
         })
-      : { regionsProcessed: 0, monthsFetched: 0, tradesCollected: 0, errors: [] as string[] };
+      : { codes: [] as string[], newRound: false };
+
+    const refresh =
+      refreshPlan.codes.length > 0
+        ? await refreshRecent(refreshPlan.codes, 2, {
+            budgetMs: anySent ? 90_000 : 180_000,
+            // 원본 거래까지 저장해 단지 목록·검색·시세가 쿼터와 무관하게 뜨도록
+            cacheTradesFor: codeSet,
+          })
+        : {
+            regionsProcessed: 0,
+            monthsFetched: 0,
+            tradesCollected: 0,
+            errors: [] as string[],
+            attemptedCodes: [] as string[],
+          };
+
+    if (refreshMark && refreshPlan.codes.length > 0) {
+      const attempted = new Set(refresh.attemptedCodes ?? []);
+      const pending = refreshPlan.codes.filter((c) => !attempted.has(c));
+      const nowIso = new Date().toISOString();
+      await saveTradeRefreshMark({
+        completedAt: pending.length === 0 ? nowIso : refreshMark.completedAt,
+        roundStartedAt: refreshPlan.newRound ? nowIso : refreshMark.roundStartedAt,
+        pending,
+      }).catch(() => {});
+    }
 
     /* 2-1) 실거래 반영 시각 관측 — 매 tick(30분)마다.
        공공데이터포털 OpenAPI 가 몇 시에, 하루 몇 번 새 거래를 실어 주는지는
@@ -257,6 +294,8 @@ export async function GET(request: Request) {
           regions: refresh.regionsProcessed,
           trades: refresh.tradesCollected,
           errors: refresh.errors.length,
+          planned: refreshPlan.codes.length,
+          newRound: refreshPlan.newRound,
         },
         // 실거래 반영 관측 — 이번 회차에 새로 나타난 거래 수
         probe: {

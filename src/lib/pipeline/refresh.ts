@@ -35,6 +35,11 @@ export interface RefreshResult {
   durationMs: number;
   /** 아직 남은 (지역, 월) 조합 수 — 백필 진행률 확인용 */
   remaining?: number;
+  /**
+   * 이번 실행에서 손을 댄 지역 (성공 + 지역 단위 실패).
+   * 시간 초과·치명 오류로 못 돈 지역은 빠진다 — 정기 갱신이 다음 tick 에 이어 돌 목록을 만든다.
+   */
+  attemptedCodes?: string[];
 }
 
 /** 백필 시작 월 (반등 분석 기준시점보다 1년 앞서 잡아 저점 탐지에 여유를 준다) */
@@ -74,13 +79,17 @@ async function runRegionMonths(
   let monthsFetched = 0;
   let tradesCollected = 0;
   let remaining = 0;
+  const attemptedCodes: string[] = [];
 
   for (const { lawdCd, months } of plan) {
     if (Date.now() - startedAt > budgetMs) {
       remaining += months.length;
       continue;
     }
-    if (months.length === 0) continue;
+    if (months.length === 0) {
+      attemptedCodes.push(lawdCd);
+      continue;
+    }
 
     try {
       const byMonth = await fetchTradesForMonths(lawdCd, months);
@@ -111,6 +120,7 @@ async function runRegionMonths(
       monthsFetched += months.length;
       tradesCollected += Object.values(byMonth).reduce((s, t: TradeRecord[]) => s + t.length, 0);
       regionsProcessed += 1;
+      attemptedCodes.push(lawdCd);
     } catch (e) {
       // 키·승인·트래픽 문제는 남은 지역을 돌아도 똑같이 실패하므로 즉시 중단한다
       if (e instanceof MolitError && FATAL_CODES.has(e.code ?? '')) {
@@ -118,7 +128,9 @@ async function runRegionMonths(
         remaining += months.length;
         break;
       }
+      // 지역 하나의 일시 오류는 다음 바퀴에 다시 돈다 — 여기서 붙잡으면 바퀴가 끝나지 않는다
       errors.push(`${lawdCd}: ${(e as Error).message}`);
+      attemptedCodes.push(lawdCd);
     }
   }
 
@@ -130,6 +142,7 @@ async function runRegionMonths(
     errors,
     durationMs: Date.now() - startedAt,
     remaining,
+    attemptedCodes,
   };
 }
 
